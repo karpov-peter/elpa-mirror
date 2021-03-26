@@ -429,22 +429,29 @@ subroutine trans_ev_&
 #ifdef WITH_MPI
       ! In the legacy GPU version, this allreduce was ommited. But probably it has to be done for GPU + MPI
       ! todo: does it need to be copied whole? Wouldn't be a part sufficient?
+#ifndef WITH_CUDA_AWARE_MPI
       if (useGPU) then
         successCUDA = cuda_memcpy(int(loc(tmp1(1)),kind=c_intptr_t), tmp_dev,  &
                       max_local_cols * max_stored_rows * size_of_datatype, cudaMemcpyDeviceToHost)
         check_memcpy_cuda("trans_ev", successCUDA)
       endif
+#endif
       call obj%timer%start("mpi_communication")
+#ifdef WITH_CUDA_AWARE_MPI
+      print *,"need cuda aware mpi here"
+      stop
+#endif
       call mpi_allreduce(tmp1, tmp2, int(nstor*l_cols,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, MPI_SUM, &
                          int(mpi_comm_rows,kind=MPI_KIND), mpierr)
       call obj%timer%stop("mpi_communication")
       ! copy back tmp2 - after reduction...
+#ifndef WITH_CUDA_AWARE_MPI
       if (useGPU) then
         successCUDA = cuda_memcpy(tmp_dev, int(loc(tmp2(1)),kind=c_intptr_t),  &
                       max_local_cols * max_stored_rows * size_of_datatype, cudaMemcpyHostToDevice)
         check_memcpy_cuda("trans_ev", successCUDA)
       endif ! useGPU
-
+#endif
 
 #else /* WITH_MPI */
 !     tmp2 = tmp1

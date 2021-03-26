@@ -1462,7 +1462,7 @@ if test x"${need_bgq}" = x"yes"; then
 fi
 AC_LANG_POP([Fortran])
 
-
+dnl GPU
 AC_MSG_CHECKING(whether GPU version should be used)
 AC_ARG_ENABLE([gpu],
                 AS_HELP_STRING([--enable-gpu],
@@ -1521,6 +1521,48 @@ AC_MSG_RESULT([${enable_gpu_memory_debug}])
 if test x"${enable_gpu_memory_debug}" = x"yes" ; then
   AC_DEFINE([DEBUG_CUDA],[1],[enable CUDA debugging])
 fi
+
+dnl cuda aware mpi
+use_cuda_aware_mpi=no
+if test x"${need_gpu}" = x"yes"; then
+  if test x"${with_mpi}" = x"yes"; then
+    AC_MSG_CHECKING(whether CUDA aware MPI should be used)
+    AC_ARG_ENABLE([cuda-aware-mpi],
+                AS_HELP_STRING([--enable-cuda-aware-mpi],
+                               [do use CUDA-aware MPI]),
+                               [if test x"$enableval" = x"yes"; then
+                                  enable_cuda_aware_mpi=yes
+                                else
+                                  enable_cuda_aware_mpi=no
+                                fi],
+              [enable_cuda_aware_mpi=no])
+    AC_MSG_RESULT([${enable_cuda_aware_mpi}])
+    if test x"${enable_cuda_aware_mpi}" = x"yes" ; then
+      AC_DEFINE([WITH_CUDA_AWARE_MPI],[1],[enable CUDA-aware MPI])
+    fi
+
+    if test x"${enable_cuda_aware_mpi}" = x"yes" ; then
+      AC_MSG_CHECKING([whether CUDA-aware MPI is supported])
+      AC_LANG_PUSH([C])
+      AC_COMPILE_IFELSE([AC_LANG_SOURCE([
+       #include "mpi.h"
+       #include "mpi-ext.h"
+       #if !(defined(MPIX_CUDA_AWARE_SUPPORT) && MPIX_CUDA_AWARE_SUPPORT)
+       # error No CUDA support.
+       #endif
+      ])],
+      [use_cuda_aware_mpi="yes"],
+      [use_cuda_aware_mpi="no"]
+      )
+      AC_LANG_POP([C])
+      AC_MSG_RESULT([${use_cuda_aware_mpi}])
+    fi
+    if test x"${use_cuda_aware_mpi}" = x"yes" ; then
+      AC_DEFINE([WITH_CUDA_AWARE_MPI],[1],[enable CUDA-aware MPI])
+    fi
+  fi
+fi
+
 
 
 m4_foreach_w([elpa_m4_kernel],elpa_m4_all_kernels,[

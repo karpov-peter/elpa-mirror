@@ -394,10 +394,12 @@ subroutine trans_ev_band_to_full_&
         call obj%timer%stop("cublas")
 
 #ifdef WITH_MPI
+#ifndef WITH_CUDA_AWARE_MPI
         ! copy data from device to host for a later MPI_ALLREDUCE
         successCUDA = cuda_memcpy(int(loc(tmp1),kind=c_intptr_t), &
                       tmp_dev, l_cols*n_cols*size_of_datatype, cudaMemcpyDeviceToHost)
         check_memcpy_cuda("trans_ev_band_to_full: tmp_dev -> tmp1", successCUDA)
+#endif
 #endif /* WITH_MPI */
 
       else
@@ -413,6 +415,8 @@ subroutine trans_ev_band_to_full_&
     endif ! l_rows>0
 
 #ifdef WITH_MPI
+#ifdef WITH_CUDA_AWARE_MPI
+#endif
     call obj%timer%start("mpi_communication")
     call mpi_allreduce(tmp1, tmp2, int(n_cols*l_cols,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, MPI_SUM, &
                        int(mpi_comm_rows,kind=MPI_KIND), mpierr)
@@ -420,9 +424,11 @@ subroutine trans_ev_band_to_full_&
 
     if (l_rows>0) then
       if (useGPU) then
+#ifndef WITH_CUDA_AWARE_MPI
         successCUDA = cuda_memcpy(tmp_dev, int(loc(tmp2),kind=c_intptr_t), &
                       l_cols*n_cols*size_of_datatype, cudaMemcpyHostToDevice)
         check_memcpy_cuda("trans_ev_band_to_full: tmp2 -> tmp_dev", successCUDA)
+#endif
 
         successCUDA = cuda_memcpy(tmat_dev, int(loc(tmat_complete),kind=c_intptr_t), &
                       cwy_blocking*cwy_blocking*size_of_datatype, cudaMemcpyHostToDevice)

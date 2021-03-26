@@ -358,11 +358,12 @@
                    lre-lrs+1, ONE, aux_dev+aux_off, l_rows, b_dev+b_off, ldb, ZERO, &
                    tmp1_dev, nstor)
               call obj%timer%stop("cublas")
-
+#ifndef WITH_CUDA_AWARE_MPI
               num = nstor*(lce-lcs+1)*size_of_datatype
               successCUDA = cuda_memcpy(int(loc(tmp1),kind=c_intptr_t), &
                             tmp1_dev, num, cudaMemcpyDeviceToHost)
               check_memcpy_cuda("elpa_mult_at_b: tmp1_dev to tmp1", successCUDA)
+#endif
             else ! useGPU
               call obj%timer%start("blas")
               call PRECISION_GEMM(BLAS_TRANS_OR_CONJ, 'N', int(nstor,kind=BLAS_KIND), &
@@ -378,6 +379,8 @@
 
           ! Sum up the results and send to processor row np
 #ifdef WITH_MPI
+#ifdef WITH_CUDA_AWARE_MPI
+#endif
           call obj%timer%start("mpi_communication")
           call mpi_reduce(tmp1, tmp2, int(nstor*(lce-lcs+1),kind=MPI_KIND),  MPI_MATH_DATATYPE_PRECISION, &
                           MPI_SUM, int(np,kind=MPI_KIND), int(mpi_comm_rows,kind=MPI_KIND), mpierr)
