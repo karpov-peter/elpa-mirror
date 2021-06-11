@@ -650,9 +650,9 @@ max_threads, isSkewsymmetric)
         vr(lr+1) = tau
 #ifdef WITH_MPI
           !Soheil: Add barrier call for tracing
-!          call obj%timer%start("mpi_barrier_B1")
+           call obj%timer%start("mpi_barrier_before")
            call mpi_barrier(mpi_comm_cols, mpierr)          
-!          call obj%timer%stop("mpi_barrier_B1")
+           call obj%timer%stop("mpi_barrier_before")
 
           !Soheil: Measure broadcast time only 
           call obj%timer%start("mpi_bcast")
@@ -854,6 +854,10 @@ max_threads, isSkewsymmetric)
           endif
         enddo
 #endif /* WITH_OPENMP_TRADITIONAL */
+         !Soheil: Add barrier call for tracing
+         call obj%timer%start("mpi_barrier_end")
+         call mpi_barrier(mpi_comm_cols, mpierr)          
+         call obj%timer%stop("mpi_barrier_end")
       enddo ! lc
 
       if (useGPU_reduction_lower_block_to_tridiagonal .and. .not.(useIntelGPU)) then
