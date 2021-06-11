@@ -115,6 +115,9 @@ max_threads, isSkewsymmetric)
 
   implicit none
 #include "../general/precision_kinds.F90"
+!Soheil: include Vampir Tracing header for MPI tracing
+include '/mpcdf/soft/SLE_15/packages/x86_64/intel_oneapi/2021.2/itac/latest/include/VT.inc'
+
   class(elpa_abstract_impl_t), intent(inout) :: obj
   integer(kind=ik)                            :: na, lda, nblk, nbw, matrixCols, numBlocks, mpi_comm_rows, mpi_comm_cols
 
@@ -204,6 +207,14 @@ max_threads, isSkewsymmetric)
   integer(kind=ik)                            :: i_blk,blk_off, blk_end
   logical                                     :: useIntelGPU
 
+  !Soheil: ITAC declarations
+  integer :: itac_err, classhandle, statehandle
+  !call VTCLASSDEF( 'ROI', classhandle, itac_err )
+  !call VTFUNCDEF( 'Running', classhandle, statehandle, itac_err )
+  !call VTBEGIN(statehandle, itac_err)
+  call VTTRACEON()
+  ! ===== END of ITAC =====
+ 
   if(useGPU) then
     gpuString = "_gpu"
   else
@@ -216,6 +227,8 @@ max_threads, isSkewsymmetric)
       useIntelGPU = .true.
     endif
   endif
+  !Soheil: start tracing
+  !call VTTRACEON()
 
   call obj%timer%start("bandred_&
   &MATH_DATATYPE&
@@ -606,11 +619,20 @@ max_threads, isSkewsymmetric)
           endif
 
 #ifdef WITH_MPI
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R1")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R1")
+
           if (wantDebug) call obj%timer%start("mpi_communication")
           call mpi_allreduce(aux1, aux2, 2_MPI_KIND, MPI_MATH_DATATYPE_PRECISION, &
                              MPI_SUM, int(mpi_comm_rows,kind=MPI_KIND), mpierr)
           if (wantDebug) call obj%timer%stop("mpi_communication")
 
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R1")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R1")
 #else /* WITH_MPI */
           aux2 = aux1 ! this should be optimized
 #endif
@@ -646,11 +668,25 @@ max_threads, isSkewsymmetric)
 
         vr(lr+1) = tau
 #ifdef WITH_MPI
+          !Soheil: Add barrier call for tracing
+!          call obj%timer%start("mpi_barrier_B1")
+           call mpi_barrier(mpi_comm_cols, mpierr)          
+!          call obj%timer%stop("mpi_barrier_B1")
+
+          !Soheil: Measure broadcast time only 
+          call obj%timer%start("mpi_bcast")
         if (wantDebug) call obj%timer%start("mpi_communication")
         call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
                       int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
         if (wantDebug) call obj%timer%stop("mpi_communication")
 
+          !Soheil: Measure broadcast time only 
+          call obj%timer%stop("mpi_bcast")
+
+          !Soheil: Add barrier call for tracing
+         ! call obj%timer%start("mpi_barrier_B1")
+         ! call mpi_barrier(mpi_comm_cols, mpierr)          
+         ! call obj%timer%stop("mpi_barrier_B1")
 #endif /* WITH_MPI */
 
         if (useGPU_reduction_lower_block_to_tridiagonal .and. .not.(useIntelGPU)) then
@@ -763,10 +799,20 @@ max_threads, isSkewsymmetric)
         !$omp barrier
         !$omp single
 #ifdef WITH_MPI
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R2")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R2")
+
         if (wantDebug) call obj%timer%start("mpi_communication")
         if (mynlc>0) call mpi_allreduce(aux1, aux2, int(mynlc,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
                                         MPI_SUM, int(mpi_comm_rows,kind=MPI_KIND), mpierr)
         if (wantDebug) call obj%timer%stop("mpi_communication")
+
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R2")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R2")
 #else /* WITH_MPI */
         if (mynlc>0) aux2 = aux1
 #endif /* WITH_MPI */
@@ -810,10 +856,20 @@ max_threads, isSkewsymmetric)
 
         ! Get global dot products
 #ifdef WITH_MPI
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R3")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R3")
+
         if (wantDebug) call obj%timer%start("mpi_communication")
         if (nlc>0) call mpi_allreduce(aux1, aux2, int(nlc,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
                                       MPI_SUM, int(mpi_comm_rows,kind=MPI_KIND), mpierr)
         if (wantDebug) call obj%timer%stop("mpi_communication")
+
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R3")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R3")
 #else /* WITH_MPI */
         if (nlc>0) aux2=aux1
 #endif /* WITH_MPI */
@@ -1310,11 +1366,21 @@ max_threads, isSkewsymmetric)
           check_allocate("bandred: tmpCPU", istat, errorMessage)
 
 #ifdef WITH_MPI
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R4")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R4")
+
           if (wantDebug) call obj%timer%start("mpi_communication")
           call mpi_allreduce(umcCPU, tmpCPU, int(l_cols*n_cols,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION,    &
                            MPI_SUM, int(mpi_comm_rows,kind=MPI_KIND), mpierr)
           umcCPU(1:l_cols,1:n_cols) = tmpCPU(1:l_cols,1:n_cols)
           if (wantDebug) call obj%timer%stop("mpi_communication")
+
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R4")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R4")
 #endif /* WITH_MPI */
 
           deallocate(tmpCPU, stat=istat, errmsg=errorMessage)
@@ -1324,6 +1390,11 @@ max_threads, isSkewsymmetric)
           allocate(tmpGPU(l_cols * n_cols), stat=istat, errmsg=errorMessage)
           check_allocate("bandred: tmpGPU", istat, errorMessage)
 
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R5")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R5")
+
           if (wantDebug) call obj%timer%start("mpi_communication")
 
           call mpi_allreduce(umcGPU, tmpGPU, int(l_cols*n_cols,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
@@ -1331,6 +1402,11 @@ max_threads, isSkewsymmetric)
 
           umcGPU(1 : l_cols * n_cols) = tmpGPU(1 : l_cols * n_cols)
           if (wantDebug) call obj%timer%stop("mpi_communication")
+
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R5")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R5")
 #endif /* WITH_MPI */
 
           if (allocated(tmpGPU)) then
@@ -1345,11 +1421,21 @@ max_threads, isSkewsymmetric)
         check_allocate("bandred: tmpCPU", istat, errorMessage)
 
 #ifdef WITH_MPI
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R6")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R6")
+
         if (wantDebug) call obj%timer%start("mpi_communication")
         call mpi_allreduce(umcCPU, tmpCPU, int(l_cols*n_cols,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION,    &
                            MPI_SUM, int(mpi_comm_rows,kind=MPI_KIND), mpierr)
         umcCPU(1:l_cols,1:n_cols) = tmpCPU(1:l_cols,1:n_cols)
         if (wantDebug) call obj%timer%stop("mpi_communication")
+        
+          !Soheil: Add barrier call for tracing
+          !call obj%timer%start("mpi_barrier_R6")
+          !call mpi_barrier(mpi_comm_rows, mpierr)          
+          !call obj%timer%stop("mpi_barrier_R6")
 #endif /* WITH_MPI */
 
         deallocate(tmpCPU, stat=istat, errmsg=errorMessage)
@@ -1851,6 +1937,11 @@ max_threads, isSkewsymmetric)
   &PRECISION_SUFFIX //&
   gpuString)
 
+  !Soheil: stop tracing
+  !call VTEND(statehandle, itac_err)
+  call VTTRACEOFF()
+
+  
 end subroutine bandred_&
 &MATH_DATATYPE&
 &_&
