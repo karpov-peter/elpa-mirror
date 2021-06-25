@@ -73,7 +73,7 @@ Fortran synopsis
     stop
   endif
   elpa => elpa_allocate(success)
-  if (success != ELPA_OK) then
+  if (success /= ELPA_OK) then
     ! react on the error
     ! we urge every user to always check the error codes
     ! of all ELPA functions
