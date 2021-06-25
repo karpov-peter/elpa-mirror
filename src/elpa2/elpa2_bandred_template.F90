@@ -632,6 +632,7 @@ max_threads, isSkewsymmetric)
              &_&
              &PRECISION &
                          (obj, vrl, vnorm2, xf, tau, wantDebug)
+
           ! Scale vr and store Householder Vector for back transformation
 
           vr(1:lr) = vr(1:lr) * xf
@@ -664,10 +665,10 @@ max_threads, isSkewsymmetric)
           !Soheil: Measure broadcast time only 
           call obj%timer%stop("mpi_bcast")
 
-          !Soheil: Add barrier call for tracing
-         ! call obj%timer%start("mpi_barrier_B1")
-         ! call mpi_barrier(mpi_comm_cols, mpierr)          
-         ! call obj%timer%stop("mpi_barrier_B1")
+         !Soheil: Add barrier after Bcast
+         call obj%timer%start("mpi_barrier_after")
+         call mpi_barrier(mpi_comm_cols, mpierr)          
+         call obj%timer%stop("mpi_barrier_after")
 #endif /* WITH_MPI */
 
         if (useGPU_reduction_lower_block_to_tridiagonal .and. .not.(useIntelGPU)) then
@@ -676,6 +677,11 @@ max_threads, isSkewsymmetric)
           vmrCPU(1:lr,lc) = vr(1:lr)
         endif
         tau = vr(lr+1)
+
+        !Soheil: Add barrier after unpack (seems OK)
+        !call obj%timer%start("mpi_barrier_unpack")
+        !call mpi_barrier(mpi_comm_cols, mpierr)          
+        !call obj%timer%stop("mpi_barrier_unpack")
 
 #if REALCASE == 1
         tmat(lc,lc,istep) = tau ! Store tau in diagonal of tmat
@@ -779,6 +785,7 @@ max_threads, isSkewsymmetric)
 
         !$omp barrier
         !$omp single
+
 #ifdef WITH_MPI
 
         if (wantDebug) call obj%timer%start("mpi_communication")
@@ -818,6 +825,11 @@ max_threads, isSkewsymmetric)
 
 #else /* WITH_OPENMP_TRADITIONAL */
 
+        !Soheil: insert barrier before dot_product (seems OK)
+        !call obj%timer%start("mpi_barrier_dotbef")
+        !call mpi_barrier(mpi_comm_cols, mpierr)          
+        !call obj%timer%stop("mpi_barrier_dotbef")
+
         nlc = 0 ! number of local columns
         do j=1,lc-1
           lcx = local_index(istep*nbw+j, my_pcol, np_cols, nblk, 0)
@@ -830,15 +842,35 @@ max_threads, isSkewsymmetric)
         ! Get global dot products
 #ifdef WITH_MPI
 
+        !Soheil: insert barrier after the dot_product
+        !call obj%timer%start("mpi_barrier_dot")
+        !call mpi_barrier(mpi_comm_cols, mpierr)          
+        !call obj%timer%stop("mpi_barrier_dot")
+
+        !Soheil: insert barrier before allreduce(note: mpi_comm_ROWS!)
+        !call obj%timer%start("mpi_barrier_reduce_bef")
+        !call mpi_barrier(mpi_comm_rows, mpierr)          
+        !call obj%timer%stop("mpi_barrier_reduce_bef")
+
         if (wantDebug) call obj%timer%start("mpi_communication")
         if (nlc>0) call mpi_allreduce(aux1, aux2, int(nlc,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
                                       MPI_SUM, int(mpi_comm_rows,kind=MPI_KIND), mpierr)
         if (wantDebug) call obj%timer%stop("mpi_communication")
 
+        !Soheil: insert barrier after the allreduce
+        !call obj%timer%start("mpi_barrier_reduce_aft")
+        !call mpi_barrier(mpi_comm_rows, mpierr)          
+        !call obj%timer%stop("mpi_barrier_reduce_aft")
+
 #else /* WITH_MPI */
         if (nlc>0) aux2=aux1
 #endif /* WITH_MPI */
         ! Transform
+
+        !Soheil: insert barrier before transformation
+        !call obj%timer%start("mpi_barrier_trans_bef")
+        !call mpi_barrier(mpi_comm_cols, mpierr)          
+        !call obj%timer%stop("mpi_barrier_trans_bef")
 
         nlc = 0
         do j=1,lc-1
