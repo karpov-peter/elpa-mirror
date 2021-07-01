@@ -280,7 +280,7 @@ program test
          cycle
        endif
 #else
-   layout = 'R'   !Soheil: changed 'C' to 'R'
+   layout = 'C'
    do np_cols = NINT(SQRT(REAL(nprocs))),2,-1
       if(mod(nprocs,np_cols) == 0 ) exit
    enddo
