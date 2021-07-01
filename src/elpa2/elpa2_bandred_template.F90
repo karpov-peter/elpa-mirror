@@ -205,7 +205,9 @@ max_threads, isSkewsymmetric)
   integer(kind=ik)                            :: i_blk,blk_off, blk_end
   logical                                     :: useIntelGPU
 
- 
+  !Soheil: disable profiling
+  !call mpi_pcontrol(0, mpierr)
+
   if(useGPU) then
     gpuString = "_gpu"
   else
@@ -450,7 +452,11 @@ max_threads, isSkewsymmetric)
   !if (useIntelGPU) then
      ! needed later when explict mem copy
   !endif ! useIntelGPU
-
+  !Soheil get timing 
+    call obj%timer%start("barrier_bef_outer")
+          call mpi_barrier(mpi_comm_cols, mpierr)
+  !Soheil stop timing
+    call obj%timer%stop("barrier_bef_outer")
 
   do istep = blk_end, 1, -1
 
@@ -578,6 +584,11 @@ max_threads, isSkewsymmetric)
 
     else !useQR
 #endif /* REALCASE == 1 */
+          !Soheil get timing
+          call obj%timer%start("barrier_bef_lc")
+          call mpi_barrier(mpi_comm_cols, mpierr)
+          !Soheil stop timing
+          call obj%timer%stop("barrier_bef_lc")
       do lc = n_cols, 1, -1
 
         ncol = istep*nbw + lc ! absolute column number of householder Vector
@@ -597,6 +608,8 @@ max_threads, isSkewsymmetric)
           ! Get Vector to be transformed; distribute last element and norm of
           ! remaining elements to all procs in current column
 
+          !Soheil get timing
+          call obj%timer%start("prehh_dot")
           vr(1:lr) = a_mat(1:lr,lch) ! Vector to be transformed
 
           if (my_prow==prow(nrow, nblk, np_rows)) then
@@ -606,6 +619,8 @@ max_threads, isSkewsymmetric)
             aux1(1) = dot_product(vr(1:lr),vr(1:lr))
             aux1(2) = 0.0_rck
           endif
+          !Soheil stop timing
+          call obj%timer%stop("prehh_dot")
 
 #ifdef WITH_MPI
 
@@ -627,14 +642,21 @@ max_threads, isSkewsymmetric)
           vrl    = aux2(2)
 
           ! Householder transformation
+          !Soheil get timing
+          call obj%timer%start("householder")
           call hh_transform_&
              &MATH_DATATYPE&
              &_&
              &PRECISION &
                          (obj, vrl, vnorm2, xf, tau, wantDebug)
 
+          !Soheil stop timing
+          call obj%timer%stop("householder")
+          
           ! Scale vr and store Householder Vector for back transformation
 
+          !Soheil get timing
+          call obj%timer%start("posthh_store")
           vr(1:lr) = vr(1:lr) * xf
           if (my_prow==prow(nrow, nblk, np_rows)) then
             a_mat(1:lr-1,lch) = vr(1:lr-1)
@@ -643,6 +665,8 @@ max_threads, isSkewsymmetric)
           else
             a_mat(1:lr,lch) = vr(1:lr)
           endif
+          !Soheil stop timing
+          call obj%timer%stop("posthh_store")
 
         endif
 
@@ -787,12 +811,10 @@ max_threads, isSkewsymmetric)
         !$omp single
 
 #ifdef WITH_MPI
-
         if (wantDebug) call obj%timer%start("mpi_communication")
         if (mynlc>0) call mpi_allreduce(aux1, aux2, int(mynlc,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
                                         MPI_SUM, int(mpi_comm_rows,kind=MPI_KIND), mpierr)
         if (wantDebug) call obj%timer%stop("mpi_communication")
-
 #else /* WITH_MPI */
         if (mynlc>0) aux2 = aux1
 #endif /* WITH_MPI */
@@ -852,10 +874,14 @@ max_threads, isSkewsymmetric)
         !call mpi_barrier(mpi_comm_rows, mpierr)          
         !call obj%timer%stop("mpi_barrier_reduce_bef")
 
+        !Soheil stop timing
+        call obj%timer%start("allreduce")
         if (wantDebug) call obj%timer%start("mpi_communication")
         if (nlc>0) call mpi_allreduce(aux1, aux2, int(nlc,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
                                       MPI_SUM, int(mpi_comm_rows,kind=MPI_KIND), mpierr)
         if (wantDebug) call obj%timer%stop("mpi_communication")
+        !Soheil stop timing
+        call obj%timer%stop("allreduce")
 
         !Soheil: insert barrier after the allreduce
         !call obj%timer%start("mpi_barrier_reduce_aft")
