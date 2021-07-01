@@ -579,7 +579,8 @@ module elpa_impl
       integer(kind=c_int)                 :: info, na, nblk, na_rows, my_pcol, my_prow, numroc_result
       character(*), parameter             :: MPI_CONSISTENCY_MSG = &
         "Provide mpi_comm_parent and EITHER process_row and process_col OR mpi_comm_rows and mpi_comm_cols. Aborting..."
-
+!Soheil
+      integer  :: itr_count
 #endif
 
 #ifdef HAVE_LIKWID
@@ -699,6 +700,34 @@ module elpa_impl
 
         call self%set("mpi_comm_cols", mpi_comm_cols,error)
         if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+#ifdef WITH_MPI
+        ! Soheil: benchmark mpi_barrier overhead:
+        call self%timer_start("barrier_overhead_world_root")
+           do itr_count=1, 19935
+             call mpi_barrier(MPI_COMM_WORLD, mpierr)
+           end do 
+        call self%timer_stop("barrier_overhead_world_root")
+
+        call self%timer_start("barrier_overhead_row")
+           do itr_count=1, 19935
+             call mpi_barrier(mpi_comm_rows, mpierr)
+           end do 
+        call self%timer_stop("barrier_overhead_row")
+
+        call self%timer_start("barrier_overhead_col")
+           do itr_count=1, 19935
+             call mpi_barrier(mpi_comm_cols, mpierr)
+           end do 
+        call self%timer_stop("barrier_overhead_col")
+
+        if (my_id .eq. 0) then
+            call self%print_times("barrier_overhead_row")
+            call self%print_times("barrier_overhead_col")
+            call self%print_times("barrier_overhead_world_root")
+        end if
+        ! Soheil: end of benchmark
+#endif
 
         ! remember that we created those communicators and we need to free them later
         self%communicators_owned = 1
