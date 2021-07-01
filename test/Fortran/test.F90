@@ -160,6 +160,8 @@ program test
    TEST_INT_TYPE     :: np_cols, np_rows  ! number of MPI processes per column/row
    TEST_INT_TYPE     :: my_prow, my_pcol  ! local MPI task position (my_prow, my_pcol) in the grid (0..np_cols -1, 0..np_rows -1)
    TEST_INT_MPI_TYPE :: mpierr
+   !Soheil:
+   integer   :: itr_count
 
    ! blacs
    TEST_INT_TYPE     :: my_blacs_ctxt, sc_desc(9), info, nprow, npcol
@@ -278,7 +280,7 @@ program test
          cycle
        endif
 #else
-   layout = 'C'
+   layout = 'R'   !Soheil: changed 'C' to 'R'
    do np_cols = NINT(SQRT(REAL(nprocs))),2,-1
       if(mod(nprocs,np_cols) == 0 ) exit
    enddo
@@ -298,6 +300,16 @@ program test
 #endif
      print *,''
    endif
+
+#ifdef WITH_MPI
+      ! Soheil: benchmark mpi_barrier overhead:
+        !call e%timer_start("barrier_overhead")
+        !do itr_count=1, 19935
+        !  call mpi_barrier(MPI_COMM_WORLD, mpierr)
+        !end do 
+        !call e%timer_stop("barrier_overhead")
+      ! Soheil: end of benchmark
+#endif
 
 #if TEST_QR_DECOMPOSITION == 1
 
@@ -645,7 +657,6 @@ program test
    assert_elpa_ok(error_elpa)
    call e%set("mpi_comm_cols", int(mpi_comm_cols,kind=c_int), error_elpa)
    assert_elpa_ok(error_elpa)
-
 #else
    call e%set("mpi_comm_parent", int(MPI_COMM_WORLD,kind=c_int), error_elpa)
    assert_elpa_ok(error_elpa)
@@ -780,6 +791,34 @@ program test
 
 #ifdef TEST_ALL_KERNELS
      call e%timer_start(elpa_int_value_to_string(KERNEL_KEY, kernel))
+#endif
+
+#ifdef WITH_MPI
+! Soheil: benchmark mpi_barrier overhead:
+call e%timer_start("barrier_overhead_world")
+   do itr_count=1, 19935
+     call mpi_barrier(MPI_COMM_WORLD, mpierr)
+   end do 
+call e%timer_stop("barrier_overhead_world")
+
+!call e%timer_start("barrier_overhead_row")
+!   do itr_count=1, 19935
+!     call mpi_barrier(mpi_comm_rows, mpierr)
+!   end do 
+!call e%timer_stop("barrier_overhead_row")
+!
+!call e%timer_start("barrier_overhead_col")
+!   do itr_count=1, 19935
+!     call mpi_barrier(mpi_comm_cols, mpierr)
+!   end do 
+!call e%timer_stop("barrier_overhead_col")
+!
+if (myid .eq. 0) then
+    call e%print_times("barrier_overhead_world")
+!    call e%print_times("barrier_overhead_row")
+!    call e%print_times("barrier_overhead_col")
+end if
+! Soheil: end of benchmark
 #endif
 
      ! The actual solve step
