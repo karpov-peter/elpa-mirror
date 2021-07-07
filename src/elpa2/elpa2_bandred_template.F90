@@ -205,8 +205,8 @@ max_threads, isSkewsymmetric)
   integer(kind=ik)                            :: i_blk,blk_off, blk_end
   logical                                     :: useIntelGPU
 
-  !Soheil: disable profiling
-  call mpi_pcontrol(0, mpierr)
+  !Soheil: enable / disable profiling
+  call mpi_pcontrol(1, mpierr)
 
   if(useGPU) then
     gpuString = "_gpu"
