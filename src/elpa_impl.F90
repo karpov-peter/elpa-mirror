@@ -703,23 +703,29 @@ module elpa_impl
 
 #ifdef WITH_MPI
         ! Soheil: benchmark mpi_barrier overhead:
+        call mpi_pcontrol(20, mpierr)
         call self%timer_start("barrier_overhead_world_root")
            do itr_count=1, 19935
              call mpi_barrier(MPI_COMM_WORLD, mpierr)
            end do 
         call self%timer_stop("barrier_overhead_world_root")
+        call mpi_pcontrol(-20, mpierr)
 
+        call mpi_pcontrol(30, mpierr)
         call self%timer_start("barrier_overhead_row")
            do itr_count=1, 19935
              call mpi_barrier(mpi_comm_rows, mpierr)
            end do 
         call self%timer_stop("barrier_overhead_row")
+        call mpi_pcontrol(-30, mpierr)
 
+        call mpi_pcontrol(40, mpierr)
         call self%timer_start("barrier_overhead_col")
            do itr_count=1, 19935
              call mpi_barrier(mpi_comm_cols, mpierr)
            end do 
         call self%timer_stop("barrier_overhead_col")
+        call mpi_pcontrol(-40, mpierr)
 
         if (my_id .eq. 0) then
             call self%print_times("barrier_overhead_row")

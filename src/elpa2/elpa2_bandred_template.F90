@@ -613,7 +613,7 @@ max_threads, isSkewsymmetric)
           ! remaining elements to all procs in current column
 
           !Soheil get timing
-          call mpi_pcontrol(7, mpierr)
+          !call mpi_pcontrol(7, mpierr)
           call obj%timer%start("prehh_dot")
           vr(1:lr) = a_mat(1:lr,lch) ! Vector to be transformed
 
@@ -626,7 +626,7 @@ max_threads, isSkewsymmetric)
           endif
           !Soheil stop timing
           call obj%timer%stop("prehh_dot")
-          call mpi_pcontrol(-7, mpierr)
+          !call mpi_pcontrol(-7, mpierr)
 
 #ifdef WITH_MPI
 
@@ -649,7 +649,7 @@ max_threads, isSkewsymmetric)
 
           ! Householder transformation
           !Soheil get timing
-          call mpi_pcontrol(8, mpierr)
+          !call mpi_pcontrol(8, mpierr)
           call obj%timer%start("householder")
           call hh_transform_&
              &MATH_DATATYPE&
@@ -659,12 +659,12 @@ max_threads, isSkewsymmetric)
 
           !Soheil stop timing
           call obj%timer%stop("householder")
-          call mpi_pcontrol(-8, mpierr)
+          !call mpi_pcontrol(-8, mpierr)
           
           ! Scale vr and store Householder Vector for back transformation
 
           !Soheil get timing
-          call mpi_pcontrol(9, mpierr)
+          !call mpi_pcontrol(9, mpierr)
           call obj%timer%start("posthh_store")
           vr(1:lr) = vr(1:lr) * xf
           if (my_prow==prow(nrow, nblk, np_rows)) then
@@ -676,7 +676,7 @@ max_threads, isSkewsymmetric)
           endif
           !Soheil stop timing
           call obj%timer%stop("posthh_store")
-          call mpi_pcontrol(-9, mpierr)
+          !call mpi_pcontrol(-9, mpierr)
 
         endif
 
