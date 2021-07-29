@@ -206,6 +206,8 @@ max_threads, isSkewsymmetric)
   logical                                     :: useIntelGPU
 
   !Soheil: enable / disable profiling
+  integer   ::  req, itr_count
+  integer, dimension(MPI_STATUS_SIZE) :: mpistat
   call mpi_pcontrol(1, mpierr)
 
   if(useGPU) then
@@ -257,6 +259,33 @@ max_threads, isSkewsymmetric)
   call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI ,mpierr)
   call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI ,mpierr)
   call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI ,mpierr)
+
+        ! Soheil: benchmark mpi_barrier overhead:
+        call mpi_pcontrol(20, mpierr)
+        call obj%timer%start("barrier_overhead_world_root")
+           do itr_count=1, 19935
+             call mpi_barrier(MPI_COMM_WORLD, mpierr)
+           end do 
+        call obj%timer%stop("barrier_overhead_world_root")
+        call mpi_pcontrol(-20, mpierr)
+
+        call mpi_pcontrol(30, mpierr)
+        call obj%timer%start("barrier_overhead_row")
+           do itr_count=1, 19935
+             call mpi_barrier(mpi_comm_rows, mpierr)
+           end do 
+        call obj%timer%stop("barrier_overhead_row")
+        call mpi_pcontrol(-30, mpierr)
+
+        call mpi_pcontrol(40, mpierr)
+        call obj%timer%start("barrier_overhead_col")
+           do itr_count=1, 19935
+             call mpi_barrier(mpi_comm_cols, mpierr)
+           end do 
+        call obj%timer%stop("barrier_overhead_col")
+        call mpi_pcontrol(-40, mpierr)
+
+        ! Soheil: end of benchmark
 
   my_prow = int(my_prowMPI,kind=c_int)
   np_rows = int(np_rowsMPI,kind=c_int)
@@ -453,12 +482,12 @@ max_threads, isSkewsymmetric)
      ! needed later when explict mem copy
   !endif ! useIntelGPU
   !Soheil get timing 
-    call mpi_pcontrol(5, mpierr)
+    !call mpi_pcontrol(5, mpierr)   ! time spent is small
     call obj%timer%start("barrier_bef_outer")
           call mpi_barrier(mpi_comm_cols, mpierr)
   !Soheil stop timing
     call obj%timer%stop("barrier_bef_outer")
-    call mpi_pcontrol(-5, mpierr)
+    !call mpi_pcontrol(-5, mpierr)
 
   do istep = blk_end, 1, -1
 
@@ -592,7 +621,6 @@ max_threads, isSkewsymmetric)
           call mpi_barrier(mpi_comm_cols, mpierr)
           !Soheil stop timing
           call obj%timer%stop("barrier_bef_lc")
-          call mpi_pcontrol(-6, mpierr)
       do lc = n_cols, 1, -1
 
         ncol = istep*nbw + lc ! absolute column number of householder Vector
@@ -613,7 +641,7 @@ max_threads, isSkewsymmetric)
           ! remaining elements to all procs in current column
 
           !Soheil get timing
-          !call mpi_pcontrol(7, mpierr)
+         
           call obj%timer%start("prehh_dot")
           vr(1:lr) = a_mat(1:lr,lch) ! Vector to be transformed
 
@@ -626,7 +654,7 @@ max_threads, isSkewsymmetric)
           endif
           !Soheil stop timing
           call obj%timer%stop("prehh_dot")
-          !call mpi_pcontrol(-7, mpierr)
+          
 
 #ifdef WITH_MPI
 
@@ -649,7 +677,6 @@ max_threads, isSkewsymmetric)
 
           ! Householder transformation
           !Soheil get timing
-          !call mpi_pcontrol(8, mpierr)
           call obj%timer%start("householder")
           call hh_transform_&
              &MATH_DATATYPE&
@@ -659,12 +686,10 @@ max_threads, isSkewsymmetric)
 
           !Soheil stop timing
           call obj%timer%stop("householder")
-          !call mpi_pcontrol(-8, mpierr)
           
           ! Scale vr and store Householder Vector for back transformation
 
           !Soheil get timing
-          !call mpi_pcontrol(9, mpierr)
           call obj%timer%start("posthh_store")
           vr(1:lr) = vr(1:lr) * xf
           if (my_prow==prow(nrow, nblk, np_rows)) then
@@ -676,9 +701,11 @@ max_threads, isSkewsymmetric)
           endif
           !Soheil stop timing
           call obj%timer%stop("posthh_store")
-          !call mpi_pcontrol(-9, mpierr)
 
         endif
+
+        !Soheil: terminate p(6)
+        call mpi_pcontrol(-6, mpierr)
 
         ! Broadcast Householder Vector and tau along columns
 
@@ -688,6 +715,7 @@ max_threads, isSkewsymmetric)
            call mpi_pcontrol(10, mpierr)
            call obj%timer%start("mpi_barrier_before")
            call mpi_barrier(mpi_comm_cols, mpierr)          
+           !call MPI_IBARRIER(mpi_comm_cols, req, mpierr)          
            call obj%timer%stop("mpi_barrier_before")
            call mpi_pcontrol(-10, mpierr)
 
@@ -707,8 +735,10 @@ max_threads, isSkewsymmetric)
          call mpi_pcontrol(12, mpierr)
          call obj%timer%start("mpi_barrier_after")
          call mpi_barrier(mpi_comm_cols, mpierr)          
+         !call MPI_WAIT(req, MPISTAT, mpierr)
          call obj%timer%stop("mpi_barrier_after")
          call mpi_pcontrol(-12, mpierr)
+         !call mpi_request_free(req, mpierr)
 #endif /* WITH_MPI */
 
         if (useGPU_reduction_lower_block_to_tridiagonal .and. .not.(useIntelGPU)) then
@@ -881,9 +911,11 @@ max_threads, isSkewsymmetric)
 #ifdef WITH_MPI
 
         !Soheil: insert barrier after the dot_product
-        !call obj%timer%start("mpi_barrier_dot")
-        !call mpi_barrier(mpi_comm_cols, mpierr)          
-        !call obj%timer%stop("mpi_barrier_dot")
+        call mpi_pcontrol(7, mpierr)
+        call obj%timer%start("mpi_barrier_dot")
+        call mpi_barrier(mpi_comm_cols, mpierr)          
+        call obj%timer%stop("mpi_barrier_dot")
+        call mpi_pcontrol(-7, mpierr)
 
         !Soheil: insert barrier before allreduce(note: mpi_comm_ROWS!)
         !call obj%timer%start("mpi_barrier_reduce_bef")
@@ -912,9 +944,11 @@ max_threads, isSkewsymmetric)
         ! Transform
 
         !Soheil: insert barrier before transformation
-        !call obj%timer%start("mpi_barrier_trans_bef")
-        !call mpi_barrier(mpi_comm_cols, mpierr)          
-        !call obj%timer%stop("mpi_barrier_trans_bef")
+        call mpi_pcontrol(8, mpierr)
+        call obj%timer%start("mpi_barrier_trans_bef")
+        call mpi_barrier(mpi_comm_cols, mpierr)          
+        call obj%timer%stop("mpi_barrier_trans_bef")
+        call mpi_pcontrol(-8, mpierr)
 
         nlc = 0
         do j=1,lc-1
@@ -937,6 +971,9 @@ max_threads, isSkewsymmetric)
          call obj%timer%stop("mpi_barrier_end")
          call mpi_pcontrol(-14, mpierr)
       enddo ! lc
+
+    !Soheil: start p(9)
+    call mpi_pcontrol(9, mpierr)
 
       if (useGPU_reduction_lower_block_to_tridiagonal .and. .not.(useIntelGPU)) then
         ! store column tiles back to GPU
@@ -1872,6 +1909,14 @@ max_threads, isSkewsymmetric)
         check_deallocate("bandred: vmrCPU", istat, errorMessage)
       endif
     endif !useGPU
+
+    !Soheil: Add barrier before end of outer loop
+    call obj%timer%start("mpi_barrier_outer_end")
+    call mpi_barrier(mpi_comm_cols, mpierr)          
+    call obj%timer%stop("mpi_barrier_outer_end")
+
+    !Soheil: terminate p(9)
+    call mpi_pcontrol(-9, mpierr)   
 
   enddo ! istep - loop
 
