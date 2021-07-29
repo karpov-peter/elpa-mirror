@@ -795,11 +795,11 @@ program test
 
 #ifdef WITH_MPI
 ! Soheil: benchmark mpi_barrier overhead:
-call e%timer_start("barrier_overhead_world")
-   do itr_count=1, 19935
-     call mpi_barrier(MPI_COMM_WORLD, mpierr)
-   end do 
-call e%timer_stop("barrier_overhead_world")
+!call e%timer_start("barrier_overhead_world")
+!   do itr_count=1, 19935
+!     call mpi_barrier(MPI_COMM_WORLD, mpierr)
+!   end do 
+!call e%timer_stop("barrier_overhead_world")
 
 !call e%timer_start("barrier_overhead_row")
 !   do itr_count=1, 19935
@@ -813,11 +813,11 @@ call e%timer_stop("barrier_overhead_world")
 !   end do 
 !call e%timer_stop("barrier_overhead_col")
 !
-if (myid .eq. 0) then
-    call e%print_times("barrier_overhead_world")
+!if (myid .eq. 0) then
+!    call e%print_times("barrier_overhead_world")
 !    call e%print_times("barrier_overhead_row")
 !    call e%print_times("barrier_overhead_col")
-end if
+!end if
 ! Soheil: end of benchmark
 #endif
 
