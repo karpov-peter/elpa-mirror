@@ -209,6 +209,10 @@
    logical                                                            :: reDistributeMatrix, doRedistributeMatrix
    integer(kind=ik)                                                   :: pinningInfo
 
+!Soheil:
+   MATH_DATATYPE(kind=rck), allocatable  :: buff_soh(:), buff_reduce_send(:), buff_reduce_recv(:)
+   integer(kind=c_int) :: istep_soh, lc_soh, ncol_soh, nrow_soh, cur_soh, lr_soh, itr_count
+
 #if REALCASE == 1
 #undef GPU_KERNEL
 #define GPU_KERNEL ELPA_2STAGE_REAL_NVIDIA_GPU
@@ -346,6 +350,92 @@
 
     call obj%timer%stop("mpi_communication")
 
+
+   ! Soheil: benchmark mpi_barrier overhead:
+        call mpi_pcontrol(21, mpierr)
+        call obj%timer%start("barrier_overhead_world_root")
+           do itr_count=1, 19935
+             call mpi_barrier(MPI_COMM_WORLD, mpierr)
+           end do 
+        call obj%timer%stop("barrier_overhead_world_root")
+        call mpi_pcontrol(-21, mpierr)
+
+        call mpi_pcontrol(31, mpierr)
+        call obj%timer%start("barrier_overhead_row")
+           do itr_count=1, 19935
+             call mpi_barrier(mpi_comm_rows, mpierr)
+           end do 
+        call obj%timer%stop("barrier_overhead_row")
+        call mpi_pcontrol(-31, mpierr)
+
+        call mpi_pcontrol(41, mpierr)
+        call obj%timer%start("barrier_overhead_col")
+           do itr_count=1, 19935
+             call mpi_barrier(mpi_comm_cols, mpierr)
+           end do 
+        call obj%timer%stop("barrier_overhead_col")
+        call mpi_pcontrol(-41, mpierr)
+
+   allocate(buff_soh(289))
+   allocate(buff_reduce_send(32))
+   allocate(buff_reduce_recv(32))
+
+  ! if (my_prow==my_pcol) then
+  !    !call obj%get("bandwidth", nbw, error)                
+  !    istep_soh = (na-1)/32 - 1
+  !    lc_soh = min(na, (istep_soh+1)*32) - istep_soh*32
+  !    ncol_soh = istep_soh*32 + lc_soh
+  !    nrow_soh = ncol_soh - 32
+  !    cur_soh = my_pcol !pcol(ncol_soh, nblk, np_cols)
+  !    lr_soh = local_index(nrow_soh, my_prow, np_rows, nblk, -1) 
+  !    if (my_pe == 0) then
+  !        write (*,*) "msg. cnt.: ", lr_soh+1
+  !    end if
+  ! end if
+
+   !if (my_prow==my_pcol) then
+   !     write (*,*) "starting bcast benchmark... "
+   !end if
+   call mpi_pcontrol(51, mpierr)
+   call obj%timer%start("bcast_benchmark_temp")
+   do itr_count=1, 19935
+      call mpi_bcast(buff_soh, 289,MPI_MATH_DATATYPE_PRECISION,0,mpi_comm_cols,mpierr)
+   end do 
+   call obj%timer%stop("bcast_benchmark_temp")
+   call mpi_pcontrol(-51, mpierr)
+
+   !if (my_prow==my_pcol) then
+   !        write (*,*) "bcast benchmark done. Starting Allreduce benchmark ..."
+   !end if
+
+   call mpi_pcontrol(61, mpierr)
+   call obj%timer%start("allreduce_benchmark_temp")
+   do itr_count=1, 19935
+   call mpi_allreduce(buff_reduce_send, buff_reduce_recv, 32,MPI_MATH_DATATYPE_PRECISION,MPI_SUM,mpi_comm_cols,mpierr)
+   end do 
+   call obj%timer%stop("allreduce_benchmark_temp")
+   call mpi_pcontrol(-61, mpierr)
+
+   call mpi_pcontrol(71, mpierr)
+   call obj%timer%start("bcast_benchmark_temp_row")
+   do itr_count=1, 19935
+      call mpi_bcast(buff_soh, 289,MPI_MATH_DATATYPE_PRECISION,0,mpi_comm_rows,mpierr)
+   end do 
+   call obj%timer%stop("bcast_benchmark_temp_row")
+   call mpi_pcontrol(-71, mpierr)
+
+   call mpi_pcontrol(81, mpierr)
+   call obj%timer%start("allreduce_benchmark_temp_row")
+   do itr_count=1, 19935
+   call mpi_allreduce(buff_reduce_send, buff_reduce_recv, 32,MPI_MATH_DATATYPE_PRECISION,MPI_SUM,mpi_comm_rows,mpierr)
+   end do 
+   call obj%timer%stop("allreduce_benchmark_temp_row")
+   call mpi_pcontrol(-81, mpierr)
+
+   deallocate(buff_soh)
+   deallocate(buff_reduce_send)
+   deallocate(buff_reduce_recv)
+   ! Soheil: end of benchmark
 
 #ifdef REDISTRIBUTE_MATRIX
 #include "../helpers/elpa_redistribute_template.F90"
