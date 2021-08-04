@@ -280,7 +280,7 @@ program test
          cycle
        endif
 #else
-   layout = 'C'
+   layout = 'C'  !Soheil: set the layout. Default is 'C'
    do np_cols = NINT(SQRT(REAL(nprocs))),2,-1
       if(mod(nprocs,np_cols) == 0 ) exit
    enddo
