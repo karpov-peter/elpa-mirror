@@ -207,6 +207,7 @@ max_threads, isSkewsymmetric)
 
   !Soheil: enable / disable profiling
   integer   ::  req, itr_count
+  !!!integer(kind=ik) ::  my_glob_rank
   integer, dimension(MPI_STATUS_SIZE) :: mpistat
   call mpi_pcontrol(1, mpierr)
 
@@ -260,32 +261,33 @@ max_threads, isSkewsymmetric)
   call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI ,mpierr)
   call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI ,mpierr)
 
-        ! Soheil: benchmark mpi_barrier overhead:
-        call mpi_pcontrol(20, mpierr)
-        call obj%timer%start("barrier_overhead_world_root")
-           do itr_count=1, 19935
-             call mpi_barrier(MPI_COMM_WORLD, mpierr)
-           end do 
-        call obj%timer%stop("barrier_overhead_world_root")
-        call mpi_pcontrol(-20, mpierr)
+        !! Soheil: benchmark mpi_barrier overhead:
+        !!!!!call mpi_comm_rank(int(mpi_comm_world,kind=MPI_KIND) ,my_glob_rank, mpierr)
+        !call mpi_pcontrol(20, mpierr)
+        !call obj%timer%start("barrier_overhead_world_root")
+        !   do itr_count=1, 19935
+        !     call mpi_barrier(MPI_COMM_WORLD, mpierr)
+        !   end do 
+        !call obj%timer%stop("barrier_overhead_world_root")
+        !call mpi_pcontrol(-20, mpierr)
 
-        call mpi_pcontrol(30, mpierr)
-        call obj%timer%start("barrier_overhead_row")
-           do itr_count=1, 19935
-             call mpi_barrier(mpi_comm_rows, mpierr)
-           end do 
-        call obj%timer%stop("barrier_overhead_row")
-        call mpi_pcontrol(-30, mpierr)
+        !call mpi_pcontrol(30, mpierr)
+        !call obj%timer%start("barrier_overhead_row")
+        !   do itr_count=1, 19935
+        !     call mpi_barrier(mpi_comm_rows, mpierr)
+        !   end do 
+        !call obj%timer%stop("barrier_overhead_row")
+        !call mpi_pcontrol(-30, mpierr)
 
-        call mpi_pcontrol(40, mpierr)
-        call obj%timer%start("barrier_overhead_col")
-           do itr_count=1, 19935
-             call mpi_barrier(mpi_comm_cols, mpierr)
-           end do 
-        call obj%timer%stop("barrier_overhead_col")
-        call mpi_pcontrol(-40, mpierr)
+        !call mpi_pcontrol(40, mpierr)
+        !call obj%timer%start("barrier_overhead_col")
+        !   do itr_count=1, 19935
+        !     call mpi_barrier(mpi_comm_cols, mpierr)
+        !   end do 
+        !call obj%timer%stop("barrier_overhead_col")
+        !call mpi_pcontrol(-40, mpierr)
 
-        ! Soheil: end of benchmark
+        !! Soheil: end of benchmark
 
   my_prow = int(my_prowMPI,kind=c_int)
   np_rows = int(np_rowsMPI,kind=c_int)
@@ -719,7 +721,6 @@ max_threads, isSkewsymmetric)
            call obj%timer%stop("mpi_barrier_before")
            call mpi_pcontrol(-10, mpierr)
 
-          !Soheil: Measure broadcast time only 
           call mpi_pcontrol(11, mpierr)
           call obj%timer%start("mpi_bcast")
         if (wantDebug) call obj%timer%start("mpi_communication")
