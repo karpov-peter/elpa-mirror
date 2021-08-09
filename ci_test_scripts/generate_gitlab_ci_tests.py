@@ -581,6 +581,11 @@ openmp = {
         "noopenmp" : "--disable-openmp",
 }
 
+alternative_openmp = {
+        "alternative_openmp"   : "--enable-alternative-openmp",
+        "no-alternative_openmp" : "--disable-alternative-openmp",
+}
+
 precision = {
         "double-precision" : "--disable-single-precision",
         "single-precision" : "--enable-single-precision",
@@ -641,7 +646,7 @@ matrix_size = {
 #MPI_TASKS=2
 
 #                             sorted(coverage.keys()),     
-for cc, fc, m, o, p, a, b, g, instr, addr, na in product(
+for cc, fc, m, o, p, a, b, g, instr, addr, na, alt, in product(
                              sorted(c_compiler.keys()),
                              sorted(fortran_compiler.keys()),
                              sorted(mpi.keys()),
@@ -652,7 +657,8 @@ for cc, fc, m, o, p, a, b, g, instr, addr, na in product(
                              sorted(gpu.keys()),
                              sorted(instruction_set.keys()),
                              sorted(address_sanitize_flag.keys()),
-                             sorted(matrix_size.keys())):
+                             sorted(matrix_size.keys()),
+                             sorted(alternative_openmp.keys())):
 
 
     cov = "no-coverage"
@@ -740,6 +746,9 @@ for cc, fc, m, o, p, a, b, g, instr, addr, na in product(
     if (g == "with-gpu" and o == "openmp"):
         continue
 
+    if (alt == "alternative_openmp" and o != "openmp"):
+        continue
+
     #no gpu testing with intel C compiler (gcc needed)
     if (g == "with-gpu" and cc == "intel"):
         continue
@@ -779,8 +788,8 @@ for cc, fc, m, o, p, a, b, g, instr, addr, na in product(
     if (instr == "avx2" or instr == "avx512"):
         MasterOnly=True
 
-    print("# " + cc + "-" + fc + "-" + m + "-" + o + "-" + p + "-" + a + "-" + b + "-" +g + "-" + cov + "-" + instr + "-" + addr)
-    print(cc + "-" + fc + "-" + m + "-" + o + "-" + p + "-" +a + "-" +b + "-" +g + "-" + cov + "-" + instr + "-" + addr + "-jobs:")
+    print("# " + cc + "-" + fc + "-" + m + "-" + o + "-" + p + "-" + a + "-" + b + "-" +g + "-" + cov + "-" + instr + "-" + addr + "-" + alt)
+    print(cc + "-" + fc + "-" + m + "-" + o + "-" + p + "-" +a + "-" +b + "-" +g + "-" + cov + "-" + instr + "-" + addr + "-" + alt + "-jobs:")
     if (MasterOnly):
         print("  only:")
         print("    - /.*master.*/")
@@ -826,7 +835,7 @@ for cc, fc, m, o, p, a, b, g, instr, addr, na in product(
             print("   - if [ $MATRIX_SIZE -gt 150 ]; then export SKIP_STEP=1 ; fi # our SSE test machines do not have a lot of memory")
         print("   - ./ci_test_scripts/run_ci_tests.sh -c \" CC=\\\""+c_compiler_wrapper+"\\\"" + " CFLAGS=\\\""+CFLAGS+"\\\"" + " FC=\\\""+fortran_compiler_wrapper+"\\\"" + " FCFLAGS=\\\""+FCFLAGS+"\\\"" \
                 + libs + " " + ldflags + " " + " "+ scalapackldflags +" " + scalapackfcflags \
-                + " --enable-option-checking=fatal" + " " + mpi_configure_flag + " " + openmp[o] \
+                + " --enable-option-checking=fatal" + " " + mpi_configure_flag + " " + openmp[o] + " " + alternative_openmp[alt] \
 + " " + precision[p] + " " + assumed_size[a] + " " + band_to_full_blocking[b] \
 + " " +gpu[g] + INSTRUCTION_OPTIONS + "\" -j 8 -t $MPI_TASKS -m $MATRIX_SIZE -n $NUMBER_OF_EIGENVECTORS -b $BLOCK_SIZE -s $SKIP_STEP -i $INTERACTIVE_RUN -S $SLURM -g " +gpuJob)
 
@@ -837,7 +846,7 @@ for cc, fc, m, o, p, a, b, g, instr, addr, na in product(
         if (runScalapackTest):
             print("    - ./ci_test_scripts/run_ci_tests.sh -c \" CC=\\\""+c_compiler_wrapper+"\\\"" + " CFLAGS=\\\""+CFLAGS+"\\\"" + " FC=\\\""+fortran_compiler_wrapper+"\\\"" + " FCFLAGS=\\\""+FCFLAGS+"\\\"" \
                 + libs + " " + ldflags + " " + " "+ scalapackldflags +" " + scalapackfcflags \
-                + " --enable-option-checking=fatal --enable-scalapack-tests --enable-autotune-redistribute-matrix" + " " + mpi_configure_flag + " " + openmp[o] \
+                + " --enable-option-checking=fatal --enable-scalapack-tests --enable-autotune-redistribute-matrix" + " " + mpi_configure_flag + " " + openmp[o] + " " + alternative_openmp[alt] \
                 + " " + precision[p] + " " + assumed_size[a] + " " + band_to_full_blocking[b] \
                 + " " +gpu[g] + INSTRUCTION_OPTIONS + "\" -j 8 -t $MPI_TASKS -m $MATRIX_SIZE -n $NUMBER_OF_EIGENVECTORS -b $BLOCK_SIZE -s $SKIP_STEP -q \"srun\" -S $SLURM -g " +gpuJob)
             
@@ -845,7 +854,7 @@ for cc, fc, m, o, p, a, b, g, instr, addr, na in product(
         else:
             print("    - ./ci_test_scripts/run_ci_tests.sh -c \" CC=\\\""+c_compiler_wrapper+"\\\"" + " CFLAGS=\\\""+CFLAGS+"\\\"" + " FC=\\\""+fortran_compiler_wrapper+"\\\"" + " FCFLAGS=\\\""+FCFLAGS+"\\\"" \
                 + libs + " " + ldflags + " " + " "+ scalapackldflags +" " + scalapackfcflags \
-                + " --enable-option-checking=fatal" + " " + mpi_configure_flag + " " + openmp[o] \
+                + " --enable-option-checking=fatal" + " " + mpi_configure_flag + " " + openmp[o] + " " + alternative_openmp[alt] \
                 + " " + precision[p] + " " + assumed_size[a] + " " + band_to_full_blocking[b] \
                 + " " +gpu[g] + INSTRUCTION_OPTIONS + "\" -j 8 -t $MPI_TASKS -m $MATRIX_SIZE -n $NUMBER_OF_EIGENVECTORS -b $BLOCK_SIZE -s $SKIP_STEP -q \"srun\" -i $INTERACTIVE_RUN -S $SLURM -g " +gpuJob)
 
