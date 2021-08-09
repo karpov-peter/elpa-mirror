@@ -45,14 +45,14 @@
 
 subroutine pack_row_&
 &MATH_DATATYPE&
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 &_cpu_openmp_&
 #else
 &_cpu_&
 #endif
 &PRECISION &
 (obj, a, row, n, stripe_width,  &
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 stripe_count, max_threads, thread_width, l_nev)
 #else
 last_stripe_width, stripe_count)
@@ -63,7 +63,7 @@ last_stripe_width, stripe_count)
   class(elpa_abstract_impl_t), intent(inout) :: obj
 
   integer(kind=ik), intent(in)               :: n, stripe_count, stripe_width
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   integer(kind=ik), intent(in)               :: max_threads, thread_width, l_nev
   logical                                    :: useOPENMP
 
@@ -74,7 +74,7 @@ last_stripe_width, stripe_count)
   complex(kind=C_DATATYPE_KIND), intent(in)  :: a(:,:,:,:)
 #endif
 
-#else /* WITH_OPENMP_TRADITIONAL */
+#else /* WITH_OPENMP_TRADITIONAL_OLD */
   integer(kind=ik), intent(in)               :: last_stripe_width
 #if REALCASE == 1
   real(kind=C_DATATYPE_KIND), intent(in)     :: a(:,:,:)
@@ -83,7 +83,7 @@ last_stripe_width, stripe_count)
   complex(kind=C_DATATYPE_KIND), intent(in)  :: a(:,:,:)
 #endif
 
-#endif /* WITH_OPENMP_TRADITIONAL */
+#endif /* WITH_OPENMP_TRADITIONAL_OLD */
 
 #if REALCASE == 1
   real(kind=C_DATATYPE_KIND)                 :: row(:)
@@ -93,13 +93,13 @@ last_stripe_width, stripe_count)
 #endif
 
   integer(kind=ik)                           :: i, noff, nl
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   integer(kind=ik)                           :: nt
 #endif
 
   call obj%timer%start("pack_row_&
   &MATH_DATATYPE&
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   &_cpu_openmp" // &
 #else
   &_cpu" // &
@@ -107,7 +107,7 @@ last_stripe_width, stripe_count)
   &PRECISION_SUFFIX &
   )
 
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   do nt = 1, max_threads
     do i = 1, stripe_count
       noff = (nt-1)*thread_width + (i-1)*stripe_width
@@ -126,7 +126,7 @@ last_stripe_width, stripe_count)
 
   call obj%timer%stop("pack_row_&
   &MATH_DATATYPE&
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   &_cpu_openmp" // &
 #else
   &_cpu" // &
@@ -138,22 +138,22 @@ end subroutine
 
 subroutine unpack_row_&
 &MATH_DATATYPE&
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 &_cpu_openmp_&
 #else
 &_cpu_&
 #endif
 &PRECISION &
 (obj, a, row, n, &
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 my_thread, &
 #endif
 stripe_count, &
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 thread_width, &
 #endif
 stripe_width, &
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 l_nev)
 #else
 last_stripe_width)
@@ -164,7 +164,7 @@ last_stripe_width)
   class(elpa_abstract_impl_t), intent(inout) :: obj
   integer(kind=ik), intent(in)               :: n, stripe_count, stripe_width
 
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   ! Private variables in OMP regions (my_thread) should better be in the argument list!
   integer(kind=ik), intent(in)               :: thread_width, l_nev, my_thread
 #if REALCASE == 1
@@ -174,7 +174,7 @@ last_stripe_width)
   complex(kind=C_DATATYPE_KIND)              :: a(:,:,:,:)
 
 #endif
-#else /* WITH_OPENMP_TRADITIONAL */
+#else /* WITH_OPENMP_TRADITIONAL_OLD */
   integer(kind=ik), intent(in)               :: last_stripe_width
 #if REALCASE == 1
   real(kind=C_DATATYPE_KIND)                 :: a(:,:,:)
@@ -183,7 +183,7 @@ last_stripe_width)
   complex(kind=C_DATATYPE_KIND)              :: a(:,:,:)
 #endif
 
-#endif /* WITH_OPENMP_TRADITIONAL */
+#endif /* WITH_OPENMP_TRADITIONAL_OLD */
 
 #if REALCASE == 1
   real(kind=C_DATATYPE_KIND), intent(in)     :: row(:)
@@ -195,7 +195,7 @@ last_stripe_width)
 
   call obj%timer%start("unpack_row_&
   &MATH_DATATYPE&
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   &_cpu_opemp" // &
 #else
   &_cpu" // &
@@ -204,7 +204,7 @@ last_stripe_width)
   )
 
   do i=1,stripe_count
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
     noff = (my_thread-1)*thread_width + (i-1)*stripe_width
     nl   = min(stripe_width, my_thread*thread_width-noff, l_nev-noff)
     if ( nl<= 0) exit
@@ -219,7 +219,7 @@ last_stripe_width)
 
   call obj%timer%stop("unpack_row_&
   &MATH_DATATYPE&
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   &_cpu_opemp" // &
 #else
   &_cpu" // &

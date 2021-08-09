@@ -87,7 +87,7 @@ m4_include([m4/ax_elpa_openmp.m4])
 AC_MSG_CHECKING(whether --enable-openmp is specified)
 AC_ARG_ENABLE([openmp],
               AS_HELP_STRING([--enable-openmp],
-                             [use OpenMP threading, default no.]),
+                             [use old OpenMP threading, default no.]),
               [
 	       if test x"$enableval" = x"yes"; then
 	         enable_openmp=yes
@@ -99,7 +99,25 @@ AC_ARG_ENABLE([openmp],
 AC_MSG_RESULT([${enable_openmp}])
 AM_CONDITIONAL([WITH_OPENMP_TRADITIONAL],[test x"$enable_openmp" = x"yes"])
 if test x"${enable_openmp}" = x"yes"; then
-        AC_DEFINE([WITH_OPENMP_TRADITIONAL], [1], [use OpenMP threading])
+        AC_DEFINE([WITH_OPENMP_TRADITIONAL], [1], [use old OpenMP threading])
+fi
+
+AC_MSG_CHECKING(whether --enable-alternative-openmp is specified)
+AC_ARG_ENABLE([openmp],
+              AS_HELP_STRING([--enable-alternative-openmp],
+                             [use alternative OpenMP threading, default no.]),
+              [
+	       if test x"$enableval" = x"yes"; then
+	         enable_alternative_openmp=yes
+	       else
+	         enable_alternative_openmp=no
+	       fi
+	       ],
+              [enable_alternative_openmp=no])
+AC_MSG_RESULT([${enable_alternative_openmp}])
+AM_CONDITIONAL([WITH_ALTERNATIVE_OPENMP],[test x"$enable_alternative_openmp" = x"yes"])
+if test x"${enable_alternative_openmp}" = x"yes"; then
+        AC_DEFINE([WITH_ALTERNATIVE_OPENMP], [1], [use alternative OpenMP threading])
 fi
 
 

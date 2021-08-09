@@ -45,19 +45,19 @@
 
 subroutine compute_hh_trafo_&
 &MATH_DATATYPE&
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 &_openmp_&
 #else
 &_&
 #endif
 &PRECISION &
 (obj, useGPU, wantDebug, a, a_dev, stripe_width, a_dim2, stripe_count, max_threads, &
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 l_nev, &
 #endif
 a_off, nbw, max_blk_size, bcast_buffer, bcast_buffer_dev, &
 hh_tau_dev, kernel_flops, kernel_time, n_times, off, ncols, istripe, &
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 my_thread, thread_width, kernel, last_stripe_width)
 #else
 last_stripe_width, kernel)
@@ -130,7 +130,7 @@ last_stripe_width, kernel)
   integer(kind=ik), intent(in)               :: stripe_width,a_dim2,stripe_count
 
   integer(kind=ik), intent(in)               :: max_threads
-#ifndef WITH_OPENMP_TRADITIONAL
+#ifndef WITH_OPENMP_TRADITIONAL_OLD
   integer(kind=ik), intent(in)               :: last_stripe_width
 #if REALCASE == 1
 !  real(kind=C_DATATYPE_KIND)                :: a(stripe_width,a_dim2,stripe_count)
@@ -141,7 +141,7 @@ last_stripe_width, kernel)
   complex(kind=C_DATATYPE_KIND),pointer     :: a(:,:,:)
 #endif
 
-#else /* WITH_OPENMP_TRADITIONAL */
+#else /* WITH_OPENMP_TRADITIONAL_OLD */
   integer(kind=ik), intent(in)               :: l_nev, thread_width
   integer(kind=ik), intent(in), optional     :: last_stripe_width
 #if REALCASE == 1
@@ -153,7 +153,7 @@ last_stripe_width, kernel)
   complex(kind=C_DATATYPE_KIND),pointer     :: a(:,:,:,:)
 #endif
 
-#endif /* WITH_OPENMP_TRADITIONAL */
+#endif /* WITH_OPENMP_TRADITIONAL_OLD */
 
   integer(kind=ik), intent(in)               :: kernel
 
@@ -164,7 +164,7 @@ last_stripe_width, kernel)
 
   ! Private variables in OMP regions (my_thread) should better be in the argument list!
   integer(kind=ik)                           :: off, ncols, istripe
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   integer(kind=ik)                           :: my_thread, noff
 #endif
   integer(kind=ik)                           :: j, nl, jj, jjj, n_times
@@ -229,7 +229,7 @@ last_stripe_width, kernel)
 
   if (wantDebug) call obj%timer%start("compute_hh_trafo_&
   &MATH_DATATYPE&
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   &_openmp" // &
 #else
   &" // &
@@ -238,18 +238,18 @@ last_stripe_width, kernel)
   )
 
 
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   if (my_thread==1) then ! in the calling routine threads go form 1 .. max_threads
 #endif
     ttt = mpi_wtime()
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   endif
 #endif
 
 
-#ifndef WITH_OPENMP_TRADITIONAL
+#ifndef WITH_OPENMP_TRADITIONAL_OLD
   nl = merge(stripe_width, last_stripe_width, istripe<stripe_count)
-#else /* WITH_OPENMP_TRADITIONAL */
+#else /* WITH_OPENMP_TRADITIONAL_OLD */
 
   if (present(last_stripe_width)) then
     nl = merge(stripe_width, last_stripe_width, istripe<stripe_count)
@@ -262,7 +262,7 @@ last_stripe_width, kernel)
       if (nl<=0) then
         if (wantDebug) call obj%timer%stop("compute_hh_trafo_&
         &MATH_DATATYPE&
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         &_openmp" // &
 #else
         &" // &
@@ -274,7 +274,7 @@ last_stripe_width, kernel)
       endif
     endif
   endif
-#endif /* not WITH_OPENMP_TRADITIONAL */
+#endif /* not WITH_OPENMP_TRADITIONAL_OLD */
 
 #if REALCASE == 1
 ! GPU kernel real
@@ -343,7 +343,7 @@ last_stripe_width, kernel)
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
 
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
 #ifdef USE_ASSUMED_SIZE
           call double_hh_trafo_&
@@ -360,7 +360,7 @@ last_stripe_width, kernel)
           nbw, nl, stripe_width, nbw)
 #endif
 
-#else /* WITH_OPENMP_TRADITIONAL */
+#else /* WITH_OPENMP_TRADITIONAL_OLD */
 
 #ifdef USE_ASSUMED_SIZE
           call double_hh_trafo_&
@@ -375,7 +375,7 @@ last_stripe_width, kernel)
           &PRECISION&
           & (a(1:stripe_width,j+off+a_off-1:j+off+a_off+nbw-1,istripe),w(1:nbw,1:6), nbw, nl, stripe_width, nbw)
 #endif
-#endif /* WITH_OPENMP_TRADITIONAL */
+#endif /* WITH_OPENMP_TRADITIONAL_OLD */
 
         enddo
 
@@ -396,7 +396,7 @@ last_stripe_width, kernel)
 #endif /* not WITH_FIXED_COMPLEX_KERNEL */
           ttt = mpi_wtime()
           do j = ncols, 1, -1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 #ifdef USE_ASSUMED_SIZE
 
             call single_hh_trafo_&
@@ -413,7 +413,7 @@ last_stripe_width, kernel)
                  bcast_buffer(1:nbw,j+off), nbw, nl, stripe_width)
 #endif
 
-#else /* WITH_OPENMP_TRADITIONAL */
+#else /* WITH_OPENMP_TRADITIONAL_OLD */
 
 #ifdef USE_ASSUMED_SIZE
             call single_hh_trafo_&
@@ -429,7 +429,7 @@ last_stripe_width, kernel)
                  & (a(1:stripe_width,j+off+a_off:j+off+a_off+nbw-1,istripe), bcast_buffer(1:nbw,j+off), &
                  nbw, nl, stripe_width)
 #endif
-#endif /* WITH_OPENMP_TRADITIONAL */
+#endif /* WITH_OPENMP_TRADITIONAL_OLD */
 
           enddo
 #ifndef WITH_FIXED_COMPLEX_KERNEL
@@ -448,7 +448,7 @@ last_stripe_width, kernel)
           do j = ncols, 2, -2
             w(:,1) = bcast_buffer(1:nbw,j+off)
             w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
 #ifdef USE_ASSUMED_SIZE
             call double_hh_trafo_&
@@ -465,7 +465,7 @@ last_stripe_width, kernel)
 
 #endif
 
-#else /* WITH_OPENMP_TRADITIONAL */
+#else /* WITH_OPENMP_TRADITIONAL_OLD */
 
 #ifdef USE_ASSUMED_SIZE
             call double_hh_trafo_&
@@ -481,7 +481,7 @@ last_stripe_width, kernel)
                  & (a(1:stripe_width,j+off+a_off-1:j+off+a_off-1+nbw,istripe), w, nbw, nl, stripe_width, nbw)
 #endif
 
-#endif /* WITH_OPENMP_TRADITIONAL */
+#endif /* WITH_OPENMP_TRADITIONAL_OLD */
 
           enddo
 #ifndef WITH_FIXED_REAL_KERNEL
@@ -500,7 +500,7 @@ last_stripe_width, kernel)
 #endif /* not WITH_FIXED_COMPLEX_KERNEL */
           ttt = mpi_wtime()
           do j = ncols, 1, -1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 #ifdef USE_ASSUMED_SIZE
             call single_hh_trafo_&
                  &MATH_DATATYPE&
@@ -516,7 +516,7 @@ last_stripe_width, kernel)
                  nbw, nl, stripe_width)
 #endif
 
-#else /* WITH_OPENMP_TRADITIONAL */
+#else /* WITH_OPENMP_TRADITIONAL_OLD */
 
 #ifdef USE_ASSUMED_SIZE
             call single_hh_trafo_&
@@ -533,7 +533,7 @@ last_stripe_width, kernel)
                  nbw, nl, stripe_width)
 #endif
 
-#endif /* WITH_OPENMP_TRADITIONAL */
+#endif /* WITH_OPENMP_TRADITIONAL_OLD */
           enddo
 #ifndef WITH_FIXED_COMPLEX_KERNEL
         endif ! (kernel .eq. ELPA_2STAGE_COMPLEX_GENERIC_SIMPLE)
@@ -552,7 +552,7 @@ last_stripe_width, kernel)
           do j = ncols, 2, -2
             w(:,1) = bcast_buffer(1:nbw,j+off)
             w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
             call double_hh_trafo_&
             &MATH_DATATYPE&
             &_&
@@ -584,7 +584,7 @@ last_stripe_width, kernel)
 #endif /* not WITH_FIXED_COMPLEX_KERNEL */
           ttt = mpi_wtime()
           do j = ncols, 1, -1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
             call single_hh_trafo_&
             &MATH_DATATYPE&
             &_&
@@ -621,7 +621,7 @@ last_stripe_width, kernel)
 !#if (!defined(WITH_FIXED_COMPLEX_KERNEL)) || (defined(WITH_FIXED_COMPLEX_KERNEL) && !defined(WITH_COMPLEX_SPARC64_BLOCK2_KERNEL))
 !        ttt = mpi_wtime()
 !        do j = ncols, 1, -1
-!#ifdef WITH_OPENMP_TRADITIONAL
+!#ifdef WITH_OPENMP_TRADITIONAL_OLD
 !          call single_hh_trafo_&
 !          &MATH_DATATYPE&
 !          &_sparc64_1hv_&
@@ -656,7 +656,7 @@ last_stripe_width, kernel)
 !#if (!defined(WITH_FIXED_COMPLEX_KERNEL)) || (defined(WITH_FIXED_COMPLEX_KERNEL) && !defined(WITH_COMPLEX_VSX_BLOCK2_KERNEL))
 !        ttt = mpi_wtime()
 !        do j = ncols, 1, -1
-!#ifdef WITH_OPENMP_TRADITIONAL
+!#ifdef WITH_OPENMP_TRADITIONAL_OLD
 !          call single_hh_trafo_&
 !          &MATH_DATATYPE&
 !          &_vsx_1hv_&
@@ -691,7 +691,7 @@ last_stripe_width, kernel)
 #if (!defined(WITH_FIXED_COMPLEX_KERNEL)) || (defined(WITH_FIXED_COMPLEX_KERNEL) && !defined(WITH_COMPLEX_SSE_BLOCK2_KERNEL))
         ttt = mpi_wtime()
         do j = ncols, 1, -1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call single_hh_trafo_&
           &MATH_DATATYPE&
           &_sse_1hv_&
@@ -721,7 +721,7 @@ last_stripe_width, kernel)
 #if (!defined(WITH_FIXED_COMPLEX_KERNEL)) || (defined(WITH_FIXED_COMPLEX_KERNEL) && !defined(WITH_COMPLEX_NEON_ARCH64_BLOCK2_KERNEL))
         ttt = mpi_wtime()
         do j = ncols, 1, -1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call single_hh_trafo_&
           &MATH_DATATYPE&
           &_neon_arch64_1hv_&
@@ -751,7 +751,7 @@ last_stripe_width, kernel)
 #if (!defined(WITH_FIXED_COMPLEX_KERNEL)) || (defined(WITH_FIXED_COMPLEX_KERNEL) && !defined(WITH_COMPLEX_SVE128_BLOCK2_KERNEL))
         ttt = mpi_wtime()
         do j = ncols, 1, -1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call single_hh_trafo_&
           &MATH_DATATYPE&
           &_sve128_1hv_&
@@ -789,7 +789,7 @@ last_stripe_width, kernel)
 #if (!defined(WITH_FIXED_COMPLEX_KERNEL)) || (defined(WITH_FIXED_COMPLEX_KERNEL) && !defined(WITH_COMPLEX_AVX_BLOCK2_KERNEL) )
         ttt = mpi_wtime()
         do j = ncols, 1, -1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call single_hh_trafo_&
           &MATH_DATATYPE&
           &_avx_1hv_&
@@ -818,7 +818,7 @@ last_stripe_width, kernel)
 #if (!defined(WITH_FIXED_COMPLEX_KERNEL)) || (defined(WITH_FIXED_COMPLEX_KERNEL) && !defined(WITH_COMPLEX_AVX2_BLOCK2_KERNEL))
         ttt = mpi_wtime()
         do j = ncols, 1, -1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call single_hh_trafo_&
           &MATH_DATATYPE&
           &_avx2_1hv_&
@@ -847,7 +847,7 @@ last_stripe_width, kernel)
 #if (!defined(WITH_FIXED_COMPLEX_KERNEL)) || (defined(WITH_FIXED_COMPLEX_KERNEL) && !defined(WITH_COMPLEX_SVE256_BLOCK2_KERNEL))
         ttt = mpi_wtime()
         do j = ncols, 1, -1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call single_hh_trafo_&
           &MATH_DATATYPE&
           &_sve256_1hv_&
@@ -886,7 +886,7 @@ last_stripe_width, kernel)
 #if (!defined(WITH_FIXED_COMPLEX_KERNEL)) || (defined(WITH_FIXED_COMPLEX_KERNEL) && !defined(WITH_COMPLEX_AVX512_BLOCK2_KERNEL) )
         ttt = mpi_wtime()
         do j = ncols, 1, -1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call single_hh_trafo_&
           &MATH_DATATYPE&
           &_avx512_1hv_&
@@ -916,7 +916,7 @@ last_stripe_width, kernel)
 #if (!defined(WITH_FIXED_COMPLEX_KERNEL)) || (defined(WITH_FIXED_COMPLEX_KERNEL) && !defined(WITH_COMPLEX_SVE512_BLOCK2_KERNEL) )
         ttt = mpi_wtime()
         do j = ncols, 1, -1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call single_hh_trafo_&
           &MATH_DATATYPE&
           &_sve512_1hv_&
@@ -952,7 +952,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_sparc64_2hv_&
@@ -988,7 +988,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_neon_arch64_2hv_&
@@ -1021,7 +1021,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_sve128_2hv_&
@@ -1058,7 +1058,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_vsx_2hv_&
@@ -1094,7 +1094,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_sse_2hv_&
@@ -1130,7 +1130,7 @@ last_stripe_width, kernel)
 !        do j = ncols, 2, -2
 !          w(:,1) = bcast_buffer(1:nbw,j+off)
 !          w(:,2) = bcast_buffer(1:nbw,j+off-1)
-!#ifdef WITH_OPENMP_TRADITIONAL
+!#ifdef WITH_OPENMP_TRADITIONAL_OLD
 !          call double_hh_trafo_&
 !          &MATH_DATATYPE&
 !          &_sparc64_2hv_&
@@ -1144,7 +1144,7 @@ last_stripe_width, kernel)
 !          & (c_loc(a(1,j+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 !#endif
 !        enddo
-!#ifdef WITH_OPENMP_TRADITIONAL
+!#ifdef WITH_OPENMP_TRADITIONAL_OLD
 !        if (j==1) call single_hh_trafo_&
 !        &MATH_DATATYPE&
 !        &_sparc64_1hv_&
@@ -1177,7 +1177,7 @@ last_stripe_width, kernel)
 !        do j = ncols, 2, -2
 !          w(:,1) = bcast_buffer(1:nbw,j+off)
 !          w(:,2) = bcast_buffer(1:nbw,j+off-1)
-!#ifdef WITH_OPENMP_TRADITIONAL
+!#ifdef WITH_OPENMP_TRADITIONAL_OLD
 !          call double_hh_trafo_&
 !          &MATH_DATATYPE&
 !          &_vsx_2hv_&
@@ -1191,7 +1191,7 @@ last_stripe_width, kernel)
 !          & (c_loc(a(1,j+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 !#endif
 !        enddo
-!#ifdef WITH_OPENMP_TRADITIONAL
+!#ifdef WITH_OPENMP_TRADITIONAL_OLD
 !        if (j==1) call single_hh_trafo_&
 !        &MATH_DATATYPE&
 !        &_vsx_1hv_&
@@ -1223,7 +1223,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_sse_2hv_&
@@ -1237,7 +1237,7 @@ last_stripe_width, kernel)
           & (c_loc(a(1,j+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
         enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         if (j==1) call single_hh_trafo_&
         &MATH_DATATYPE&
         &_sse_1hv_&
@@ -1267,7 +1267,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_neon_arch64_2hv_&
@@ -1281,7 +1281,7 @@ last_stripe_width, kernel)
           & (c_loc(a(1,j+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
         enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         if (j==1) call single_hh_trafo_&
         &MATH_DATATYPE&
         &_neon_arch64_1hv_&
@@ -1311,7 +1311,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_sve128_2hv_&
@@ -1325,7 +1325,7 @@ last_stripe_width, kernel)
           & (c_loc(a(1,j+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
         enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         if (j==1) call single_hh_trafo_&
         &MATH_DATATYPE&
         &_sve128_1hv_&
@@ -1360,7 +1360,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
           call double_hh_trafo_&
           &MATH_DATATYPE&
@@ -1393,7 +1393,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
           call double_hh_trafo_&
           &MATH_DATATYPE&
@@ -1426,7 +1426,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
           call double_hh_trafo_&
           &MATH_DATATYPE&
@@ -1462,7 +1462,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_avx_2hv_&
@@ -1476,7 +1476,7 @@ last_stripe_width, kernel)
           & (c_loc(a(1,j+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
         enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         if (j==1) call single_hh_trafo_&
         &MATH_DATATYPE&
         &_avx_1hv_&
@@ -1505,7 +1505,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_avx2_2hv_&
@@ -1519,7 +1519,7 @@ last_stripe_width, kernel)
           & (c_loc(a(1,j+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
         enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         if (j==1) call single_hh_trafo_&
         &MATH_DATATYPE&
         &_avx2_1hv_&
@@ -1548,7 +1548,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_sve256_2hv_&
@@ -1562,7 +1562,7 @@ last_stripe_width, kernel)
           & (c_loc(a(1,j+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
         enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         if (j==1) call single_hh_trafo_&
         &MATH_DATATYPE&
         &_sve256_1hv_&
@@ -1597,7 +1597,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
           call double_hh_trafo_&
           &MATH_DATATYPE&
@@ -1633,7 +1633,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
           call double_hh_trafo_&
           &MATH_DATATYPE&
@@ -1670,7 +1670,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_avx512_2hv_&
@@ -1684,7 +1684,7 @@ last_stripe_width, kernel)
           & (c_loc(a(1,j+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
         enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         if (j==1) call single_hh_trafo_&
         &MATH_DATATYPE&
         &_avx512_1hv_&
@@ -1713,7 +1713,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_&
           &MATH_DATATYPE&
           &_sve512_2hv_&
@@ -1727,7 +1727,7 @@ last_stripe_width, kernel)
           & (c_loc(a(1,j+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
         enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         if (j==1) call single_hh_trafo_&
         &MATH_DATATYPE&
         &_sve512_1hv_&
@@ -1759,7 +1759,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_bgp_&
           &PRECISION&
           & (a(1,j+off+a_off-1,istripe,my_thread), w, nbw, nl, stripe_width, nbw)
@@ -1782,7 +1782,7 @@ last_stripe_width, kernel)
         do j = ncols, 2, -2
           w(:,1) = bcast_buffer(1:nbw,j+off)
           w(:,2) = bcast_buffer(1:nbw,j+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
           call double_hh_trafo_bgq_&
           &PRECISION&
           & (a(1,j+off+a_off-1,istripe,my_thread), w, nbw, nl, stripe_width, nbw)
@@ -1804,7 +1804,7 @@ last_stripe_width, kernel)
 
 
 #if REALCASE == 1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (j==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -1843,7 +1843,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,j+off-1)
         w(:,3) = bcast_buffer(1:nbw,j+off-2)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
 #ifdef USE_ASSUMED_SIZE
         call quad_hh_trafo_&
@@ -1883,7 +1883,7 @@ last_stripe_width, kernel)
       do jj = j, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
 #ifdef USE_ASSUMED_SIZE
         call double_hh_trafo_&
@@ -1919,7 +1919,7 @@ last_stripe_width, kernel)
 
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
       if (jj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
@@ -1962,7 +1962,7 @@ last_stripe_width, kernel)
         w(:,5) = bcast_buffer(1:nbw,j+off-4)
         w(:,6) = bcast_buffer(1:nbw,j+off-5)
 
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
 !#ifdef USE_ASSUMED_SIZE
         call hexa_hh_trafo_&
@@ -1979,7 +1979,7 @@ last_stripe_width, kernel)
 !           nbw, nl, stripe_width, nbw)
 !#endif
 
-#else /* WITH_OPENMP_TRADITIONAL */
+#else /* WITH_OPENMP_TRADITIONAL_OLD */
 !#ifdef USE_ASSUMED_SIZE
         call hexa_hh_trafo_&
         &MATH_DATATYPE&
@@ -1994,14 +1994,14 @@ last_stripe_width, kernel)
 !        & (a(1:stripe_width,j+off+a_off-5:j+off+a_off+nbw-1,istripe), w(1:nbw,1:6), &
 !           nbw, nl, stripe_width, nbw)
 !#endif
-#endif /* WITH_OPENMP_TRADITIONAL */
+#endif /* WITH_OPENMP_TRADITIONAL_OLD */
       enddo
       do jj = j, 4, -4
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
         w(:,3) = bcast_buffer(1:nbw,jj+off-2)
         w(:,4) = bcast_buffer(1:nbw,jj+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
 #ifdef USE_ASSUMED_SIZE
         call quad_hh_trafo_&
@@ -2018,7 +2018,7 @@ last_stripe_width, kernel)
            w(1:nbw,1:6), nbw, nl, stripe_width, nbw)
 #endif
 
-#else /* WITH_OPENMP_TRADITIONAL */
+#else /* WITH_OPENMP_TRADITIONAL_OLD */
 
 #ifdef USE_ASSUMED_SIZE
         call quad_hh_trafo_&
@@ -2036,12 +2036,12 @@ last_stripe_width, kernel)
            w(1:nbw,1:6), nbw, nl, stripe_width, nbw)
 #endif
 
-#endif /* WITH_OPENMP_TRADITIONAL */
+#endif /* WITH_OPENMP_TRADITIONAL_OLD */
       enddo
       do jjj = jj, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jjj+off)
         w(:,2) = bcast_buffer(1:nbw,jjj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
 
 #ifdef USE_ASSUMED_SIZE
         call double_hh_trafo_&
@@ -2058,7 +2058,7 @@ last_stripe_width, kernel)
            nl, stripe_width, nbw)
 #endif
 
-#else /* WITH_OPENMP_TRADITIONAL */
+#else /* WITH_OPENMP_TRADITIONAL_OLD */
 
 #ifdef USE_ASSUMED_SIZE
         call double_hh_trafo_&
@@ -2075,9 +2075,9 @@ last_stripe_width, kernel)
            stripe_width, nbw)
 #endif
 
-#endif /* WITH_OPENMP_TRADITIONAL */
+#endif /* WITH_OPENMP_TRADITIONAL_OLD */
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jjj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2114,7 +2114,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,j+off-1)
         w(:,3) = bcast_buffer(1:nbw,j+off-2)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_sparc64_4hv_&
@@ -2131,7 +2131,7 @@ last_stripe_width, kernel)
       do jj = j, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_sparc64_2hv_&
@@ -2145,7 +2145,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2185,7 +2185,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,j+off-1)
         w(:,3) = bcast_buffer(1:nbw,j+off-2)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_neon_arch64_4hv_&
@@ -2202,7 +2202,7 @@ last_stripe_width, kernel)
       do jj = j, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_neon_arch64_2hv_&
@@ -2216,7 +2216,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2255,7 +2255,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,j+off-1)
         w(:,3) = bcast_buffer(1:nbw,j+off-2)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_sve128_4hv_&
@@ -2272,7 +2272,7 @@ last_stripe_width, kernel)
       do jj = j, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_sve128_2hv_&
@@ -2286,7 +2286,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2326,7 +2326,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,j+off-1)
         w(:,3) = bcast_buffer(1:nbw,j+off-2)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_vsx_4hv_&
@@ -2343,7 +2343,7 @@ last_stripe_width, kernel)
       do jj = j, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_vsx_2hv_&
@@ -2357,7 +2357,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2397,7 +2397,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,j+off-1)
         w(:,3) = bcast_buffer(1:nbw,j+off-2)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_sse_4hv_&
@@ -2414,7 +2414,7 @@ last_stripe_width, kernel)
       do jj = j, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_sse_2hv_&
@@ -2428,7 +2428,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2471,7 +2471,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,j+off-1)
         w(:,3) = bcast_buffer(1:nbw,j+off-2)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_avx_4hv_&
@@ -2488,7 +2488,7 @@ last_stripe_width, kernel)
       do jj = j, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_avx_2hv_&
@@ -2502,7 +2502,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2538,7 +2538,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,j+off-1)
         w(:,3) = bcast_buffer(1:nbw,j+off-2)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_avx2_4hv_&
@@ -2555,7 +2555,7 @@ last_stripe_width, kernel)
       do jj = j, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_avx2_2hv_&
@@ -2569,7 +2569,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2605,7 +2605,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,j+off-1)
         w(:,3) = bcast_buffer(1:nbw,j+off-2)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_sve256_4hv_&
@@ -2622,7 +2622,7 @@ last_stripe_width, kernel)
       do jj = j, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_sve256_2hv_&
@@ -2636,7 +2636,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2679,7 +2679,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,j+off-1)
         w(:,3) = bcast_buffer(1:nbw,j+off-2)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_avx512_4hv_&
@@ -2696,7 +2696,7 @@ last_stripe_width, kernel)
       do jj = j, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_avx512_2hv_&
@@ -2710,7 +2710,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2748,7 +2748,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,j+off-1)
         w(:,3) = bcast_buffer(1:nbw,j+off-2)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_sve512_4hv_&
@@ -2765,7 +2765,7 @@ last_stripe_width, kernel)
       do jj = j, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jj+off)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_sve512_2hv_&
@@ -2779,7 +2779,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2825,7 +2825,7 @@ last_stripe_width, kernel)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
         w(:,5) = bcast_buffer(1:nbw,j+off-4)
         w(:,6) = bcast_buffer(1:nbw,j+off-5)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call hexa_hh_trafo_&
         &MATH_DATATYPE&
         &_sparc64_6hv_&
@@ -2844,7 +2844,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
         w(:,3) = bcast_buffer(1:nbw,jj+off-2)
         w(:,4) = bcast_buffer(1:nbw,jj+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_sparc64_4hv_&
@@ -2862,7 +2862,7 @@ last_stripe_width, kernel)
       do jjj = jj, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jjj+off)
         w(:,2) = bcast_buffer(1:nbw,jjj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_sparc64_2hv_&
@@ -2876,7 +2876,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jjj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jjj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -2912,7 +2912,7 @@ last_stripe_width, kernel)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
         w(:,5) = bcast_buffer(1:nbw,j+off-4)
         w(:,6) = bcast_buffer(1:nbw,j+off-5)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call hexa_hh_trafo_&
         &MATH_DATATYPE&
         &_neon_arch64_6hv_&
@@ -2931,7 +2931,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
         w(:,3) = bcast_buffer(1:nbw,jj+off-2)
         w(:,4) = bcast_buffer(1:nbw,jj+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_neon_arch64_4hv_&
@@ -2949,7 +2949,7 @@ last_stripe_width, kernel)
       do jjj = jj, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jjj+off)
         w(:,2) = bcast_buffer(1:nbw,jjj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_neon_arch64_2hv_&
@@ -2963,7 +2963,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jjj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jjj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -3000,7 +3000,7 @@ last_stripe_width, kernel)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
         w(:,5) = bcast_buffer(1:nbw,j+off-4)
         w(:,6) = bcast_buffer(1:nbw,j+off-5)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call hexa_hh_trafo_&
         &MATH_DATATYPE&
         &_SVE128_6hv_&
@@ -3019,7 +3019,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
         w(:,3) = bcast_buffer(1:nbw,jj+off-2)
         w(:,4) = bcast_buffer(1:nbw,jj+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_sve128_4hv_&
@@ -3037,7 +3037,7 @@ last_stripe_width, kernel)
       do jjj = jj, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jjj+off)
         w(:,2) = bcast_buffer(1:nbw,jjj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_sve128_2hv_&
@@ -3051,7 +3051,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jjj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jjj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -3087,7 +3087,7 @@ last_stripe_width, kernel)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
         w(:,5) = bcast_buffer(1:nbw,j+off-4)
         w(:,6) = bcast_buffer(1:nbw,j+off-5)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call hexa_hh_trafo_&
         &MATH_DATATYPE&
         &_vsx_6hv_&
@@ -3106,7 +3106,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
         w(:,3) = bcast_buffer(1:nbw,jj+off-2)
         w(:,4) = bcast_buffer(1:nbw,jj+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_vsx_4hv_&
@@ -3124,7 +3124,7 @@ last_stripe_width, kernel)
       do jjj = jj, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jjj+off)
         w(:,2) = bcast_buffer(1:nbw,jjj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_vsx_2hv_&
@@ -3138,7 +3138,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jjj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jjj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -3174,7 +3174,7 @@ last_stripe_width, kernel)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
         w(:,5) = bcast_buffer(1:nbw,j+off-4)
         w(:,6) = bcast_buffer(1:nbw,j+off-5)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call hexa_hh_trafo_&
         &MATH_DATATYPE&
         &_sse_6hv_&
@@ -3193,7 +3193,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
         w(:,3) = bcast_buffer(1:nbw,jj+off-2)
         w(:,4) = bcast_buffer(1:nbw,jj+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_sse_4hv_&
@@ -3211,7 +3211,7 @@ last_stripe_width, kernel)
       do jjj = jj, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jjj+off)
         w(:,2) = bcast_buffer(1:nbw,jjj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_sse_2hv_&
@@ -3225,7 +3225,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jjj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jjj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -3266,7 +3266,7 @@ last_stripe_width, kernel)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
         w(:,5) = bcast_buffer(1:nbw,j+off-4)
         w(:,6) = bcast_buffer(1:nbw,j+off-5)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call hexa_hh_trafo_&
         &MATH_DATATYPE&
         &_avx_6hv_&
@@ -3285,7 +3285,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
         w(:,3) = bcast_buffer(1:nbw,jj+off-2)
         w(:,4) = bcast_buffer(1:nbw,jj+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_avx_4hv_&
@@ -3302,7 +3302,7 @@ last_stripe_width, kernel)
       do jjj = jj, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jjj+off)
         w(:,2) = bcast_buffer(1:nbw,jjj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_avx_2hv_&
@@ -3316,7 +3316,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jjj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jjj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -3351,7 +3351,7 @@ last_stripe_width, kernel)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
         w(:,5) = bcast_buffer(1:nbw,j+off-4)
         w(:,6) = bcast_buffer(1:nbw,j+off-5)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call hexa_hh_trafo_&
         &MATH_DATATYPE&
         &_avx2_6hv_&
@@ -3370,7 +3370,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
         w(:,3) = bcast_buffer(1:nbw,jj+off-2)
         w(:,4) = bcast_buffer(1:nbw,jj+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_avx2_4hv_&
@@ -3387,7 +3387,7 @@ last_stripe_width, kernel)
       do jjj = jj, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jjj+off)
         w(:,2) = bcast_buffer(1:nbw,jjj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_avx2_2hv_&
@@ -3401,7 +3401,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jjj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jjj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -3436,7 +3436,7 @@ last_stripe_width, kernel)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
         w(:,5) = bcast_buffer(1:nbw,j+off-4)
         w(:,6) = bcast_buffer(1:nbw,j+off-5)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call hexa_hh_trafo_&
         &MATH_DATATYPE&
         &_sve256_6hv_&
@@ -3455,7 +3455,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
         w(:,3) = bcast_buffer(1:nbw,jj+off-2)
         w(:,4) = bcast_buffer(1:nbw,jj+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_sve256_4hv_&
@@ -3472,7 +3472,7 @@ last_stripe_width, kernel)
       do jjj = jj, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jjj+off)
         w(:,2) = bcast_buffer(1:nbw,jjj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_sve256_2hv_&
@@ -3486,7 +3486,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jjj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jjj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -3527,7 +3527,7 @@ last_stripe_width, kernel)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
         w(:,5) = bcast_buffer(1:nbw,j+off-4)
         w(:,6) = bcast_buffer(1:nbw,j+off-5)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call hexa_hh_trafo_&
         &MATH_DATATYPE&
         &_avx512_6hv_&
@@ -3546,7 +3546,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
         w(:,3) = bcast_buffer(1:nbw,jj+off-2)
         w(:,4) = bcast_buffer(1:nbw,jj+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_avx512_4hv_&
@@ -3563,7 +3563,7 @@ last_stripe_width, kernel)
       do jjj = jj, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jjj+off)
         w(:,2) = bcast_buffer(1:nbw,jjj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_avx512_2hv_&
@@ -3577,7 +3577,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jjj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jjj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -3611,7 +3611,7 @@ last_stripe_width, kernel)
         w(:,4) = bcast_buffer(1:nbw,j+off-3)
         w(:,5) = bcast_buffer(1:nbw,j+off-4)
         w(:,6) = bcast_buffer(1:nbw,j+off-5)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call hexa_hh_trafo_&
         &MATH_DATATYPE&
         &_sve512_6hv_&
@@ -3630,7 +3630,7 @@ last_stripe_width, kernel)
         w(:,2) = bcast_buffer(1:nbw,jj+off-1)
         w(:,3) = bcast_buffer(1:nbw,jj+off-2)
         w(:,4) = bcast_buffer(1:nbw,jj+off-3)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call quad_hh_trafo_&
         &MATH_DATATYPE&
         &_sve512_4hv_&
@@ -3647,7 +3647,7 @@ last_stripe_width, kernel)
       do jjj = jj, 2, -2
         w(:,1) = bcast_buffer(1:nbw,jjj+off)
         w(:,2) = bcast_buffer(1:nbw,jjj+off-1)
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
         call double_hh_trafo_&
         &MATH_DATATYPE&
         &_sve512_2hv_&
@@ -3661,7 +3661,7 @@ last_stripe_width, kernel)
         & (c_loc(a(1,jjj+off+a_off-1,istripe)), w, nbw, nl, stripe_width, nbw)
 #endif
       enddo
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
       if (jjj==1) call single_hh_trafo_&
       &MATH_DATATYPE&
       &_cpu_openmp_&
@@ -3692,19 +3692,19 @@ last_stripe_width, kernel)
     endif
   endif ! GPU_KERNEL
 
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   if (my_thread==1) then
 #endif
     kernel_flops = kernel_flops + 4*int(nl,8)*int(ncols,8)*int(nbw,8)
     kernel_time = kernel_time + mpi_wtime()-ttt
     n_times = n_times + 1
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   endif
 #endif
 
   if (wantDebug) call obj%timer%stop("compute_hh_trafo_&
   &MATH_DATATYPE&
-#ifdef WITH_OPENMP_TRADITIONAL
+#ifdef WITH_OPENMP_TRADITIONAL_OLD
   &_openmp" // &
 #else
   &" // &
