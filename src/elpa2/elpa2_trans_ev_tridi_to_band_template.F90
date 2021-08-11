@@ -59,7 +59,7 @@
 #endif
 
 
-#if defined(WITH_OPENMP_TRADITIONAL_OLD) && defined(WITH_ALTERNATIVE_OPENMP)
+#if defined(WITH_OPENMP_TRADITIONAL) && defined(WITH_ALTERNATIVE_OPENMP)
 #define NEW_OPENMP
 #endif
 
