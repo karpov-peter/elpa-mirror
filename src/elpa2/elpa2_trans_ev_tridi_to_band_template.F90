@@ -583,6 +583,7 @@ subroutine trans_ev_tridi_to_band_&
     if (allComputeOnGPU) then
       if (wantDebug) call obj%timer%start("cuda_memcpy")
 
+      ! could be async since used much later
       successGPU = gpu_malloc(q_dev, ldq*matrixCols* size_of_datatype)
       check_alloc_gpu("trans_ev_tridi_to_band: q_dev", successGPU)
       successGPU =  gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t),  &
@@ -599,6 +600,7 @@ subroutine trans_ev_tridi_to_band_&
 
       print *,"hh_trans:",size(hh_trans,dim=1),size(hh_trans,dim=2)
 
+      ! could be ASYNC SINCE USED LATER
       successGPU = gpu_malloc(hh_trans_dev, size(hh_trans,dim=1)*size(hh_trans,dim=2)* size_of_datatype)
       check_alloc_gpu("trans_ev_tridi_to_band: hh_trans_dev", successGPU)
       ! associate with c_ptr
@@ -1059,6 +1061,9 @@ subroutine trans_ev_tridi_to_band_&
         enddo
       endif  ! allComputeOnGPU
 
+
+
+
       ! Receive all rows from PE ip
       do i=limits(my_prow)+1,limits(my_prow+1)
         src = mod((i-1)/nblk, np_rows)
@@ -1209,6 +1214,10 @@ subroutine trans_ev_tridi_to_band_&
       enddo ! i=limits(my_prow)+1,limits(my_prow+1)
     endif ! (my_prow < ip)
   enddo ! ip = np_rows-1, 0, -1
+
+
+
+
 
   if (wantDebug) call obj%timer%stop("ip_loop")
  
