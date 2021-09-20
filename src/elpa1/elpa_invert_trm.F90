@@ -52,13 +52,20 @@
 
 #include "../general/sanity.F90"
 #include "../general/error_checking.inc"
+#include "config-f90.h"
 
+  use, intrinsic  :: iso_c_binding
   use precision
   use elpa1_compute
   use elpa_utilities
   use elpa_mpi
   use elpa_abstract_impl
   use elpa_blas_interfaces
+  !Soheil: 
+  ! use test_gpu
+  use elpa_gpu
+  use cuda_functions
+
 
   implicit none
 #include "../general/precision_kinds.F90"
@@ -80,12 +87,38 @@
   logical                      :: success
   integer(kind=ik)             :: istat, debug, error
   character(200)               :: errorMessage
+!Soheil
+  integer(kind=c_intptr_t)                      :: tmat1_dev, tmat2_dev, a_dev
+  logical                                       :: successGPU, useIntelGPU
+  logical, parameter                            :: useGPU = .TRUE.   ! later must be passed in as inp. arg.
+  integer(kind=c_intptr_t), parameter           :: size_of_datatype = size_of_&
+                                                                      &PRECISION&
+                                                                      &_&
+                                                                      &MATH_DATATYPE
+  character(20)                                 :: gpuString
+  integer(kind=c_int)                           :: gpuID
+  integer(kind=ik)                              :: max_l_rows, max_l_cols, max_nblk, my_glob_rank
+!  MATH_DATATYPE(kind=rck), allocatable          :: hh_matrix(:,:), r_mat(:,:)
+!  integer(kind=c_intptr_t)                      :: hh_dev, r_dev
+
+  useIntelGPU = .false.  
+  if(useGPU) then
+    gpuString = "_gpu"
+
+    if (gpu_vendor() == INTEL_GPU) then
+      useIntelGPU = .true.
+    endif
+  else
+    gpuString = ""
+  endif
+
+!END Soheil
 
   call obj%timer%start("elpa_invert_trm_&
   &MATH_DATATYPE&
   &_&
   &PRECISION&
-  &")
+  &" // gpuString)   !Soheil: added // gpuString
 
   na         = obj%na
   matrixRows = obj%local_nrows
@@ -123,11 +156,33 @@
   np_rows = int(np_rowsMPI,kind=c_int)
   my_pcol = int(my_pcolMPI,kind=c_int)
   np_cols = int(np_colsMPI,kind=c_int)
+!Soheil
+  call mpi_comm_rank(MPI_COMM_WORLD, my_glob_rank, mpierr)
+  if (my_glob_rank == 0)   print *,'Using GPU: ', useGPU
+
   call obj%timer%stop("mpi_communication")
   success = .true.
 
+  if(useGPU) then
+    call set_gpu_parameters()
+    gpuID = mod(my_glob_rank, 4) 
+    success = cuda_setdevice(gpuID)
+    if (.not.(success)) then
+      print *,"invert_trm: Cannot set GPU device. Aborting..."
+      stop
+    endif
+
+    success = cublas_create(cublasHandle)
+    if (.not.(success)) print *, 'Device initialization failed.'
+
+  endif
+
   l_rows = local_index(na, my_prow, np_rows, nblk, -1) ! Local rows of a
   l_cols = local_index(na, my_pcol, np_cols, nblk, -1) ! Local cols of a
+!Soheil:
+  max_l_rows = max(l_rows,1)
+  max_l_cols = max(l_cols,1)
+  max_nblk   = max(nblk,1)
 
   allocate(tmp1(nblk*nblk), stat=istat, errmsg=errorMessage)
   check_allocate("elpa_invert_trm: tmp1", istat, errorMessage)
@@ -146,7 +201,47 @@
 
   tmat1 = 0
   tmat2 = 0
+!Soheil
+if (useGPU) then
+  successGPU = cuda_malloc(a_dev, matrixRows*matrixCols*size_of_datatype)
+  check_alloc_gpu("elpa_invert_trm: a_dev", successGPU)
 
+  !successGPU = gpu_malloc(tmat1_dev, l_rows*nblk*size_of_datatype)  ! gpu_malloc does not work
+  successGPU = cuda_malloc(tmat1_dev, max_l_rows*max_nblk*size_of_datatype)  
+  check_alloc_gpu("elpa_invert_trm: tmat1_dev", successGPU)
+
+  successGPU = cuda_malloc(tmat2_dev, max_l_cols*max_nblk*size_of_datatype)
+  check_alloc_gpu("elpa_invert_trm: tmat2_dev", successGPU)
+
+!  successGPU = cuda_malloc(hh_dev, 16*16*size_of_datatype)  
+!  check_alloc_gpu("elpa_invert_trm: hh_dev", successGPU)
+!
+!  successGPU = cuda_malloc(r_dev, 16*16*size_of_datatype)
+!  check_alloc_gpu("elpa_invert_trm: r_dev", successGPU)
+
+end if
+!if (.not. allocated(hh_matrix))  allocate(hh_matrix(16,16))
+!if (.not. allocated(r_mat))  allocate(r_mat(16,16))
+!
+!call PRECISION_GEMM('N', 'N',                       &
+!            size(hh_matrix, dim=1, kind=BLAS_KIND), &
+!            size(r_mat, dim=2, kind=BLAS_KIND),     & 
+!            size(r_mat, dim=1, kind=BLAS_KIND),     & 
+!            ONE,                                    &
+!            hh_matrix,                              &
+!            size(hh_matrix, dim=2, kind=BLAS_KIND), & 
+!            r_mat,                                  &  
+!            size(r_mat, dim=2, kind=BLAS_KIND),     & 
+!            ONE, r_mat,                             & 
+!            size(r_mat, dim=2, kind=BLAS_KIND) )
+!print *, 'CPU GEMM was done.'
+!
+!call cublas_PRECISION_GEMM('N', 'N', 16, 16, 16, ONE,  &
+!                  hh_dev, 16, r_dev, 16, ONE, & 
+!                  r_dev, 16 )
+!
+!print *, 'GPU GEMM was done.'
+!END Soheil
 
   ns = ((na-1)/nblk)*nblk + 1
 
@@ -165,9 +260,11 @@
 
       if (my_pcol==pcol(n, nblk, np_cols)) then
         call obj%timer%start("blas")
-
+        !Soheil
+        call obj%timer%start("blas_TRTRI")
         call PRECISION_TRTRI('U', 'N', int(nb,kind=BLAS_KIND), a(l_row1,l_col1), int(matrixRows,kind=BLAS_KIND), &
                              infoBLAS)
+        call obj%timer%stop("blas_TRTRI")
         info = int(infoBLAS,kind=ik)
         call obj%timer%stop("blas")
 
@@ -210,9 +307,12 @@
       enddo
 
       call obj%timer%start("blas")
+      !Soheil      
+      call obj%timer%start("blas_TRMM")
       if (l_cols-l_colx+1>0) &
       call PRECISION_TRMM('L', 'U', 'N', 'N', int(nb,kind=BLAS_KIND), int(l_cols-l_colx+1,kind=BLAS_KIND), ONE, &
                               tmp2, int(ubound(tmp2,dim=1),kind=BLAS_KIND), a(l_row1,l_colx), int(matrixRows,kind=BLAS_KIND))
+      call obj%timer%stop("blas_TRMM")
       call obj%timer%stop("blas")
       if (l_colx<=l_cols)   tmat2(1:nb,l_colx:l_cols) = a(l_row1:l_row1+nb-1,l_colx:l_cols)
       if (my_pcol==pcol(n, nblk, np_cols)) tmat2(1:nb,l_col1:l_col1+nb-1) = tmp2(1:nb,1:nb) ! tmp2 has the lower left triangle 0
@@ -244,23 +344,99 @@
     call obj%timer%stop("mpi_communication")
 #endif /* WITH_MPI */
 
-    call obj%timer%start("blas")
-    if (l_row1>1 .and. l_cols-l_col1+1>0) &
-      call PRECISION_GEMM('N', 'N', int(l_row1-1,kind=BLAS_KIND), int(l_cols-l_col1+1,kind=BLAS_KIND), &
+!Soheil
+    if (l_row1>1 .and. l_cols-l_col1+1>0) then
+      if (useGPU .and. .not. useIntelGPU) then 
+         !Soheil      
+         call obj%timer%start("cuda_memcpy")
+          successGPU = cuda_memcpy(tmat1_dev, int(loc(tmat1), kind=c_intptr_t), & 
+                                  l_rows*nblk*size_of_datatype, gpuMemcpyHostToDevice)
+          check_memcpy_gpu("elpa_invert_trm: tmat1_dev", successGPU)
+
+          successGPU = cuda_memcpy(tmat2_dev, int(loc(tmat2), kind=c_intptr_t), & 
+                                  l_cols*nblk*size_of_datatype, gpuMemcpyHostToDevice)
+          check_memcpy_gpu("elpa_invert_trm: tmat2_dev", successGPU)
+
+          successGPU = cuda_memcpy(a_dev, int(loc(a), kind=c_intptr_t), & 
+                          matrixCols*matrixRows*size_of_datatype, gpuMemcpyHostToDevice)
+          check_memcpy_gpu("elpa_invert_trm: a_dev", successGPU)
+         call obj%timer%stop("cuda_memcpy")
+          !successGPU = cuda_memset(tmat1_dev, 0, max_l_rows*size_of_datatype)         
+          !print *, 'Ran 1st memset'
+          !successGPU = cuda_memset(tmat2_dev, 0, (l_col1-1)*nblk*size_of_datatype)
+          !print *, 'Ran 2nd memset'
+          !successGPU = cuda_memset(a_dev, 0, (l_col1-1)*matrixRows*size_of_datatype)
+          !print *, 'Ran 3rd memset'
+!          print *, 'M: ', (l_row1-1)
+!          print *, 'N: ', (l_cols-l_col1+1)
+!          print *, 'K: ', nb
+!          print *, 'lda: ', max_l_rows
+!          print *, 'ldb: ', max_nblk
+!          print *, 'ldc: ', matrixRows
+!          print *, 'l_cols: ', l_cols
+!          print *, 'l_col1: ', l_col1
+
+         call obj%timer%start("cublas_GEMM")
+          call cublas_PRECISION_GEMM('N', 'N', (l_row1-1), (l_cols-l_col1+1), nb, -ONE, &
+                           tmat1_dev, max_l_rows, & 
+                           (tmat2_dev+((l_col1-1)*nblk*size_of_datatype)), max_nblk, ONE, &
+                           (a_dev+((l_col1-1)*matrixRows*size_of_datatype)), matrixRows )
+         call obj%timer%stop("cublas_GEMM")
+
+!          call cublas_PRECISION_GEMM('N', 'N', 2, 2, 2, -ONE, &
+!                           tmat1_dev, int(max_l_rows/np_cols), & 
+!                           tmat2_dev, int(max_nblk/2), ONE, &
+!                           a_dev, int(matrixRows/np_cols) )
+!          print *, 'Ran GEMM'
+
+         call obj%timer%start("cuda_memcpy")
+          successGPU = cuda_memcpy(int(loc(tmat1), kind=c_intptr_t), tmat1_dev, & 
+                                  l_rows*nblk*size_of_datatype, gpuMemcpyDeviceToHost)
+          check_memcpy_gpu("elpa_invert_trm: tmat1_dev back copy", successGPU)
+
+          successGPU = cuda_memcpy(int(loc(tmat2), kind=c_intptr_t), tmat2_dev,  & 
+                                  l_cols*nblk*size_of_datatype, gpuMemcpyDeviceToHost)
+          check_memcpy_gpu("elpa_invert_trm: tmat2_dev back copy", successGPU)
+
+          successGPU = cuda_memcpy(int(loc(a), kind=c_intptr_t), a_dev,  & 
+                          matrixCols*matrixRows*size_of_datatype, gpuMemcpyDeviceToHost)
+          check_memcpy_gpu("elpa_invert_trm: a_dev back copy", successGPU)
+         !Soheil      
+         call obj%timer%stop("cuda_memcpy")
+      else
+         call obj%timer%start("blas")
+         !Soheil      
+         call obj%timer%start("blas_GEMM")
+          call PRECISION_GEMM('N', 'N', int(l_row1-1,kind=BLAS_KIND), int(l_cols-l_col1+1,kind=BLAS_KIND), &
                           int(nb,kind=BLAS_KIND), -ONE, &
                            tmat1, int(ubound(tmat1,dim=1),kind=BLAS_KIND), tmat2(1,l_col1), &
                            int(ubound(tmat2,dim=1),kind=BLAS_KIND), ONE, &
                             a(1,l_col1), int(matrixRows,kind=BLAS_KIND) )
-
-    call obj%timer%stop("blas")
-
+         !Soheil      
+         call obj%timer%stop("blas_GEMM")
+         call obj%timer%stop("blas")
+      end if  ! useGPU
+    end if   ! l_row1>1 .and. l_cols-l_col1+1>0
+!END Soheil
   enddo
 
   deallocate(tmp1, tmp2, tmat1, tmat2, stat=istat, errmsg=errorMessage)
   check_deallocate("elpa_invert_trm: tmp1, tmp2, tmat1, tmat2", istat, errorMessage)
 
+!Soheil: free up GPU memory
+  if (useGPU) then
+      successGPU = cuda_free(a_dev)
+      check_dealloc_gpu("invert_trm: a_dev ", successGPU)
+
+      successGPU = cuda_free(tmat1_dev)
+      check_dealloc_gpu("invert_trm: tmat1_dev ", successGPU)
+
+      successGPU = cuda_free(tmat2_dev)
+      check_dealloc_gpu("invert_trm: tmat2_dev ", successGPU)
+  end if
+
   call obj%timer%stop("elpa_invert_trm_&
   &MATH_DATATYPE&
   &_&
   &PRECISION&
-  &")
+  &" // gpuString)
