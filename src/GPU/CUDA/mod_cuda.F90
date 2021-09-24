@@ -374,6 +374,22 @@ module cuda_functions
 
     end function cuda_memset_c
   end interface
+!Soheil
+  interface
+    function cuda_memset_2d_c(a, pitch, val, width, height) result(istat) &
+             bind(C, name="cudaMemset2DFromC")
+
+      use, intrinsic :: iso_c_binding
+
+      implicit none
+
+      integer(kind=C_intptr_T), value             :: a
+      integer(kind=C_INT), value                  :: val
+      integer(kind=c_intptr_t), intent(in), value :: pitch, width, height
+      integer(kind=C_INT)                         :: istat
+
+    end function cuda_memset_2d_c
+  end interface
 
   ! cuBLAS
   interface
@@ -998,6 +1014,26 @@ module cuda_functions
    success = .true.
 #endif
  end function cuda_memset
+!Soheil
+ function cuda_memset_2d(a, pitch, val, width, height) result(success)
+
+   use, intrinsic :: iso_c_binding
+
+   implicit none
+
+   integer(kind=c_intptr_t)                :: a
+   integer(kind=ik)                        :: val
+   integer(kind=c_intptr_t), intent(in)    :: pitch, width, height
+   integer(kind=C_INT)                     :: istat
+
+   logical :: success
+#ifdef WITH_NVIDIA_GPU_VERSION
+   success= cuda_memset_2d_c(a, int(pitch,kind=c_intptr_t), int(val,kind=c_int), & 
+                             int(width,kind=c_intptr_t), int(height,kind=c_intptr_t)) /=0
+#else
+   success = .true.
+#endif
+ end function cuda_memset_2d
 
  ! functions to memcopy CUDA memory
 

@@ -114,7 +114,11 @@ extern "C" {
       return 0;
     }
   }
-
+//Soheil
+//  int cudaIdamaxFromC(intptr_t *handle_dev, int n, intptr_t *a_dev, int incr, intptr_t *res_dev) {
+//    cudaIsamax(*((cudaHandle_t *) *handle_dev), n, (double *) *a_dev, )
+//  }
+//END Soheil
   int cudaSetDeviceFromC(int n) {
 
     cudaError_t cuerr = cudaSetDevice(n);
@@ -196,6 +200,17 @@ extern "C" {
     }
     return 1;
   }
+
+//Soheil
+  int cudaMemset2DFromC(intptr_t *a, size_t pitch, int value, size_t width, size_t height) {
+    cudaError_t cuerr = cudaMemset2D( a, pitch, value, width, height);
+    if (cuerr != cudaSuccess) {
+      errormessage("Error in cudaMemset2D: %s\n",cudaGetErrorString(cuerr));
+      return 0;
+    }
+    return 1;
+  }
+//END Soheil
 
   int cudaMemsetFromC(intptr_t *a, int value, size_t count) {
 
