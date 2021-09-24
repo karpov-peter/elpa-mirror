@@ -298,11 +298,7 @@ end if
           successGPU = cuda_memcpy(int(loc(a), kind=c_intptr_t), a_dev,  & 
                           matrixCols*matrixRows*size_of_datatype, gpuMemcpyDeviceToHost)
           check_memcpy_gpu("elpa_invert_trm: a_dev back copy after trmm", successGPU)
-
-          successGPU = cuda_memcpy(int(loc(tmp2), kind=c_intptr_t), tmp2_dev,  & 
-                                   nblk*nblk*size_of_datatype, gpuMemcpyDeviceToHost)
-          check_memcpy_gpu("elpa_invert_trm: tmp2_dev back copy after trmm", successGPU)
-    else
+    else  ! useGPU
       call obj%timer%start("blas")
       call PRECISION_TRMM('L', 'U', 'N', 'N', int(nb,kind=BLAS_KIND), int(l_cols-l_colx+1,kind=BLAS_KIND), ONE, &
                           tmp2, int(ubound(tmp2,dim=1),kind=BLAS_KIND), a(l_row1,l_colx), int(matrixRows,kind=BLAS_KIND))
