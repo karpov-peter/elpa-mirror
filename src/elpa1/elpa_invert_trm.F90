@@ -86,7 +86,7 @@
   integer(kind=ik)             :: istat, debug, error
   character(200)               :: errorMessage
 !Soheil
-  integer(kind=c_intptr_t)                      :: tmat1_dev, tmat2_dev, a_dev, buf_dev
+  integer(kind=c_intptr_t)                      :: tmat1_dev, tmat2_dev, a_dev, buf_dev, tmp2_dev
   logical                                       :: successGPU, useIntelGPU
   logical, parameter                            :: useGPU = .TRUE.   ! later must be passed in as inp. arg.
   integer(kind=c_intptr_t), parameter           :: size_of_datatype = size_of_&
@@ -207,11 +207,6 @@ if (useGPU) then
   successGPU = cuda_malloc(buf_dev, 11*11*size_of_datatype)   ! 11x11 array
   check_alloc_gpu("elpa_invert_trm: buf_dev", successGPU)
  
-  !successGPU = cuda_memset(buf_dev, 66, 11*11*size_of_datatype)
-  !counter=10  !, 120
-  !!!   successGPU = cuda_memset(buf_dev, 9, size_of_datatype)   !+int(counter,kind=c_intptr_t)
-  !end do
-
   if (.not. allocated(cpy_buf))   allocate(cpy_buf(11, 11))
 
   successGPU = cuda_malloc(tmat1_dev, max_l_rows*max_nblk*size_of_datatype)  
@@ -220,46 +215,8 @@ if (useGPU) then
   successGPU = cuda_malloc(tmat2_dev, max_l_cols*max_nblk*size_of_datatype)
   check_alloc_gpu("elpa_invert_trm: tmat2_dev", successGPU)
 
-!!<===== BEG. OF DEBUG TEST
-!  cpy_buf(:,:) = -1
-!  successGPU = cuda_memcpy(buf_dev, loc(cpy_buf), 121*size_of_datatype, gpuMemcpyHostToDevice)
-!!1- populate cpy_buf 
-!    do col_cnt = 1, 10
-!       do row_cnt = 1, 10      
-!         cpy_buf(row_cnt, col_cnt) = row_cnt + (col_cnt - 1)*10 
-!       end do
-!    end do
-!!2- control the assignment on the HOST
-!    if ((my_pcol==1) .and. (my_prow==1))then
-!      print *, 'Cpy_buf before memcpy: '
-!      do row_cnt = 1, 11
-!        do col_cnt = 1, 11
-!          write (*, "(F6.0)", advance='no')  cpy_buf(row_cnt, col_cnt)  
-!        end do             
-!        write (*, '(A)') new_line('A')
-!      end do
-!    end if
-!!3- copy H2D
-!   do col_cnt = 1, 3
-!     successGPU = cuda_memcpy(buf_dev+(col_cnt-1)*11*size_of_datatype, int(loc(cpy_buf(1,col_cnt+1)),kind=c_intptr_t), & 
-!                              3*size_of_datatype, gpuMemcpyHostToDevice)
-!   end do
-!!    successGPU = cuda_memcpy(buf_dev, loc(cpy_buf), 100*size_of_datatype, gpuMemcpyHostToDevice)
-!!4- re-init host buffer
-!    cpy_buf(:,:) = -2
-!!5- copy back D2H
-!    successGPU = cuda_memcpy(loc(cpy_buf), buf_dev, 11*11*size_of_datatype, gpuMemcpyDeviceToHost)
-!!6- control again on the host
-!    if ((my_pcol==1) .and. (my_prow==1))then
-!      print *, 'Cpy_buf after memcpy: '
-!      do row_cnt = 1, 11
-!        do col_cnt = 1, 11
-!          write (*, "(F6.0)", advance='no')  cpy_buf(row_cnt, col_cnt)  
-!        end do             
-!        write (*, '(A)') new_line('A')
-!      end do
-!    end if
-!!=====> END OF DEBUG TEST
+  successGPU = cuda_malloc(tmp2_dev, nblk*nblk*size_of_datatype)
+  check_alloc_gpu("elpa_invert_trm: tmp2_dev", successGPU)
 
 end if
 
@@ -286,15 +243,15 @@ end if
         call obj%timer%stop("blas")
 
         if (info/=0) then
-          if (wantDebug) write(error_unit,*) "elpa_invert_trm_&
-          &MATH_DATATYPE&
-
-#if REALCASE == 1
-          &: Error in DTRTRI: ", info
-#endif
-#if COMPLEXCASE == 1
-          &: Error in ZTRTRI"
-#endif
+          if (wantDebug) write(error_unit,*) "elpa_invert_trm_"    !!!!!&
+!          &MATH_DATATYPE&
+!
+!#if REALCASE == 1
+!          &: Error in DTRTRI: ", info
+!#endif
+!#if COMPLEXCASE == 1
+!          &: Error in ZTRTRI"
+!#endif
 
           success = .false.
           call obj%timer%stop("elpa_invert_trm_&
@@ -303,14 +260,14 @@ end if
           &PRECISION&
           &")
           return
-        endif
+        endif  ! wantDebug
 
         nc = 0
         do i=1,nb
           tmp1(nc+1:nc+i) = a(l_row1:l_row1+i-1,l_col1+i-1)
           nc = nc+i
         enddo
-      endif
+      endif  ! info/=0
 #ifdef WITH_MPI
       call obj%timer%start("mpi_communication")
       call MPI_Bcast(tmp1, int(nb*(nb+1)/2,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION,       &
@@ -323,74 +280,55 @@ end if
         nc = nc+i
       enddo
 !<===== 2nd-last change to a
-      call obj%timer%start("blas")
-      if (l_cols-l_colx+1>0) &
-      call PRECISION_TRMM('L', 'U', 'N', 'N', int(nb,kind=BLAS_KIND), int(l_cols-l_colx+1,kind=BLAS_KIND), ONE, &
-                              tmp2, int(ubound(tmp2,dim=1),kind=BLAS_KIND), a(l_row1,l_colx), int(matrixRows,kind=BLAS_KIND))
-      call obj%timer%stop("blas")
-!=====>
+  if (l_cols-l_colx+1>0) then
+    if (useGPU) then
+      successGPU = cuda_memcpy(tmp2_dev, int(loc(tmp2),kind=c_intptr_t), &
+                               nblk*nblk*size_of_datatype, gpuMemcpyHostToDevice)
+      check_memcpy_gpu("elpa_invert_trm: tmp2_dev", successGPU)
 
       successGPU = cuda_memcpy(a_dev, int(loc(a), kind=c_intptr_t), & 
                                matrixCols*matrixRows*size_of_datatype, & 
                                gpuMemcpyHostToDevice)
       check_memcpy_gpu("elpa_invert_trm: a_dev", successGPU)
 
-      if (l_colx<=l_cols)   tmat2(1:nb,l_colx:l_cols) = a(l_row1:l_row1+nb-1,l_colx:l_cols)
-      if (my_pcol==pcol(n, nblk, np_cols)) tmat2(1:nb,l_col1:l_col1+nb-1) = tmp2(1:nb,1:nb) ! tmp2 has the lower left triangle 0
-!Soheil:
-!      if (my_pcol==pcol(n, nblk, np_cols)) then 
-!        tmat2(1:nb,l_col1:l_col1+nb-1) = tmp2(1:nb,1:nb) ! tmp2 has the lower left triangle 0
-!        if (useGPU) then
-!          do col_cnt = l_col1, (l_col1+nb-1)
-!            successGPU = cuda_memcpy((tmat2_dev+(col_cnt-1)*max_nblk*size_of_datatype), &
-!                                      int(loc(tmat2(1,col_cnt)), kind=c_intptr_t), &
-!                                      nb*size_of_datatype, gpuMemcpyHostToDevice)
-!            check_memcpy_gpu("elpa_invert_trm: tmat2_dev first copy", successGPU)
-!          end do
-!        end if
-!      end if
-    endif
+      call cublas_PRECISION_TRMM('L', 'U', 'N', 'N', nb, (l_cols-l_colx+1), ONE, &
+                                 tmp2_dev, ubound(tmp2,dim=1), & 
+                                 a_dev+((l_colx-1)*matrixRows+(l_row1-1))*size_of_datatype, matrixRows) 
+ ! Copy the result back to host
+          successGPU = cuda_memcpy(int(loc(a), kind=c_intptr_t), a_dev,  & 
+                          matrixCols*matrixRows*size_of_datatype, gpuMemcpyDeviceToHost)
+          check_memcpy_gpu("elpa_invert_trm: a_dev back copy after trmm", successGPU)
+
+          successGPU = cuda_memcpy(int(loc(tmp2), kind=c_intptr_t), tmp2_dev,  & 
+                                   nblk*nblk*size_of_datatype, gpuMemcpyDeviceToHost)
+          check_memcpy_gpu("elpa_invert_trm: tmp2_dev back copy after trmm", successGPU)
+    else
+      call obj%timer%start("blas")
+      call PRECISION_TRMM('L', 'U', 'N', 'N', int(nb,kind=BLAS_KIND), int(l_cols-l_colx+1,kind=BLAS_KIND), ONE, &
+                          tmp2, int(ubound(tmp2,dim=1),kind=BLAS_KIND), a(l_row1,l_colx), int(matrixRows,kind=BLAS_KIND))
+      call obj%timer%stop("blas")
+    end if  ! useGPU
+  end if  ! l_cols-l_colx+1>0
+!=====>
+
+    if (l_colx<=l_cols)   tmat2(1:nb,l_colx:l_cols) = a(l_row1:l_row1+nb-1,l_colx:l_cols)
+    if (my_pcol==pcol(n, nblk, np_cols)) tmat2(1:nb,l_col1:l_col1+nb-1) = tmp2(1:nb,1:nb) ! tmp2 has the lower left triangle 0
+
+ endif  ! my_pcol==pcol(n, nblk, np_cols)
+
 !<===== LAST change to a
     if (l_row1>1) then
       if (my_pcol==pcol(n, nblk, np_cols)) then
         tmat1(1:l_row1-1,1:nb) = a(1:l_row1-1,l_col1:l_col1+nb-1)
         a(1:l_row1-1,l_col1:l_col1+nb-1) = 0
         if (useGPU) then
-!          do col_cnt = l_col1, (l_col1+nb-1)
-             successGPU = cuda_memcpy(a_dev, & 
-                                      int(loc(a),kind=c_intptr_t), & 
-                                      (l_col1+nb-1)*matrixRows*size_of_datatype, & 
-                                      gpuMemcpyHostToDevice)
-             check_memcpy_gpu("elpa_invert_trm: a_dev", successGPU)
-
-!              call cublas_PRECISION_COPY( (l_row1-1), buf_dev, 1, &
-!                                          a_dev+(col_cnt-1), matrixRows)
-!
-!          end do
-
-
-!      print *,"l_col1: ", l_col1, " l_row1: ", l_row1, " nb: ", nb, " matrixRows: ", matrixRows, " matrixCols: ", matrixCols
-!
-!           successGPU = cuda_memset_2d((a_dev+((l_col1-1)*matrixRows*size_of_datatype)),  & 
-!                                        (matrixRows*size_of_datatype), & 
-!                                        0, (nb*size_of_datatype),      & 
-!                                        (l_row1-1))
-!           successGPU = cuda_memset_2d((a_dev+(l_col1-1)*matrixRows),  & 
-!                                        (matrixRows*size_of_datatype), & 
-!                                        0, (nb*size_of_datatype),      & 
-!                                        (l_row1-1))
-!      successGPU = cuda_memcpy(a_dev, int(loc(a), kind=c_intptr_t), & 
-!                               matrixCols*matrixRows*size_of_datatype, & 
-!                               gpuMemcpyHostToDevice)
-!      check_memcpy_gpu("elpa_invert_trm: a_dev", successGPU)
+            successGPU = cuda_memcpy(a_dev, int(loc(a), kind=c_intptr_t), & 
+                                     (l_col1+nb-1)*matrixRows*size_of_datatype, & 
+                                     gpuMemcpyHostToDevice)
+            check_memcpy_gpu("elpa_invert_trm: a_dev", successGPU)
         end if
       endif
 !=====>
-
-!      successGPU = cuda_memcpy(a_dev, int(loc(a), kind=c_intptr_t), & 
-!                               matrixCols*matrixRows*size_of_datatype, & 
-!                               gpuMemcpyHostToDevice)
-!      check_memcpy_gpu("elpa_invert_trm: a_dev", successGPU)
 
       do i=1,nb
 #ifdef WITH_MPI
@@ -423,9 +361,6 @@ end if
                                   l_cols*nblk*size_of_datatype, gpuMemcpyHostToDevice)
           check_memcpy_gpu("elpa_invert_trm: tmat2_dev", successGPU)
 
-!          successGPU = cuda_memcpy(a_dev, int(loc(a), kind=c_intptr_t), & 
-!                          matrixCols*matrixRows*size_of_datatype, gpuMemcpyHostToDevice)
-!          check_memcpy_gpu("elpa_invert_trm: a_dev", successGPU)
 
           call cublas_PRECISION_GEMM('N', 'N', (l_row1-1), (l_cols-l_col1+1), nb, -ONE, &
                            tmat1_dev, max_l_rows, & 
