@@ -296,7 +296,7 @@ end if
                                  a_dev+((l_colx-1)*matrixRows+(l_row1-1))*size_of_datatype, matrixRows) 
  ! Copy the result back to host
           successGPU = cuda_memcpy(int(loc(a), kind=c_intptr_t), a_dev,  & 
-                          matrixCols*matrixRows*size_of_datatype, gpuMemcpyDeviceToHost)
+                          l_cols*matrixRows*size_of_datatype, gpuMemcpyDeviceToHost)  ! matrixCols
           check_memcpy_gpu("elpa_invert_trm: a_dev back copy after trmm", successGPU)
     else  ! useGPU
       call obj%timer%start("blas")
