@@ -60,6 +60,7 @@ module cuda_functions
 
   ! TODO global variable, has to be changed
   integer(kind=C_intptr_T) :: cublasHandle = -1
+  integer(kind=C_intptr_T) :: cusolverHandle = -1
 
 !  integer(kind=c_intptr_t), parameter :: size_of_double_real    = 8_rk8
 !#ifdef WANT_SINGLE_PRECISION_REAL
@@ -80,6 +81,18 @@ module cuda_functions
       integer(kind=C_intptr_T) :: handle
       integer(kind=C_INT)  :: istat
     end function cublas_create_c
+  end interface
+
+!!!!!  interface
+!Soheil
+  interface
+    function cusolver_create_c(handle) result(istat) &
+             bind(C, name="cusolverCreateFromC")                           
+      use, intrinsic :: iso_c_binding
+      implicit none
+      integer(kind=c_intptr_t) :: handle
+      integer(kind=c_int)      :: istat
+    end function cusolver_create_c
   end interface
 
   interface
@@ -876,6 +889,19 @@ module cuda_functions
      logical                                   :: success
 #ifdef WITH_NVIDIA_GPU_VERSION
      success = cublas_create_c(handle) /= 0
+#else
+     success = .true.
+#endif
+   end function
+!Soheil
+   function cusolver_create(handle) result(success)
+     use, intrinsic :: iso_c_binding
+     implicit none
+
+     integer(kind=c_intptr_t)                  :: handle
+     logical                                   :: success
+#ifdef WITH_NVIDIA_GPU_VERSION
+     success = cusolver_create_c(handle) /= 0
 #else
      success = .true.
 #endif
