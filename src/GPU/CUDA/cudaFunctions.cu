@@ -61,6 +61,10 @@
 #include <stdint.h>
 #include <complex.h>
 #include <cublas_v2.h>
+//Soheil:
+#include <cusolver_common.h>
+#include <cusolverSp_LOWLEVEL_PREVIEW.h>
+#include <cusolverDn.h>
 
 #include "config-f90.h"
 
@@ -74,6 +78,21 @@
 
 #ifdef WITH_NVIDIA_GPU_VERSION
 extern "C" {
+//Soheil:
+  int cusolverCreateFromC(intptr_t *cusolver_handle) {
+
+      *cusolver_handle = (intptr_t) malloc(sizeof(cusolverDnHandle_t));
+
+      cusolverStatus_t status = cusolverDnCreate((cusolverDnHandle_t*) *cusolver_handle);
+
+      if (status == CUBLAS_STATUS_SUCCESS) {
+        return 0;
+      }
+      else if (status == CUBLAS_STATUS_NOT_INITIALIZED) {
+        errormessage("Error in cusolverCreate: %s\n", "the CUDA Runtime initialization failed");
+        return 1;
+      }
+  }
 
   int cublasCreateFromC(intptr_t *cublas_handle) {
 //     printf("in c: %p\n", *cublas_handle);
@@ -210,6 +229,7 @@ extern "C" {
     }
     return 1;
   }
+
 //END Soheil
 
   int cudaMemsetFromC(intptr_t *a, int value, size_t count) {
