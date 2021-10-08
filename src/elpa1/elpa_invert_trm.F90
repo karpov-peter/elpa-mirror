@@ -374,14 +374,6 @@
             (tmat2_dev+((l_col1-1)*nblk*size_of_datatype)), max_nblk, ONE, &
             (a_dev+((l_col1-1)*matrixRows*size_of_datatype)), matrixRows )
 
-!          successGPU = cuda_memcpy(int(loc(tmat1), kind=c_intptr_t), tmat1_dev, & 
-!                                  l_rows*nblk*size_of_datatype, gpuMemcpyDeviceToHost)
-!          check_memcpy_gpu("elpa_invert_trm: tmat1_dev back copy", successGPU)
-!
-!          successGPU = cuda_memcpy(int(loc(tmat2), kind=c_intptr_t), tmat2_dev,  & 
-!                                  l_cols*nblk*size_of_datatype, gpuMemcpyDeviceToHost)
-!          check_memcpy_gpu("elpa_invert_trm: tmat2_dev back copy", successGPU)
-
        successGPU = cuda_memcpy(int(loc(a), kind=c_intptr_t), a_dev,  & 
             matrixCols*matrixRows*size_of_datatype, gpuMemcpyDeviceToHost)
        check_memcpy_gpu("elpa_invert_trm: a_dev back copy", successGPU)
