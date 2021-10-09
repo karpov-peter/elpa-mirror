@@ -88,7 +88,7 @@
 !Soheil
   integer(kind=c_intptr_t)                      :: tmat1_dev, tmat2_dev, a_dev, tmp2_dev
   logical                                       :: successGPU, useIntelGPU
-  logical, parameter                            :: useGPU = .FALSE.   ! later must be passed in as inp. arg.
+  logical, parameter                            :: useGPU = .TRUE.   ! later must be passed in as inp. arg.
   integer(kind=c_intptr_t), parameter           :: size_of_datatype = size_of_&
                                                                       &PRECISION&
                                                                       &_&
@@ -258,14 +258,19 @@
                    &PRECISION&
                    &")
               return
-           endif
+           endif   ! info/=0
               
            nc = 0
            do i=1,nb
               tmp1(nc+1:nc+i) = a(l_row1:l_row1+i-1,l_col1+i-1)
               nc = nc+i
            enddo
-        endif  ! info/=0
+        endif  ! my_pcol==pcol(n, nblk, np_cols)
+!Early copy of a to a_dev needed later for executing TRMM() on GPU
+        successGPU = cuda_memcpy(a_dev, int(loc(a), kind=c_intptr_t), & 
+                                 matrixCols*matrixRows*size_of_datatype, & 
+                                 gpuMemcpyHostToDevice)
+        check_memcpy_gpu("elpa_invert_trm: a_dev", successGPU)
 
 #ifdef WITH_MPI
         call obj%timer%start("mpi_communication")
@@ -284,18 +289,14 @@
               successGPU = cuda_memcpy(tmp2_dev, int(loc(tmp2),kind=c_intptr_t), &
                    nblk*nblk*size_of_datatype, gpuMemcpyHostToDevice)
               check_memcpy_gpu("elpa_invert_trm: tmp2_dev", successGPU)
-              !The following memcpy seems not being able to be moved further up, just after DTRTRI
-              successGPU = cuda_memcpy(a_dev, int(loc(a), kind=c_intptr_t), & 
-                   matrixCols*matrixRows*size_of_datatype, & 
-                   gpuMemcpyHostToDevice)
-              check_memcpy_gpu("elpa_invert_trm: a_dev", successGPU)
 
+              !a_dev has been already set up on the device just after DTRTRI()
               call cublas_PRECISION_TRMM('L', 'U', 'N', 'N', nb, (l_cols-l_colx+1), ONE, &
                    tmp2_dev, ubound(tmp2,dim=1), & 
                    a_dev+((l_colx-1)*matrixRows+(l_row1-1))*size_of_datatype, matrixRows) 
               ! Copy the result back to host
               successGPU = cuda_memcpy(int(loc(a), kind=c_intptr_t), a_dev,  & 
-                   l_cols*matrixRows*size_of_datatype, gpuMemcpyDeviceToHost)  !matrixCols
+                   l_cols*matrixRows*size_of_datatype, gpuMemcpyDeviceToHost)  !matrixCols*matrixRows would be too much to cpy.
 
               check_memcpy_gpu("elpa_invert_trm: a_dev back copy after trmm", successGPU)
 
