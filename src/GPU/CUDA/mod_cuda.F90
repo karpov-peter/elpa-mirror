@@ -95,6 +95,76 @@ module cuda_functions
     end function cusolver_create_c
   end interface
 
+!!!OLD API (before 11.4)
+!!  interface
+!!    function cusolver_trtri_buffersize_real_double_c(handle, uplo, diag, n, a, lda, work_size) & 
+!!             result(istat) &
+!!             bind(C, name="cusolverDtrtri_bufferSizeFromC")
+!!
+!!      use, intrinsic :: iso_c_binding
+!!      implicit none
+!!      
+!!      character(1,C_CHAR)      :: uplo, diag 
+!!      integer(kind=c_int64_t)  :: n, lda                   
+!!      integer(c_intptr_t)      :: a, handle    
+!!      integer(c_intptr_t)      :: work_size
+!!      integer(c_int)           :: istat
+!!    end function
+!!  end interface
+!!
+!!  interface
+!!    function cusolver_trtri_real_double_c(handle, uplo, diag, n, a, lda, work_buffer, work_size, info) & 
+!!             result(istat) &
+!!             bind(C, name="cusolverDnDtrtriFromC")
+!!
+!!      use, intrinsic :: iso_c_binding
+!!      implicit none
+!!      
+!!      character(1,C_CHAR)      :: uplo, diag 
+!!      integer(kind=c_int64_t)  :: n, lda                   
+!!      integer(c_intptr_t)      :: a, handle, work_buffer, info                          
+!!      integer(c_int)           :: work_size
+!!      integer(c_int)           :: istat
+!!    end function
+!!  end interface
+
+! NEW API (>11.4)
+  interface
+    function cusolver_trtri_buffersize_real_double_c(handle, uplo, diag, n, a, lda, worksize_dev, worksize_host) & 
+             result(istat) &
+             bind(C, name="cusolverDtrtri_bufferSizeFromC")
+
+      use, intrinsic :: iso_c_binding
+      implicit none
+      
+      character(1,C_CHAR)      :: uplo, diag 
+      integer(kind=c_int64_t)  :: n, lda                   
+      integer(c_intptr_t)      :: a, handle                          
+!      integer(c_intptr_t)      :: worksize_dev, worksize_host
+      integer(C_SIZE_T)        :: worksize_dev, worksize_host
+      integer(c_int)           :: istat
+    end function
+  end interface
+
+  interface
+    !!function cusolver_trtri_real_double_c(handle, uplo, diag, n, a, lda, work_buffer, work_size, & 
+    !!                                      host_buffer, worksize_host, info)  result(istat) &
+    function cusolver_trtri_real_double_c(handle, info) & 
+                                          result(istat) &
+                                          bind(C, name="cusolverDnDtrtriFromC")
+
+      use, intrinsic :: iso_c_binding
+      implicit none
+      
+      character(1,C_CHAR)      :: uplo, diag 
+      integer(kind=c_int64_t)  :: n, lda                   
+      integer(c_intptr_t)      :: a, handle, work_buffer, host_buffer, info
+      !type(c_ptr)              :: host_buffer                          
+      integer(c_size_t)        :: work_size, worksize_host
+      integer(c_int)           :: istat
+    end function
+  end interface
+
   interface
     function cublas_destroy_c(handle) result(istat) &
              bind(C, name="cublasDestroyFromC")
@@ -905,6 +975,67 @@ module cuda_functions
 #else
      success = .true.
 #endif
+   end function
+  
+!! OLD API (<11.4)
+!!   function cusolver_trtri_buffersize_real_double(uplo, diag, n, a, lda, work_size) result(istat)               
+!!     use, intrinsic :: iso_c_binding
+!!     implicit none
+!!      
+!!     character(1,C_CHAR)      :: uplo, diag 
+!!     integer(kind=c_int64_t)  :: n, lda                   
+!!     integer(c_intptr_t)      :: a, handle                          
+!!     integer(c_intptr_t)      :: work_size
+!!     logical                  :: istat
+!!
+!!     istat = cusolver_trtri_buffersize_real_double_c(cusolverHandle, uplo, diag, n, a, lda, work_size) 
+!!   end function
+!!
+!!   function cusolver_trtri_real_double(uplo, diag, n, a, lda, work_buffer, work_size, info) result(istat) 
+!!     use, intrinsic :: iso_c_binding
+!!     implicit none
+!!      
+!!     character(1,C_CHAR)      :: uplo, diag 
+!!     integer(kind=c_int64_t)  :: n, lda                   
+!!     integer(c_intptr_t)      :: a, handle, work_buffer, info
+!!     integer(c_int)           :: work_size
+!!     logical                  :: istat
+!!
+!!     istat = cusolver_trtri_real_double_c(cusolverHandle, uplo, diag, n, a, lda, work_buffer, work_size, info) 
+!! 
+!!   end function
+
+   function cusolver_trtri_buffersize_real_double(uplo, diag, n, a, lda, worksize_dev, worksize_host) result(istat)               
+     use, intrinsic :: iso_c_binding
+     implicit none
+      
+     character(1,C_CHAR)      :: uplo, diag 
+     integer(kind=c_int64_t)  :: n, lda                   
+     integer(c_intptr_t)      :: a, handle                          
+!     integer(c_intptr_t)      :: worksize_dev, worksize_host
+     integer(C_SIZE_T)        :: worksize_dev, worksize_host
+     logical                  :: istat
+
+     istat = cusolver_trtri_buffersize_real_double_c(cusolverHandle, uplo, diag, n, a, lda, worksize_dev, worksize_host) 
+   end function
+  
+   !!function cusolver_trtri_real_double(uplo, diag, n, a, lda, work_buffer, work_size, host_buffer, worksize_host, info) & 
+   function cusolver_trtri_real_double(info) & 
+            result(istat) 
+     use, intrinsic :: iso_c_binding
+     implicit none
+      
+     character(1,C_CHAR)      :: uplo, diag 
+     integer(kind=c_int64_t)  :: n, lda                   
+     integer(c_intptr_t)      :: a, handle, work_buffer, info, host_buffer
+     integer(c_size_t)        :: work_size, worksize_host
+     !type(c_ptr)              :: host_buffer
+     logical                  :: istat
+
+     istat = cusolver_trtri_real_double_c(cusolverHandle, info) 
+!     istat = cusolver_trtri_real_double_c(cusolverHandle, uplo, diag, n, a, lda, work_buffer, work_size, worksize_host, info) ! &
+!!                                          host_buffer, worksize_host, info) 
+ 
    end function
 
    function cublas_destroy(handle) result(success)
