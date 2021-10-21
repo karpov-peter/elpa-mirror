@@ -82,6 +82,9 @@
 #ifdef WITH_NVIDIA_GPU_VERSION
 extern "C" {
 //Soheil:
+  //Global state
+  cudaEvent_t ev_start, ev_stop;
+
   int cusolverCreateFromC(intptr_t *cusolver_handle) {
 
       *cusolver_handle = (intptr_t) malloc(sizeof(cusolverDnHandle_t));
@@ -136,11 +139,6 @@ extern "C" {
       return 0;
     }
   }
-//Soheil
-//  int cudaIdamaxFromC(intptr_t *handle_dev, int n, intptr_t *a_dev, int incr, intptr_t *res_dev) {
-//    cudaIsamax(*((cudaHandle_t *) *handle_dev), n, (double *) *a_dev, )
-//  }
-//END Soheil
   int cudaSetDeviceFromC(int n) {
 
     cudaError_t cuerr = cudaSetDevice(n);
@@ -338,6 +336,59 @@ extern "C" {
 
     free(host_buffer);
  } 
+
+  //int cudaEventCreateFromC(intptr_t *event) {
+  //  cudaError_t cuerr = cudaEventCreate((cudaEvent_t *)event);
+
+  int cudaEventCreateFromC() {
+       cudaError_t cuerr = cudaEventCreate(&ev_start);
+       cudaError_t cuerr_2 = cudaEventCreate(&ev_stop);
+    if (cuerr != cudaSuccess) {
+       return 0;
+    }
+    return 1;
+  }
+
+  //int cudaEventRecordFromC(intptr_t event) {
+  //     cudaError_t cuerr = cudaEventRecord((cudaEvent_t)event);
+  int cudaEventRecordFromC(int ev_code) { 
+    cudaError_t cuerr;
+    if (ev_code == 0) {
+//       cuerr = cudaEventCreate(&ev_start);
+         cuerr = cudaEventRecord(ev_start);
+    }
+    else if (ev_code == 1) {
+       //cuerr = cudaEventCreate(&ev_stop);
+         cuerr = cudaEventRecord(ev_stop);
+    }
+
+    if (cuerr != cudaSuccess) {
+       return 0;
+    }
+    return 1;
+  }
+
+  //int cudaEventSynchFromC(intptr_t event) {
+  //  cudaError_t cuerr = cudaEventSynchronize((cudaEvent_t)event);
+  int cudaEventSynchFromC() {
+    cudaError_t cuerr = cudaEventSynchronize(ev_stop);
+    if (cuerr != cudaSuccess) {
+       return 0;
+    }
+    return 1;
+  }
+
+  //int cudaEventElapsedTimeFromC(float *exec_time, intptr_t start, intptr_t end) { 
+  //  //*exec_time = 3.14;
+  //  cudaError_t cuerr = cudaEventElapsedTime( exec_time, (cudaEvent_t)start, (cudaEvent_t)end );
+  int cudaEventElapsedTimeFromC(float *exec_time) { 
+    cudaError_t cuerr = cudaEventElapsedTime( exec_time, ev_start, ev_stop );
+    if (cuerr != cudaSuccess) {
+       return 0;
+    }
+    return 1;
+  }
+
 //END Soheil
 
   int cudaMemsetFromC(intptr_t *a, int value, size_t count) {

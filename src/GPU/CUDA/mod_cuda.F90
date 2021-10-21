@@ -85,6 +85,58 @@ module cuda_functions
 
 !!!!!  interface
 !Soheil
+  interface 
+!!!    function cuda_event_create_c(my_event) result(istat) &
+    function cuda_event_create_c() result(istat) &
+             bind(C, name="cudaEventCreateFromC")
+
+      use, intrinsic :: iso_c_binding
+      implicit none 
+      integer(kind=c_intptr_t)  :: my_event
+      integer(c_int)            :: istat
+
+    end function cuda_event_create_c
+
+  end interface
+   
+  interface 
+    function cuda_event_record_c(my_event) result(istat) &
+             bind(C, name="cudaEventRecordFromC")
+
+      use, intrinsic  :: iso_c_binding
+      implicit none
+
+      !integer(c_intptr_t),value  :: my_event
+      integer(c_int), value  :: my_event 
+      integer(c_int)       :: istat
+    end function
+  end interface
+
+  interface 
+    !!!function cuda_event_synch_c(my_event) result(istat) &
+    function cuda_event_synch_c() result(istat) &
+             bind(C, name="cudaEventSynchFromC")
+  
+      use, intrinsic  :: iso_c_binding
+      integer(c_intptr_t)  ::  my_event
+      integer(c_int)       ::  istat
+    end function 
+  end interface
+
+  interface 
+    !!!function cuda_event_elapsed_time_c(exec_time, event_start, event_end) result(istat) & 
+    function cuda_event_elapsed_time_c(exec_time) result(istat) & 
+             bind(C, name="cudaEventElapsedTimeFromC")
+ 
+      use, intrinsic :: iso_c_binding
+      implicit none
+   
+      integer(c_intptr_t)   ::  event_start, event_end
+      real(c_float)         ::  exec_time
+      integer(c_int)        ::  istat
+    end function
+  end interface
+
   interface
     function cusolver_create_c(handle) result(istat) &
              bind(C, name="cusolverCreateFromC")                           
@@ -1037,6 +1089,54 @@ module cuda_functions
 !!                                          host_buffer, worksize_host, info) 
  
    end function
+
+!!!   function cuda_event_create(my_event) result(istat) 
+   function cuda_event_create() result(istat) 
+
+     use, intrinsic :: iso_c_binding
+     implicit none
+     integer(c_intptr_t)   ::  my_event
+     logical               ::  istat
+ 
+!!!     istat = cuda_event_create_c(my_event)
+     istat = cuda_event_create_c()
+   end function cuda_event_create 
+
+   function cuda_event_record(my_event)  result(istat)
+   
+     use, intrinsic  :: iso_c_binding
+     implicit none
+
+!     integer(c_intptr_t),value   :: my_event
+     integer(c_int), value   :: my_event
+     logical               :: istat
+
+     istat = cuda_event_record_c(my_event)
+   end function cuda_event_record
+
+!!!   function cuda_event_synchronize(my_event) result(istat)
+   function cuda_event_synchronize() result(istat)
+     use, intrinsic :: iso_c_binding
+     integer(c_intptr_t)  ::  my_event
+     logical              :: istat
+
+     !!!istat = cuda_event_synch_c(my_event)
+     istat = cuda_event_synch_c()
+
+   end function cuda_event_synchronize
+ 
+!!!   function cuda_event_elapsed_time(exec_time, event_start, event_end) result(istat)
+   function cuda_event_elapsed_time(exec_time) result(istat)
+     use, intrinsic  :: iso_c_binding
+     implicit none
+
+     integer(c_intptr_t) ::  event_start, event_end
+     real(c_float)       ::  exec_time
+     logical             ::  istat
+
+!!!     istat = cuda_event_elapsed_time_c(exec_time, event_start, event_end)
+     istat = cuda_event_elapsed_time_c(exec_time)
+   end function cuda_event_elapsed_time
 
    function cublas_destroy(handle) result(success)
      use, intrinsic :: iso_c_binding
