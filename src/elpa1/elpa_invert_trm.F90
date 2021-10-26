@@ -98,15 +98,19 @@
   integer(kind=ik)           :: max_l_rows, max_l_cols, max_nblk, my_glob_rank, dev_cnt, col_cnt, row_cnt, counter
   integer(kind=c_intptr_t)                      :: workspace_dev, cusolver_info, buffer_dev
   integer(kind=c_size_t)                        :: work_size, worksize_host
-  !type(c_ptr)  :: workspace_host
-  integer(kind=c_intptr_t)  :: workspace_host
+  integer(kind=c_intptr_t)                      :: workspace_host
+
+  type(c_ptr)                                   :: tmat2_pinned   ! Pinned memory for CUDA 
+
   integer   :: itr_i, itr_j   ! loop counters
   MATH_DATATYPE(kind=rck), allocatable          :: buffer(:) 
   integer(c_intptr_t)                           :: event_start, event_stop ! CUDA timing events
-  integer(c_intptr_t)                           :: custream_1
+  integer(c_intptr_t)                           :: custream_1, custream_2, custream_3
   real(c_float)                                 :: exec_time  
   MATH_DATATYPE(kind=rck)                       :: volume
   double precision                              :: t_start, t_end
+
+  real(c_double), pointer                       :: send_buff(:,:)
 
 
   useIntelGPU = .false.  
@@ -232,6 +236,13 @@
      check_alloc_gpu("elpa_invert_trm: tmp2_dev", successGPU)
  
      successGPU = cuda_stream_create(custream_1)
+     successGPU = cuda_stream_create(custream_2)
+     successGPU = cuda_stream_create(custream_3)
+  
+     if (.not. allocated(buffer)) allocate(buffer(matrixRows*matrixCols))
+     successGPU = cuda_malloc(buffer_dev, matrixRows*matrixCols*size_of_datatype)
+     check_alloc_gpu("elpa_invert_trm: buffer_dev", successGPU)
+
      !call mpi_barrier(mpi_comm_world, mpierr)
      !print *, 'stream allocation: ', successGPU
 
@@ -239,6 +250,9 @@
      !call mpi_barrier(mpi_comm_world, mpierr)
      !print *, 'stream de-allocation: ', successGPU
 
+    !!!successGPU = cuda_malloc_host(tmat2_pinned, nblk*l_cols*size_of_datatype)
+    !!!allocate(send_buff(nblk, l_cols))
+    !!!call c_f_pointer(tmat2_pinned, send_buff, (/nblk, l_cols/))
   end if
 
 
@@ -375,14 +389,20 @@
  call obj%timer%stop("mpi_communication")
 #endif /* WITH_MPI */
 
-!dispatch tmat2 copy to device needed later for cublas_GEMM
-!OBS protect memcpy using the same conditional clause as was used for the original copy
-  successGPU = cuda_memcpy_async(tmat2_dev, int(loc(tmat2), kind=c_intptr_t), l_cols*nblk*size_of_datatype, &
-                                 gpuMemcpyHostToDevice, custream_1)
-  check_memcpy_gpu("Async copy: ", successGPU)
 
 !<===== LAST change to a
  if (l_row1>1) then
+    !dispatch tmat2 copy to device needed later for cublas_GEMM
+    !protect memcpy using the same conditional clause as was used for the original copy for GEMM
+    if (useGPU .and. l_cols-l_col1+1>0) then
+       successGPU = cuda_memcpy_async(tmat2_dev, int(loc(tmat2), kind=c_intptr_t), l_cols*nblk*size_of_datatype, &
+                                      gpuMemcpyHostToDevice, custream_1)
+       !!!send_buff(:,:) = tmat2(:,:)
+       !!!successGPU = cuda_memcpy_async(tmat2_dev, tmat2_pinned, l_cols*nblk*size_of_datatype, &
+       !!!                               gpuMemcpyHostToDevice, custream_1)
+       check_memcpy_gpu("Async copy: ", successGPU)
+    end if
+
     if (my_pcol==pcol(n, nblk, np_cols)) then
        tmat1(1:l_row1-1,1:nb) = a(1:l_row1-1,l_col1:l_col1+nb-1)
 !!!!!       if (useGPU) then
@@ -404,6 +424,25 @@
 !!!!!       end if
     endif
 !=====>
+! Dispatch a() to the device
+!! non-buffered version:
+! if (useGPU .and. l_cols-l_col1+1>0) then
+!     do itr_i=l_col1,l_cols
+!       successGPU = cuda_memcpy_async(a_dev+((itr_i-1)*matrixRows*size_of_datatype), int(loc(a(1,itr_i)), kind=c_intptr_t), & 
+!                      (l_row1-1)*size_of_datatype, gpuMemcpyHostToDevice, custream_2)
+!       check_memcpy_gpu("elpa_invert_trm: a_dev_concurr", successGPU)
+!     end do
+! end if
+
+ ! using the buffered version:
+ if (useGPU .and. l_cols-l_col1+1>0) then
+     buffer = reshape(a(1:(l_row1-1),l_col1:l_cols), (/(l_row1-1)*(l_cols-l_col1+1)/) )
+
+     successGPU = cuda_memcpy_async(buffer_dev, int(loc(buffer(1)), kind=c_intptr_t), & 
+                                    (l_row1-1)*(l_cols-l_col1+1)*size_of_datatype, & 
+                                    gpuMemcpyHostToDevice, custream_2)
+     check_memcpy_gpu("elpa_invert_trm: a_dev_concurr", successGPU)
+ end if
 
     do i=1,nb
 #ifdef WITH_MPI
@@ -421,8 +460,11 @@
     if (useGPU .and. .not. useIntelGPU) then 
 !whole copy of tmat1
        !!!successGPU = cuda_event_record(int(0,kind=c_int))
-       successGPU = cuda_memcpy(tmat1_dev, int(loc(tmat1), kind=c_intptr_t), & 
-            l_rows*nblk*size_of_datatype, gpuMemcpyHostToDevice)
+       !successGPU = cuda_memcpy(tmat1_dev, int(loc(tmat1), kind=c_intptr_t), & 
+       !     l_rows*nblk*size_of_datatype, gpuMemcpyHostToDevice)
+       !check_memcpy_gpu("elpa_invert_trm: tmat1_dev", successGPU)
+       successGPU = cuda_memcpy_async(tmat1_dev, int(loc(tmat1), kind=c_intptr_t), & 
+            l_rows*nblk*size_of_datatype, gpuMemcpyHostToDevice, custream_3)
        check_memcpy_gpu("elpa_invert_trm: tmat1_dev", successGPU)
        !!!successGPU = cuda_event_record(int(1,kind=c_int))
        !!!successGPU = cuda_event_synchronize()
@@ -455,17 +497,17 @@
 
 !optimized memcpy for a_dev
 !!!       successGPU = cuda_event_record(int(0,kind=c_int))
-     do itr_i=l_col1,l_cols
-       successGPU = cuda_memcpy(a_dev+((itr_i-1)*matrixRows*size_of_datatype), int(loc(a(1,itr_i)), kind=c_intptr_t), & 
-                      (l_row1-1)*size_of_datatype, gpuMemcpyHostToDevice)
-       check_memcpy_gpu("elpa_invert_trm: trtri_a_dev", successGPU)
-
-!optimized(?) memcpy for tmat2
-       !successGPU = cuda_memcpy(tmat2_dev+((itr_i-1)*nblk*size_of_datatype), & 
-       !                         int(loc(tmat2(1,itr_i)), kind=c_intptr_t), & 
-       !                         nb*size_of_datatype, gpuMemcpyHostToDevice)
-       !check_memcpy_gpu("elpa_invert_trm: tmat2_dev", successGPU)
-     end do
+!     do itr_i=l_col1,l_cols
+!       successGPU = cuda_memcpy(a_dev+((itr_i-1)*matrixRows*size_of_datatype), int(loc(a(1,itr_i)), kind=c_intptr_t), & 
+!                      (l_row1-1)*size_of_datatype, gpuMemcpyHostToDevice)
+!       check_memcpy_gpu("elpa_invert_trm: trtri_a_dev", successGPU)
+!
+!!!!!optimized(?) memcpy for tmat2
+!!!!       !successGPU = cuda_memcpy(tmat2_dev+((itr_i-1)*nblk*size_of_datatype), & 
+!!!!       !                         int(loc(tmat2(1,itr_i)), kind=c_intptr_t), & 
+!!!!       !                         nb*size_of_datatype, gpuMemcpyHostToDevice)
+!!!!       !check_memcpy_gpu("elpa_invert_trm: tmat2_dev", successGPU)
+!     end do
 !!!       successGPU = cuda_event_record(int(1,kind=c_int))
 !!!       successGPU = cuda_event_synchronize()
 !!!       successGPU = cuda_event_elapsed_time(exec_time)
@@ -474,32 +516,53 @@
 
 
        successGPU = cuda_stream_synch(custream_1)
+       successGPU = cuda_stream_synch(custream_3)
+       successGPU = cuda_stream_synch(custream_2)
        check_memcpy_gpu("Stream synch: ", successGPU)
-
-       !successGPU = cuda_event_record(event_start)
-       successGPU = cuda_event_record(int(0,kind=c_int))
+       !do itr_i=l_col1,l_cols
+       !    successGPU = cuda_memcpy(a_dev+((itr_i-1)*matrixRows*size_of_datatype), &
+       !                 buffer_dev+(itr_i-l_col1)*(l_row1-1)*size_of_datatype, & 
+       !                 (l_row1-1)*size_of_datatype, gpuMemcpyDeviceToDevice)
+       !                 check_memcpy_gpu("elpa_invert_trm: a_dev2dev", successGPU)
+       !end do
+!Instead of Dev2Dev-cpy, do GEMM on the buffer_dev:
        call cublas_PRECISION_GEMM('N', 'N', (l_row1-1), (l_cols-l_col1+1), nb, -ONE, &
             tmat1_dev, max_l_rows, & 
             (tmat2_dev+((l_col1-1)*nblk*size_of_datatype)), max_nblk, ONE, &
-            (a_dev+((l_col1-1)*matrixRows*size_of_datatype)), matrixRows )
-!!!       successGPU = cuda_event_record(int(1,kind=c_int))
-!!!       !successGPU = cuda_event_record(event_stop)
-!!!      
-!!!       !successGPU = cuda_event_synchronize(event_stop)
-!!!       successGPU = cuda_event_synchronize()
-!!!       !successGPU = cuda_event_elapsed_time(exec_time, event_start, event_stop)
-!!!       successGPU = cuda_event_elapsed_time(exec_time)
-!!!
-!!!         print '(A,I2,A,I2,A,F7.2)', '(',my_prow,',',my_pcol,') GEMM time(ms): ', exec_time
+            buffer_dev, (l_row1-1))
+!Now cpy to buffer (HOST)
+     successGPU = cuda_memcpy(int(loc(buffer(1)), kind=c_intptr_t), buffer_dev, & 
+                              (l_row1-1)*(l_cols-l_col1+1)*size_of_datatype, gpuMemcpyDeviceToHost)
+     check_memcpy_gpu("elpa_invert_trm: buffer_dev2host", successGPU)
+!Now put it back into a
+     a(1:(l_row1-1),l_col1:l_cols) = reshape(buffer, (/(l_row1-1),(l_cols-l_col1+1)/) )
 
-     do itr_i=l_col1,l_cols
-       successGPU = cuda_memcpy(int(loc(a(1,itr_i)), kind=c_intptr_t), a_dev+((itr_i-1)*matrixRows*size_of_datatype), & 
-                      (l_row1-1)*size_of_datatype, gpuMemcpyDeviceToHost)
-       check_memcpy_gpu("elpa_invert_trm: trtri_a_dev", successGPU)
-     end do
-       !successGPU = cuda_memcpy(int(loc(a), kind=c_intptr_t), a_dev,  & 
-       !     matrixCols*matrixRows*size_of_datatype, gpuMemcpyDeviceToHost)
-       !check_memcpy_gpu("elpa_invert_trm: a_dev back copy", successGPU)
+!!Regular GEMM:
+!       !successGPU = cuda_event_record(event_start)
+!!!!       successGPU = cuda_event_record(int(0,kind=c_int))
+!       call cublas_PRECISION_GEMM('N', 'N', (l_row1-1), (l_cols-l_col1+1), nb, -ONE, &
+!            tmat1_dev, max_l_rows, & 
+!            (tmat2_dev+((l_col1-1)*nblk*size_of_datatype)), max_nblk, ONE, &
+!            (a_dev+((l_col1-1)*matrixRows*size_of_datatype)), matrixRows )
+!
+!!!!       successGPU = cuda_event_record(int(1,kind=c_int))
+!!!!       !successGPU = cuda_event_record(event_stop)
+!!!!      
+!!!!       !successGPU = cuda_event_synchronize(event_stop)
+!!!!       successGPU = cuda_event_synchronize()
+!!!!       !successGPU = cuda_event_elapsed_time(exec_time, event_start, event_stop)
+!!!!       successGPU = cuda_event_elapsed_time(exec_time)
+!!!!
+!!!!         print '(A,I2,A,I2,A,F7.2)', '(',my_prow,',',my_pcol,') GEMM time(ms): ', exec_time
+!
+!     do itr_i=l_col1,l_cols
+!       successGPU = cuda_memcpy(int(loc(a(1,itr_i)), kind=c_intptr_t), a_dev+((itr_i-1)*matrixRows*size_of_datatype), & 
+!                      (l_row1-1)*size_of_datatype, gpuMemcpyDeviceToHost)
+!       check_memcpy_gpu("elpa_invert_trm: trtri_a_dev", successGPU)
+!     end do
+!       !successGPU = cuda_memcpy(int(loc(a), kind=c_intptr_t), a_dev,  & 
+!       !     matrixCols*matrixRows*size_of_datatype, gpuMemcpyDeviceToHost)
+!       !check_memcpy_gpu("elpa_invert_trm: a_dev back copy", successGPU)
     else
        
        call obj%timer%start("blas")
@@ -532,7 +595,14 @@ if (useGPU) then
    successGPU = cuda_free(tmat2_dev)
    check_dealloc_gpu("invert_trm: tmat2_dev ", successGPU)
 
+   successGPU = cuda_free(buffer_dev)
+   check_dealloc_gpu("invert_trm: buffer_dev ", successGPU)
+
    successGPU = cuda_stream_destroy(custream_1)
+   successGPU = cuda_stream_destroy(custream_2)
+   successGPU = cuda_stream_destroy(custream_3)
+   
+   if(allocated(buffer))  deallocate(buffer)
 end if
 
 call obj%timer%stop("elpa_invert_trm_&
