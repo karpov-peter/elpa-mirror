@@ -248,27 +248,27 @@ extern "C" {
  //   }
  //} 
 
-//New API (CUDA 11.4)
- //int cusolverDtrtri_bufferSizeFromC(intptr_t handle, char uplo, char diag, int64_t n, intptr_t *A, int64_t lda, \
- //                                             intptr_t *worksize_dev, intptr_t *worksize_host) {
- int cusolverDtrtri_bufferSizeFromC(intptr_t handle, char uplo, char diag, int64_t n, intptr_t *A, int64_t lda, \
-                                              size_t *worksize_dev, size_t *worksize_host) {
-    //TODO: process uplo and diag
-    //cudaDataType_t dtype = CUDA_R_64F;
-    cusolverStatus_t status = cusolverDnXtrtri_bufferSize( *((cusolverDnHandle_t *)handle),\
-                                                           CUBLAS_FILL_MODE_LOWER,\
-                                                           CUBLAS_DIAG_NON_UNIT, n, CUDA_R_64F, (void *)A, lda,\
-                                                           worksize_dev, worksize_host);
-//                                                           (size_t *)worksize_dev, (size_t *)worksize_host);
-    
-    if (status == CUSOLVER_STATUS_SUCCESS) {
-      return 1;
-    }
-    else {
-      return 0;
-    }
-
- }
+////New API (CUDA 11.4)
+// //int cusolverDtrtri_bufferSizeFromC(intptr_t handle, char uplo, char diag, int64_t n, intptr_t *A, int64_t lda, \
+// //                                             intptr_t *worksize_dev, intptr_t *worksize_host) {
+// int cusolverDtrtri_bufferSizeFromC(intptr_t handle, char uplo, char diag, int64_t n, intptr_t *A, int64_t lda, \
+//                                              size_t *worksize_dev, size_t *worksize_host) {
+//    //TODO: process uplo and diag
+//    //cudaDataType_t dtype = CUDA_R_64F;
+//    cusolverStatus_t status = cusolverDnXtrtri_bufferSize( *((cusolverDnHandle_t *)handle),\
+//                                                           CUBLAS_FILL_MODE_LOWER,\
+//                                                           CUBLAS_DIAG_NON_UNIT, n, CUDA_R_64F, (void *)A, lda,\
+//                                                           worksize_dev, worksize_host);
+////                                                           (size_t *)worksize_dev, (size_t *)worksize_host);
+//    
+//    if (status == CUSOLVER_STATUS_SUCCESS) {
+//      return 1;
+//    }
+//    else {
+//      return 0;
+//    }
+//
+// }
 
 //Old API
 // int cusolverDnDtrtriFromC(intptr_t handle, char uplo, char diag, int64_t n, intptr_t *A, int64_t lda, \
@@ -287,55 +287,55 @@ extern "C" {
 //    }
 // } 
 
-//New API
-// int cusolverDnDtrtriFromC(intptr_t handle, char uplo, char diag, int64_t n, intptr_t *A, int64_t lda, \
-//                           intptr_t *work_buffer, size_t work_size, intptr_t *host_buffer, size_t worksize_host, \
-//                           intptr_t *info) {
-// int cusolverDnDtrtriFromC(intptr_t handle, char uplo, char diag, int64_t n, intptr_t *A, int64_t lda, \
-//                           intptr_t *work_buffer, size_t work_size, size_t worksize_host, intptr_t *info) {
- int cusolverDnDtrtriFromC(intptr_t handle, intptr_t *info) {
-
-     size_t worksize_dev; size_t worksize_host;
-
-     double *a_h = (double *)malloc(16*sizeof(double));
-     // init a_h
-     a_h[0] = 2;  a_h[1]  = 0; a_h[2]  = 0; a_h[3]  = 0;
-     a_h[4] = 3;  a_h[5]  = 1; a_h[6]  = 0; a_h[7]  = 0;
-     a_h[8] = 2;  a_h[9]  = 5; a_h[10] = 6; a_h[11] = 0;
-     a_h[12] = 4; a_h[13] = 3; a_h[14] = 2; a_h[15] = 7;
-
-     int successGPU = 1; 
-     double *a_dev;
-     successGPU = cudaMalloc(&a_dev, 16*sizeof(double));
-
-     successGPU = cudaMemcpy(a_dev, a_h, 16*sizeof(double), cudaMemcpyHostToDevice);
-
-     cusolverStatus_t status = cusolverDnXtrtri_bufferSize( *((cusolverDnHandle_t *)handle),\
-                                                            CUBLAS_FILL_MODE_LOWER,\
-                                                            CUBLAS_DIAG_NON_UNIT, 4, CUDA_R_64F, (void *)a_dev, 4,\
-                                                            &worksize_dev, &worksize_host);
-
-     *info = (int)successGPU;
-
-     void *host_buffer = (void *)malloc(65536);
-     host_buffer = NULL;
-
-    //CUBLAS_FILL_MODE_UPPER
-//    cusolverStatus_t status = cusolverDnXtrtri( *((cusolverDnHandle_t *)handle),\
-//                                                CUBLAS_FILL_MODE_LOWER,\
-//                                                CUBLAS_DIAG_NON_UNIT, n, CUDA_R_64F, (void *)A, lda,\
-//                                                (void *) work_buffer, work_size, host_buffer, \
-//                                                worksize_host, (int *)info ); 
-//    
-    if (status == CUSOLVER_STATUS_SUCCESS) {
-      return 1;
-    }
-    else {
-      return 0;
-    }
-
-    free(host_buffer);
- } 
+////New API
+//// int cusolverDnDtrtriFromC(intptr_t handle, char uplo, char diag, int64_t n, intptr_t *A, int64_t lda, \
+////                           intptr_t *work_buffer, size_t work_size, intptr_t *host_buffer, size_t worksize_host, \
+////                           intptr_t *info) {
+//// int cusolverDnDtrtriFromC(intptr_t handle, char uplo, char diag, int64_t n, intptr_t *A, int64_t lda, \
+////                           intptr_t *work_buffer, size_t work_size, size_t worksize_host, intptr_t *info) {
+// int cusolverDnDtrtriFromC(intptr_t handle, intptr_t *info) {
+//
+//     size_t worksize_dev; size_t worksize_host;
+//
+//     double *a_h = (double *)malloc(16*sizeof(double));
+//     // init a_h
+//     a_h[0] = 2;  a_h[1]  = 0; a_h[2]  = 0; a_h[3]  = 0;
+//     a_h[4] = 3;  a_h[5]  = 1; a_h[6]  = 0; a_h[7]  = 0;
+//     a_h[8] = 2;  a_h[9]  = 5; a_h[10] = 6; a_h[11] = 0;
+//     a_h[12] = 4; a_h[13] = 3; a_h[14] = 2; a_h[15] = 7;
+//
+//     int successGPU = 1; 
+//     double *a_dev;
+//     successGPU = cudaMalloc(&a_dev, 16*sizeof(double));
+//
+//     successGPU = cudaMemcpy(a_dev, a_h, 16*sizeof(double), cudaMemcpyHostToDevice);
+//
+//     cusolverStatus_t status = cusolverDnXtrtri_bufferSize( *((cusolverDnHandle_t *)handle),\
+//                                                            CUBLAS_FILL_MODE_LOWER,\
+//                                                            CUBLAS_DIAG_NON_UNIT, 4, CUDA_R_64F, (void *)a_dev, 4,\
+//                                                            &worksize_dev, &worksize_host);
+//
+//     *info = (int)successGPU;
+//
+//     void *host_buffer = (void *)malloc(65536);
+//     host_buffer = NULL;
+//
+//    //CUBLAS_FILL_MODE_UPPER
+////    cusolverStatus_t status = cusolverDnXtrtri( *((cusolverDnHandle_t *)handle),\
+////                                                CUBLAS_FILL_MODE_LOWER,\
+////                                                CUBLAS_DIAG_NON_UNIT, n, CUDA_R_64F, (void *)A, lda,\
+////                                                (void *) work_buffer, work_size, host_buffer, \
+////                                                worksize_host, (int *)info ); 
+////    
+//    if (status == CUSOLVER_STATUS_SUCCESS) {
+//      return 1;
+//    }
+//    else {
+//      return 0;
+//    }
+//
+//    free(host_buffer);
+// } 
 
   //int cudaEventCreateFromC(intptr_t *event) {
   //  cudaError_t cuerr = cudaEventCreate((cudaEvent_t *)event);
@@ -389,6 +389,46 @@ extern "C" {
     return 1;
   }
 
+  int cudaStreamCreateFromC(intptr_t *custream) {
+  
+    cudaError_t cuerr = cudaStreamCreate( (cudaStream_t *)custream );
+    if (cuerr != cudaSuccess) {
+      return 0;
+    }
+    else {
+      return 1;
+    }
+  }
+
+  int cudaStreamDestroyFromC(intptr_t custream) {
+  
+    cudaError_t cuerr = cudaStreamDestroy( (cudaStream_t)custream );
+    if (cuerr != cudaSuccess) {
+      return 0;
+    }
+    else {
+      return 1;
+    }
+  }
+  
+  int cudaStreamSynchronizeFromC(intptr_t custream) {
+ 
+    cudaError_t cuerr = cudaStreamSynchronize((cudaStream_t)custream);
+    if (cuerr != cudaSuccess) {
+      return 0;
+    }
+    return 1;
+  }
+
+  int cudaMemcpyAsyncFromC(intptr_t *dest, intptr_t *src, size_t count, int dir, intptr_t custream) {
+
+    cudaError_t cuerr = cudaMemcpyAsync( dest, src, count, (cudaMemcpyKind)dir, (cudaStream_t)custream);
+    if (cuerr != cudaSuccess) {
+      errormessage("Error in cudaMemcpy: %s\n",cudaGetErrorString(cuerr));
+      return 0;
+    }
+    return 1;
+  }
 //END Soheil
 
   int cudaMemsetFromC(intptr_t *a, int value, size_t count) {

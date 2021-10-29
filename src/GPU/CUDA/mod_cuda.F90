@@ -85,6 +85,45 @@ module cuda_functions
 
 !!!!!  interface
 !Soheil
+  
+  interface
+    function cuda_stream_create_c(custream) result(istat) &
+             bind(C, name="cudaStreamCreateFromC")
+ 
+      use, intrinsic   ::   iso_c_binding
+      implicit none
+
+      integer(kind=c_intptr_t)   ::   custream
+      integer(c_int)             ::   istat
+
+    end function
+  end interface
+
+  interface
+    function cuda_stream_destroy_c(custream) result(istat) &
+             bind(C, name="cudaStreamDestroyFromC")
+ 
+      use, intrinsic   ::   iso_c_binding
+      implicit none
+
+      integer(kind=c_intptr_t),value   ::   custream
+      integer(c_int)             ::   istat
+
+    end function
+  end interface
+
+  interface
+    function cuda_stream_synch_c(custream) result(istat)  &
+             bind(C, name="cudaStreamSynchronizeFromC")
+
+      use, intrinsic  ::  iso_c_binding
+      implicit none
+
+      integer(c_intptr_t), value  ::  custream
+      integer(c_int)              :: istat
+    end function
+  end interface
+
   interface 
 !!!    function cuda_event_create_c(my_event) result(istat) &
     function cuda_event_create_c() result(istat) &
@@ -180,42 +219,42 @@ module cuda_functions
 !!    end function
 !!  end interface
 
-! NEW API (>11.4)
-  interface
-    function cusolver_trtri_buffersize_real_double_c(handle, uplo, diag, n, a, lda, worksize_dev, worksize_host) & 
-             result(istat) &
-             bind(C, name="cusolverDtrtri_bufferSizeFromC")
-
-      use, intrinsic :: iso_c_binding
-      implicit none
-      
-      character(1,C_CHAR)      :: uplo, diag 
-      integer(kind=c_int64_t)  :: n, lda                   
-      integer(c_intptr_t)      :: a, handle                          
-!      integer(c_intptr_t)      :: worksize_dev, worksize_host
-      integer(C_SIZE_T)        :: worksize_dev, worksize_host
-      integer(c_int)           :: istat
-    end function
-  end interface
-
-  interface
-    !!function cusolver_trtri_real_double_c(handle, uplo, diag, n, a, lda, work_buffer, work_size, & 
-    !!                                      host_buffer, worksize_host, info)  result(istat) &
-    function cusolver_trtri_real_double_c(handle, info) & 
-                                          result(istat) &
-                                          bind(C, name="cusolverDnDtrtriFromC")
-
-      use, intrinsic :: iso_c_binding
-      implicit none
-      
-      character(1,C_CHAR)      :: uplo, diag 
-      integer(kind=c_int64_t)  :: n, lda                   
-      integer(c_intptr_t)      :: a, handle, work_buffer, host_buffer, info
-      !type(c_ptr)              :: host_buffer                          
-      integer(c_size_t)        :: work_size, worksize_host
-      integer(c_int)           :: istat
-    end function
-  end interface
+!! NEW API (>11.4)
+!  interface
+!    function cusolver_trtri_buffersize_real_double_c(handle, uplo, diag, n, a, lda, worksize_dev, worksize_host) & 
+!             result(istat) &
+!             bind(C, name="cusolverDtrtri_bufferSizeFromC")
+!
+!      use, intrinsic :: iso_c_binding
+!      implicit none
+!      
+!      character(1,C_CHAR)      :: uplo, diag 
+!      integer(kind=c_int64_t)  :: n, lda                   
+!      integer(c_intptr_t)      :: a, handle                          
+!!      integer(c_intptr_t)      :: worksize_dev, worksize_host
+!      integer(C_SIZE_T)        :: worksize_dev, worksize_host
+!      integer(c_int)           :: istat
+!    end function
+!  end interface
+!
+!  interface
+!    !!function cusolver_trtri_real_double_c(handle, uplo, diag, n, a, lda, work_buffer, work_size, & 
+!    !!                                      host_buffer, worksize_host, info)  result(istat) &
+!    function cusolver_trtri_real_double_c(handle, info) & 
+!                                          result(istat) &
+!                                          bind(C, name="cusolverDnDtrtriFromC")
+!
+!      use, intrinsic :: iso_c_binding
+!      implicit none
+!      
+!      character(1,C_CHAR)      :: uplo, diag 
+!      integer(kind=c_int64_t)  :: n, lda                   
+!      integer(c_intptr_t)      :: a, handle, work_buffer, host_buffer, info
+!      !type(c_ptr)              :: host_buffer                          
+!      integer(c_size_t)        :: work_size, worksize_host
+!      integer(c_int)           :: istat
+!    end function
+!  end interface
 
   interface
     function cublas_destroy_c(handle) result(istat) &
@@ -330,6 +369,41 @@ module cuda_functions
       integer(kind=C_INT)                          :: istat
 
     end function cuda_memcpy_intptr_c
+  end interface
+
+  !Soheil 
+  interface
+    function cuda_memcpy_async_c(dst, src, size, dir, custream) result(istat) &
+             bind(C, name="cudaMemcpyAsyncFromC")
+
+      use, intrinsic :: iso_c_binding
+
+      implicit none
+      integer(kind=C_intptr_t), value              :: dst, src, custream
+      !integer(kind=C_intptr_t), value              :: dst, custream
+      !type(c_ptr),value                            :: src
+      integer(kind=c_intptr_t), intent(in), value    :: size
+      integer(kind=C_INT), intent(in), value       :: dir
+      integer(kind=C_INT)                          :: istat
+
+    end function cuda_memcpy_async_c
+  end interface
+
+  !Soheil 
+  interface
+    function cuda_memcpy_pinned_c(dst, src, size, dir) result(istat) &
+             bind(C, name="cudaMemcpyFromC")
+
+      use, intrinsic :: iso_c_binding
+
+      implicit none
+      integer(kind=C_intptr_t), value              :: dst
+      type(c_ptr),value                            :: src
+      integer(kind=c_intptr_t), intent(in), value  :: size
+      integer(kind=C_INT), intent(in), value       :: dir
+      integer(kind=C_INT)                          :: istat
+
+    end function cuda_memcpy_pinned_c
   end interface
 
   interface
@@ -478,6 +552,22 @@ module cuda_functions
       integer(kind=C_INT)              :: istat
 
     end function cuda_free_host_c
+  end interface
+
+!Soheil
+
+  interface
+    function cuda_malloc_host_intptr_c(a, width_height) result(istat) &
+             bind(C, name="cudaMallocHostFromC")
+
+      use, intrinsic :: iso_c_binding
+      implicit none
+
+      integer(c_intptr_t)                    :: a
+      integer(kind=c_intptr_t), intent(in), value   :: width_height
+      integer(kind=C_INT)                         :: istat
+
+    end function cuda_malloc_host_intptr_c
   end interface
 
   interface
@@ -1057,38 +1147,38 @@ module cuda_functions
 !! 
 !!   end function
 
-   function cusolver_trtri_buffersize_real_double(uplo, diag, n, a, lda, worksize_dev, worksize_host) result(istat)               
-     use, intrinsic :: iso_c_binding
-     implicit none
-      
-     character(1,C_CHAR)      :: uplo, diag 
-     integer(kind=c_int64_t)  :: n, lda                   
-     integer(c_intptr_t)      :: a, handle                          
-!     integer(c_intptr_t)      :: worksize_dev, worksize_host
-     integer(C_SIZE_T)        :: worksize_dev, worksize_host
-     logical                  :: istat
-
-     istat = cusolver_trtri_buffersize_real_double_c(cusolverHandle, uplo, diag, n, a, lda, worksize_dev, worksize_host) 
-   end function
-  
-   !!function cusolver_trtri_real_double(uplo, diag, n, a, lda, work_buffer, work_size, host_buffer, worksize_host, info) & 
-   function cusolver_trtri_real_double(info) & 
-            result(istat) 
-     use, intrinsic :: iso_c_binding
-     implicit none
-      
-     character(1,C_CHAR)      :: uplo, diag 
-     integer(kind=c_int64_t)  :: n, lda                   
-     integer(c_intptr_t)      :: a, handle, work_buffer, info, host_buffer
-     integer(c_size_t)        :: work_size, worksize_host
-     !type(c_ptr)              :: host_buffer
-     logical                  :: istat
-
-     istat = cusolver_trtri_real_double_c(cusolverHandle, info) 
-!     istat = cusolver_trtri_real_double_c(cusolverHandle, uplo, diag, n, a, lda, work_buffer, work_size, worksize_host, info) ! &
-!!                                          host_buffer, worksize_host, info) 
- 
-   end function
+!   function cusolver_trtri_buffersize_real_double(uplo, diag, n, a, lda, worksize_dev, worksize_host) result(istat)               
+!     use, intrinsic :: iso_c_binding
+!     implicit none
+!      
+!     character(1,C_CHAR)      :: uplo, diag 
+!     integer(kind=c_int64_t)  :: n, lda                   
+!     integer(c_intptr_t)      :: a, handle                          
+!!     integer(c_intptr_t)      :: worksize_dev, worksize_host
+!     integer(C_SIZE_T)        :: worksize_dev, worksize_host
+!     logical                  :: istat
+!
+!     istat = cusolver_trtri_buffersize_real_double_c(cusolverHandle, uplo, diag, n, a, lda, worksize_dev, worksize_host) 
+!   end function
+!  
+!   !!function cusolver_trtri_real_double(uplo, diag, n, a, lda, work_buffer, work_size, host_buffer, worksize_host, info) & 
+!   function cusolver_trtri_real_double(info) & 
+!            result(istat) 
+!     use, intrinsic :: iso_c_binding
+!     implicit none
+!      
+!     character(1,C_CHAR)      :: uplo, diag 
+!     integer(kind=c_int64_t)  :: n, lda                   
+!     integer(c_intptr_t)      :: a, handle, work_buffer, info, host_buffer
+!     integer(c_size_t)        :: work_size, worksize_host
+!     !type(c_ptr)              :: host_buffer
+!     logical                  :: istat
+!
+!     istat = cusolver_trtri_real_double_c(cusolverHandle, info) 
+!!     istat = cusolver_trtri_real_double_c(cusolverHandle, uplo, diag, n, a, lda, work_buffer, work_size, worksize_host, info) ! &
+!!!                                          host_buffer, worksize_host, info) 
+! 
+!   end function
 
 !!!   function cuda_event_create(my_event) result(istat) 
    function cuda_event_create() result(istat) 
@@ -1223,6 +1313,22 @@ module cuda_functions
      success = .true.
 #endif
    end function cuda_free
+
+!Soheil
+    function cuda_malloc_host_intptr(a, width_height) result(success)
+
+     use, intrinsic :: iso_c_binding
+     implicit none
+
+     integer(c_intptr_t)                               :: a
+     integer(kind=c_intptr_t), intent(in)      :: width_height
+     logical                                   :: success
+#ifdef WITH_NVIDIA_GPU_VERSION
+     success = cuda_malloc_host_intptr_c(a, width_height) /= 0
+#else
+     success = .true.
+#endif
+   end function
 
     function cuda_malloc_host(a, width_height) result(success)
 
@@ -1378,6 +1484,45 @@ module cuda_functions
 
 #ifdef WITH_NVIDIA_GPU_VERSION
         success = cuda_memcpy_intptr_c(dst, src, size, dir) /= 0
+#else
+        success = .true.
+#endif
+    end function
+
+!Soheil
+ function cuda_memcpy_async(dst, src, size, dir, custream) result(success)
+
+      use, intrinsic :: iso_c_binding
+
+      implicit none
+      integer(kind=C_intptr_t)              :: src, dst, custream
+      !integer(kind=C_intptr_t)              :: dst, custream
+      !type(c_ptr)                           :: src
+      integer(kind=c_intptr_t), intent(in)  :: size
+      integer(kind=C_INT), intent(in)       :: dir
+      logical :: success
+
+#ifdef WITH_NVIDIA_GPU_VERSION
+        success = cuda_memcpy_async_c(dst, src, size, dir, custream) /= 0
+#else
+        success = .true.
+#endif
+    end function
+
+!Soheil
+ function cuda_memcpy_pinned(dst, src, size, dir) result(success)
+
+      use, intrinsic :: iso_c_binding
+
+      implicit none
+      integer(kind=C_intptr_t)              :: dst
+      type(c_ptr)                           :: src
+      integer(kind=c_intptr_t), intent(in)  :: size
+      integer(kind=C_INT), intent(in)       :: dir
+      logical :: success
+
+#ifdef WITH_NVIDIA_GPU_VERSION
+        success = cuda_memcpy_pinned_c(dst, src, size, dir) /= 0
 #else
         success = .true.
 #endif
@@ -1836,6 +1981,41 @@ module cuda_functions
 #endif
     end subroutine cublas_cgemv
 
+!Soheil
+   function cuda_stream_create(custream) result(istat) 
+      
+      use, intrinsic   ::   iso_c_binding
+      implicit none
+
+      integer(kind=c_intptr_t)   ::   custream
+      logical                    ::   istat
+
+      istat = cuda_stream_create_c(custream)
+
+   end function cuda_stream_create
+
+   function cuda_stream_destroy(custream) result(istat) 
+      
+      use, intrinsic   ::   iso_c_binding
+      implicit none
+
+      integer(kind=c_intptr_t),value   ::   custream
+      logical                    ::   istat
+
+      istat = cuda_stream_destroy_c(custream)
+
+   end function cuda_stream_destroy
+
+   function cuda_stream_synch (custream) result(istat)
+
+     use, intrinsic  ::  iso_c_binding
+     implicit none
+
+     integer(c_intptr_t)   ::  custream
+     logical               :: istat
+
+     istat = cuda_stream_synch_c(custream)
+   end function cuda_stream_synch
 
 !     subroutine cublas_dsymv(cta, n, alpha, a, lda, x, incx, beta, y, incy)
 !       use, intrinsic :: iso_c_binding
