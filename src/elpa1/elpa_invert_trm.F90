@@ -60,6 +60,8 @@
   use elpa_utilities
   use elpa_mpi
   use elpa_abstract_impl
+  use elpa_gpu
+  use mod_check_for_gpu
   use elpa_blas_interfaces
   use elpa_gpu
   use cuda_functions
@@ -69,14 +71,15 @@
 #include "../general/precision_kinds.F90"
   class(elpa_abstract_impl_t), intent(inout) :: obj
   integer(kind=ik)             :: na, matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols
+  integer(kind=ik)             :: mpi_comm_all
 #ifdef USE_ASSUMED_SIZE
-  MATH_DATATYPE(kind=rck)     :: a(obj%local_nrows,*)
+  MATH_DATATYPE(kind=rck)      :: a(obj%local_nrows,*)
 #else
-  MATH_DATATYPE(kind=rck)     :: a(obj%local_nrows,obj%local_ncols)
+  MATH_DATATYPE(kind=rck)      :: a(obj%local_nrows,obj%local_ncols)
 #endif
 
-  integer(kind=ik)             :: my_prow, my_pcol, np_rows, np_cols
-  integer(kind=MPI_KIND)       :: mpierr, my_prowMPI, my_pcolMPI, np_rowsMPI, np_colsMPI
+  integer(kind=ik)             :: my_prow, my_pcol, np_rows, np_cols, myid
+  integer(kind=MPI_KIND)       :: mpierr, my_prowMPI, my_pcolMPI, np_rowsMPI, np_colsMPI, myidMPI
   integer(kind=ik)             :: l_cols, l_rows, l_col1, l_row1, l_colx, l_rowx
   integer(kind=ik)             :: n, nc, i, info, ns, nb
   integer(kind=BLAS_KIND)      :: infoBLAS
@@ -141,6 +144,11 @@
   nblk       = obj%nblk
   matrixCols = obj%local_ncols
 
+  call obj%get("mpi_comm_all",mpi_comm_all,error)
+  if (error .ne. ELPA_OK) then
+    print *,"Error getting option for mpi_comm_all. Aborting..."
+    stop
+  endif
   call obj%get("mpi_comm_rows",mpi_comm_rows,error)
   if (error .ne. ELPA_OK) then
     print *,"Error getting option for mpi_comm_rows. Aborting..."
@@ -167,6 +175,7 @@
   call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
   call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND), my_pcolMPI, mpierr)
   call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
+  call mpi_comm_rank(int(mpi_comm_all,kind=MPI_KIND), myidMPI, mpierr)
 
   my_prow = int(my_prowMPI,kind=c_int)
   np_rows = int(np_rowsMPI,kind=c_int)
@@ -177,6 +186,8 @@
   if (my_glob_rank == 0)   print *,'Using GPU: ', useGPU
 
   call obj%timer%stop("mpi_communication")
+
+
   success = .true.
 
   if(useGPU) then
@@ -203,6 +214,54 @@
   max_l_rows = max(l_rows,1)
   max_l_cols = max(l_cols,1)
   max_nblk   = max(nblk,1)
+
+  if (useGPU) then
+    call obj%timer%start("check_for_gpu")
+    if (check_for_gpu(obj, myid, numGPU)) then
+      ! set the neccessary parameters
+      call set_gpu_parameters()
+    else
+      print *,"GPUs are requested but not detected! Aborting..."
+      success = .false.
+      return
+    endif
+    call obj%timer%stop("check_for_gpu")
+    ! allocate here
+  else ! useGPU
+  endif ! useGPU
+
+  if (useGPU) then
+    successGPU = gpu_malloc(tmp1_dev, nblk*nblk*size_of_datatype)
+    check_alloc_gpu("elpa_invert_trm: tmp1_dev", successGPU)
+
+    successGPU = gpu_memset(tmp1_dev, 0, nblk*nblk*size_of_datatype)
+    check_memcpy_gpu("trans_ev", successGPU)
+
+    successGPU = gpu_malloc(tmp2_dev, nblk*nblk*size_of_datatype)
+    check_alloc_gpu("elpa_invert_trm: tmp2_dev", successGPU)
+
+    successGPU = gpu_memset(tmp1_dev, 0, nblk*nblk*size_of_datatype)
+    check_memcpy_gpu("trans_ev", successGPU)
+
+    successGPU = gpu_memset(tmp2_dev, 0, nblk*nblk*size_of_datatype)
+    check_memcpy_gpu("trans_ev", successGPU)
+
+    successGPU = gpu_malloc(tmat1_dev, l_rows*nblk*size_of_datatype)
+    check_alloc_gpu("elpa_invert_trm: tmat1_dev", successGPU)
+
+    successGPU = gpu_memset(tmat1_dev, 0, l_rows*nblk*size_of_datatype)
+    check_memcpy_gpu("trans_ev", successGPU)
+
+    successGPU = gpu_malloc(tmat2_dev, nblk*l_cols*size_of_datatype)
+    check_alloc_gpu("elpa_invert_trm: tmat1_dev", successGPU)
+
+    successGPU = gpu_memset(tmat2_dev, 0, nblk*l_cols*size_of_datatype)
+    check_memcpy_gpu("trans_ev", successGPU)
+
+    successGPU = gpu_malloc(a_dev, matrixRows*matrixCols*size_of_datatype)
+    check_alloc_gpu("elpa_invert_trm: tmat1_dev", successGPU)
+  endif ! useGPU
+
 
   allocate(tmp1(nblk*nblk), stat=istat, errmsg=errorMessage)
   check_allocate("elpa_invert_trm: tmp1", istat, errorMessage)
@@ -257,6 +316,12 @@
     !allocate(send_buff(matrixRows, matrixCols))
     !call c_f_pointer(a_pinned, send_buff, (/matrixRows, matrixCols/))
   end if
+
+  if (useGPU) then
+    successGPU = gpu_memcpy(int(loc(a(1,1)),kind=c_intptr_t), a_dev,  &
+                       matrixRows*matrixCols* size_of_datatype, gpuMemcpyHostToDevice)
+    check_memcpy_gpu("trans_ev", successGPU)
+  endif
 
 
   ns = ((na-1)/nblk)*nblk + 1
@@ -341,10 +406,34 @@
 !!!!!        check_memcpy_gpu("elpa_invert_trm: a_dev", successGPU)
 !!!!!      end if
 #ifdef WITH_MPI
+!#ifndef WITH_CUDA_AWARE_MPI
+!        if (useGPU) then
+!          num = l_rows*nblk*size_of_datatype
+!          successGPU = gpu_memcpy(int(loc(tmat1),kind=c_intptr_t), tmat1_dev, num, &
+!                              gpuMemcpyDeviceToHost)
+!          check_memcpy_gpu("elpa_invert_trm: tmat1_dev to tmat1", successGPU)
+!        endif
+!#else
+!#error "not yet implemented"
+!#endif
+
         call obj%timer%start("mpi_communication")
         call MPI_Bcast(tmp1, int(nb*(nb+1)/2,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION,       &
              int(pcol(n, nblk, np_cols),kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
         call obj%timer%stop("mpi_communication")
+
+!#ifndef WITH_CUDA_AWARE_MPI
+        if (useGPU) then
+          ! cuda aware MPI here
+          num = l_rows*nblk*size_of_datatype
+          successGPU = gpu_memcpy(tmat1_dev, int(loc(tmat1),kind=c_intptr_t), num, &
+                              gpuMemcpyHostToDevice)
+          check_memcpy_gpu("elpa_invert_trm: tmat1 to tmat1_dev", successGPU)
+
+        endif
+!#else
+!#error "not yet implemented"
+!#endif
 #endif /* WITH_MPI */
         nc = 0
         do i=1,nb
