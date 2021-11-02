@@ -97,7 +97,8 @@
                                                                       &_&
                                                                       &MATH_DATATYPE
   character(20)                                 :: gpuString
-  integer(kind=c_int)                           :: gpuID
+  integer(kind=c_int)                           :: gpuID, numGPU
+  integer(kind=c_intptr_t)      :: num
   integer(kind=ik)           :: max_l_rows, max_l_cols, max_nblk, my_glob_rank, dev_cnt, col_cnt, row_cnt, counter
   integer(kind=c_intptr_t)                      :: workspace_dev, cusolver_info, buffer_dev
   integer(kind=c_size_t)                        :: work_size, worksize_host
@@ -144,11 +145,11 @@
   nblk       = obj%nblk
   matrixCols = obj%local_ncols
 
-  call obj%get("mpi_comm_all",mpi_comm_all,error)
-  if (error .ne. ELPA_OK) then
-    print *,"Error getting option for mpi_comm_all. Aborting..."
-    stop
-  endif
+ ! call obj%get("mpi_comm_all",mpi_comm_all,error)
+ ! if (error .ne. ELPA_OK) then
+ !   print *,"Error getting option for mpi_comm_all. Aborting..."
+ !   stop
+ ! endif
   call obj%get("mpi_comm_rows",mpi_comm_rows,error)
   if (error .ne. ELPA_OK) then
     print *,"Error getting option for mpi_comm_rows. Aborting..."
@@ -175,7 +176,7 @@
   call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
   call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND), my_pcolMPI, mpierr)
   call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
-  call mpi_comm_rank(int(mpi_comm_all,kind=MPI_KIND), myidMPI, mpierr)
+  !call mpi_comm_rank(int(mpi_comm_all,kind=MPI_KIND), myidMPI, mpierr)
 
   my_prow = int(my_prowMPI,kind=c_int)
   np_rows = int(np_rowsMPI,kind=c_int)
@@ -230,37 +231,37 @@
   else ! useGPU
   endif ! useGPU
 
-  if (useGPU) then
-    successGPU = gpu_malloc(tmp1_dev, nblk*nblk*size_of_datatype)
-    check_alloc_gpu("elpa_invert_trm: tmp1_dev", successGPU)
-
-    successGPU = gpu_memset(tmp1_dev, 0, nblk*nblk*size_of_datatype)
-    check_memcpy_gpu("trans_ev", successGPU)
-
-    successGPU = gpu_malloc(tmp2_dev, nblk*nblk*size_of_datatype)
-    check_alloc_gpu("elpa_invert_trm: tmp2_dev", successGPU)
-
-    successGPU = gpu_memset(tmp1_dev, 0, nblk*nblk*size_of_datatype)
-    check_memcpy_gpu("trans_ev", successGPU)
-
-    successGPU = gpu_memset(tmp2_dev, 0, nblk*nblk*size_of_datatype)
-    check_memcpy_gpu("trans_ev", successGPU)
-
-    successGPU = gpu_malloc(tmat1_dev, l_rows*nblk*size_of_datatype)
-    check_alloc_gpu("elpa_invert_trm: tmat1_dev", successGPU)
-
-    successGPU = gpu_memset(tmat1_dev, 0, l_rows*nblk*size_of_datatype)
-    check_memcpy_gpu("trans_ev", successGPU)
-
-    successGPU = gpu_malloc(tmat2_dev, nblk*l_cols*size_of_datatype)
-    check_alloc_gpu("elpa_invert_trm: tmat1_dev", successGPU)
-
-    successGPU = gpu_memset(tmat2_dev, 0, nblk*l_cols*size_of_datatype)
-    check_memcpy_gpu("trans_ev", successGPU)
-
-    successGPU = gpu_malloc(a_dev, matrixRows*matrixCols*size_of_datatype)
-    check_alloc_gpu("elpa_invert_trm: tmat1_dev", successGPU)
-  endif ! useGPU
+!!  if (useGPU) then
+!!    successGPU = gpu_malloc(tmp1_dev, nblk*nblk*size_of_datatype)
+!!    check_alloc_gpu("elpa_invert_trm: tmp1_dev", successGPU)
+!!
+!!    successGPU = gpu_memset(tmp1_dev, 0, nblk*nblk*size_of_datatype)
+!!    check_memcpy_gpu("trans_ev", successGPU)
+!!
+!!    successGPU = gpu_malloc(tmp2_dev, nblk*nblk*size_of_datatype)
+!!    check_alloc_gpu("elpa_invert_trm: tmp2_dev", successGPU)
+!!
+!!    successGPU = gpu_memset(tmp1_dev, 0, nblk*nblk*size_of_datatype)
+!!    check_memcpy_gpu("trans_ev", successGPU)
+!!
+!!    successGPU = gpu_memset(tmp2_dev, 0, nblk*nblk*size_of_datatype)
+!!    check_memcpy_gpu("trans_ev", successGPU)
+!!
+!!    successGPU = gpu_malloc(tmat1_dev, l_rows*nblk*size_of_datatype)
+!!    check_alloc_gpu("elpa_invert_trm: tmat1_dev", successGPU)
+!!
+!!    successGPU = gpu_memset(tmat1_dev, 0, l_rows*nblk*size_of_datatype)
+!!    check_memcpy_gpu("trans_ev", successGPU)
+!!
+!!    successGPU = gpu_malloc(tmat2_dev, nblk*l_cols*size_of_datatype)
+!!    check_alloc_gpu("elpa_invert_trm: tmat1_dev", successGPU)
+!!
+!!    successGPU = gpu_memset(tmat2_dev, 0, nblk*l_cols*size_of_datatype)
+!!    check_memcpy_gpu("trans_ev", successGPU)
+!!
+!!    successGPU = gpu_malloc(a_dev, matrixRows*matrixCols*size_of_datatype)
+!!    check_alloc_gpu("elpa_invert_trm: tmat1_dev", successGPU)
+!!  endif ! useGPU
 
 
   allocate(tmp1(nblk*nblk), stat=istat, errmsg=errorMessage)
