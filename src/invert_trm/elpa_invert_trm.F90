@@ -454,7 +454,7 @@
         endif
       endif
 
-!#ifdef WITH_MPI
+#ifdef WITH_MPI
 #ifndef WITH_CUDA_AWARE_MPI
         if (useGPU) then
           num = l_rows*nblk*size_of_datatype
@@ -465,6 +465,7 @@
         endif
 #else
 #error "not yet implemented"
+#endif
 #endif
 
       do i=1,nb
