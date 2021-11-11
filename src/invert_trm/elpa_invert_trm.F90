@@ -460,8 +460,7 @@
           num = l_rows*nblk*size_of_datatype
           successGPU = gpu_memcpy(int(loc(tmat1),kind=c_intptr_t), &
                                   tmat1_dev, num, gpuMemcpyDeviceToHost)
-          check_memcpy_gpu("elpa_invert_trm: tmat1_dev to tmat1", & 
-                           successGPU)
+          check_memcpy_gpu("elpa_invert_trm: tmat1_dev to tmat1",successGPU)
         endif
 #else
 #error "not yet implemented"
@@ -488,8 +487,7 @@
           successGPU = gpu_memcpy(tmat1_dev, &
                                   int(loc(tmat1),kind=c_intptr_t),num, &
                                   gpuMemcpyHostToDevice)
-          check_memcpy_gpu("elpa_invert_trm: tmat1 to tmat1_dev", &
-                            successGPU)
+          check_memcpy_gpu("elpa_invert_trm: tmat1 to tmat1_dev",successGPU)
         endif
 #else
 #error "not yet implemented"
