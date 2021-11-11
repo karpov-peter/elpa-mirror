@@ -364,7 +364,7 @@
             nc = nc+i
           enddo
         endif ! useGPU
-      endif ! my_pcol==pcol(n, nblk, np_cols)
+!      endif ! my_pcol==pcol(n, nblk, np_cols)
 
 #ifdef WITH_MPI
 #ifndef WITH_CUDA_AWARE_MPI
@@ -378,6 +378,7 @@
 #else
 #error "not yet implemented"
 #endif
+      endif ! my_pcol==pcol(n, nblk, np_cols)
 
       call obj%timer%start("mpi_communication")
       call MPI_Bcast(tmp1, int(nb*(nb+1)/2,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION,       &
