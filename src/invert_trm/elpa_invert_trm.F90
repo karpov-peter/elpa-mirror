@@ -471,26 +471,31 @@
       do i=1,nb
 #ifdef WITH_MPI
         call obj%timer%start("mpi_communication")
-        call MPI_Bcast(tmat1(1,i), int(l_row1-1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
-                       int(pcol(n, nblk, np_cols),kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
-
+        call MPI_Bcast(tmat1(1,i), int(l_row1-1,kind=MPI_KIND), & 
+                       MPI_MATH_DATATYPE_PRECISION, &
+                       int(pcol(n, nblk, np_cols),kind=MPI_KIND), & 
+                       int(mpi_comm_cols,kind=MPI_KIND), mpierr)
         call obj%timer%stop("mpi_communication")
 
+#endif /* WITH_MPI */
+      enddo
+
+#ifdef WITH_MPI
 #ifndef WITH_CUDA_AWARE_MPI
         if (useGPU) then
           ! cuda aware MPI here
           num = l_rows*nblk*size_of_datatype
-          successGPU = gpu_memcpy(tmat1_dev, int(loc(tmat1),kind=c_intptr_t), num, &
-                              gpuMemcpyHostToDevice)
-          check_memcpy_gpu("elpa_invert_trm: tmat1 to tmat1_dev", successGPU)
-
+          successGPU = gpu_memcpy(tmat1_dev, &
+                                  int(loc(tmat1),kind=c_intptr_t),num, &
+                                  gpuMemcpyHostToDevice)
+          check_memcpy_gpu("elpa_invert_trm: tmat1 to tmat1_dev", &
+                            successGPU)
         endif
 #else
 #error "not yet implemented"
 #endif
-#endif /* WITH_MPI */
-      enddo
-    endif
+#endif
+    endif   ! if (l_row1>1) 
 
 #ifdef WITH_MPI
 #ifndef WITH_CUDA_AWARE_MPI
