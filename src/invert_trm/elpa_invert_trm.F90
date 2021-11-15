@@ -474,13 +474,12 @@
                                   tmat1_dev, num, gpuMemcpyDeviceToHost)
           check_memcpy_gpu("elpa_invert_trm: tmat1_dev to tmat1",successGPU)
         endif
-#else
-#error "not yet implemented"
 #endif
 #endif /* WITH_MPI */
 
-      do i=1,nb
 #ifdef WITH_MPI
+#ifndef WITH_CUDA_AWARE_MPI
+      do i=1,nb
         call obj%timer%start("mpi_communication")
         call MPI_Bcast(tmat1(1,i), int(l_row1-1,kind=MPI_KIND), & 
                        MPI_MATH_DATATYPE_PRECISION, &
@@ -502,6 +501,7 @@
 
       enddo
       call obj%timer%stop("mpi_cuda_communication")
+#endif
 #endif /* WITH_MPI */
 
 #ifdef WITH_MPI
@@ -529,8 +529,6 @@
         check_memcpy_gpu("elpa_invert_trm: tmat2_dev to tmat2", successGPU)
       endif
     endif
-#else
-#error "not yet implemented"
 #endif
 
     call obj%timer%start("mpi_communication")
