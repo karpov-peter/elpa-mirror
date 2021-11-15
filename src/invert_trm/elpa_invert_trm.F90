@@ -376,19 +376,17 @@
 #ifndef WITH_CUDA_AWARE_MPI
       if (useGPU) then
         num = nblk*nblk*size_of_datatype
-        successGPU = gpu_memcpy(int(loc(tmp1),kind=c_intptr_t), & 
-                                tmp1_dev, num, gpuMemcpyDeviceToHost)
-
+        successGPU = gpu_memcpy(int(loc(tmp1),kind=c_intptr_t), tmp1_dev, num, &
+                              gpuMemcpyDeviceToHost)
         check_memcpy_gpu("elpa_invert_trm: tmp1_dev to tmp1", successGPU)
+
       endif
 #endif
 
 #ifndef WITH_CUDA_AWARE_MPI
       call obj%timer%start("mpi_communication")
-      call MPI_Bcast(tmp1, int(nb*(nb+1)/2,kind=MPI_KIND), & 
-                     MPI_MATH_DATATYPE_PRECISION, &
-                     int(pcol(n, nblk, np_cols),kind=MPI_KIND), & 
-                     int(mpi_comm_cols,kind=MPI_KIND), mpierr)
+      call MPI_Bcast(tmp1, int(nb*(nb+1)/2,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION,       &
+                     int(pcol(n, nblk, np_cols),kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
       call obj%timer%stop("mpi_communication")
 #else
       tmp1_mpi_dev = transfer(tmp1_dev, tmp1_mpi_dev)
@@ -403,8 +401,8 @@
 #ifndef WITH_CUDA_AWARE_MPI
       if ((useGPU)) then  
         num = nblk*nblk*size_of_datatype
-        successGPU = gpu_memcpy(tmp1_dev,int(loc(tmp1),kind=c_intptr_t),&
-                                num, gpuMemcpyHostToDevice)
+        successGPU = gpu_memcpy(tmp1_dev, int(loc(tmp1),kind=c_intptr_t), num, &
+                              gpuMemcpyHostToDevice)
         check_memcpy_gpu("elpa_invert_trm: tmp1 to tmp1_dev", successGPU)
 
       endif
@@ -426,23 +424,21 @@
         if (l_cols-l_colx+1 > 0) then
           a_off = (l_row1 -1 + (l_colx-1)*matrixRows) * size_of_datatype
 
-          call gpublas_PRECISION_TRMM('L', 'U', 'N', 'N', nb, &
-                                      l_cols-l_colx+1, ONE, tmp2_dev, & 
+          call gpublas_PRECISION_TRMM('L', 'U', 'N', 'N', nb, l_cols-l_colx+1, ONE, tmp2_dev, &
                                       nblk, a_dev+a_off, matrixRows)
-       
+        
           !successGPU = gpu_devicesynchronize()
         endif
         call obj%timer%stop("gpublas")
 
         if (l_colx <= l_cols) then
-          call copy_PRECISION_a_tmat2(a_dev,tmat2_dev,nblk,matrixRows,&
-                                      l_cols, l_colx, l_row1, nb)
+          call copy_PRECISION_a_tmat2 (a_dev, tmat2_dev, nblk, matrixRows, l_cols, l_colx, & 
+                                       l_row1, nb)
         endif
-        
+
         if (my_pcol==pcol(n, nblk, np_cols)) then
            ! tmp2 has the lower left triangle 0
-          call copy_PRECISION_tmp2_tmat2 (tmp2_dev, tmat2_dev, nblk,&
-                                          l_col1, nb) 
+          call copy_PRECISION_tmp2_tmat2 (tmp2_dev, tmat2_dev, nblk, l_col1, nb) 
         endif
       else ! useGPU
         call obj%timer%start("blas")
@@ -468,22 +464,20 @@
 
 #ifdef WITH_MPI
 #ifndef WITH_CUDA_AWARE_MPI
-        if (useGPU) then
-          num = l_rows*nblk*size_of_datatype
-          successGPU = gpu_memcpy(int(loc(tmat1),kind=c_intptr_t), &
-                                  tmat1_dev, num, gpuMemcpyDeviceToHost)
-          check_memcpy_gpu("elpa_invert_trm: tmat1_dev to tmat1",successGPU)
-        endif
-#else
-#error "not yet implemented"
+      if (useGPU) then
+        num = l_rows*nblk*size_of_datatype
+        successGPU = gpu_memcpy(int(loc(tmat1),kind=c_intptr_t), tmat1_dev, num, &
+                              gpuMemcpyDeviceToHost)
+        check_memcpy_gpu("elpa_invert_trm: tmat1_dev to tmat1", successGPU)
+      endif
 #endif
 #endif /* WITH_MPI */
 
-      do i=1,nb
 #ifdef WITH_MPI
+#ifndef WITH_CUDA_AWARE_MPI
+      do i=1,nb
         call obj%timer%start("mpi_communication")
-        call MPI_Bcast(tmat1(1,i), int(l_row1-1,kind=MPI_KIND), & 
-                       MPI_MATH_DATATYPE_PRECISION, &
+        call MPI_Bcast(tmat1(1,i), int(l_row1-1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
                        int(pcol(n, nblk, np_cols),kind=MPI_KIND), & 
                        int(mpi_comm_cols,kind=MPI_KIND), mpierr)
 
@@ -502,6 +496,7 @@
 
       enddo
       call obj%timer%stop("mpi_cuda_communication")
+#endif
 #endif /* WITH_MPI */
 
 #ifdef WITH_MPI
