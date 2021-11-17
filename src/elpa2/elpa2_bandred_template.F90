@@ -142,7 +142,7 @@ max_threads, isSkewsymmetric)
 #ifdef WITH_OPENMP_TRADITIONAL
   integer(kind=ik)                            :: mynlc, lrs, transformChunkSize
 #endif
-  integer(kind=ik)                            :: i, j, lcs, lce, lre, lc, lr, cur_pcol, n_cols, nrow
+  integer(kind=ik)                            :: i, j, lcs, lce, lre, lc, lr, cur_pcol, cur_prow, n_cols, nrow
   integer(kind=ik)                            :: istep, ncol, lch, lcx, nlc
   integer(kind=ik)                            :: tile_size, l_rows_tile, l_cols_tile
 
@@ -154,7 +154,15 @@ max_threads, isSkewsymmetric)
   MATH_DATATYPE(kind=rck), pointer     :: vmrGPU(:), umcGPU(:)
   MATH_DATATYPE(kind=rck), allocatable :: tmpCPU(:,:), vmrCPU(:,:), umcCPU(:,:)
   MATH_DATATYPE(kind=rck), allocatable :: vr(:)
-
+  !Soheil:
+  MATH_DATATYPE(kind=rck), allocatable :: buffer(:)
+  integer               :: mpi_status(MPI_STATUS_SIZE), pcnt, req_cntr, counter
+  integer, allocatable  :: mpi_req(:), mpi_wait_status(:,:), owner_ranks(:)
+  integer(kind=ik)      :: mpi_comm_shmem, shmem_size, shmem_rank
+  integer(kind=ik)      :: mpi_comm_owner, world_group, owner_group
+  
+  integer(kind=ik)      :: flag, my_id, owner
+  
 #if REALCASE == 1
   ! needed for blocked QR decomposition
   integer(kind=ik)                            :: PQRPARAM(11), work_size
@@ -262,7 +270,30 @@ max_threads, isSkewsymmetric)
   if (wantDebug) call obj%timer%stop("mpi_communication")
   success = .true.
 
+  !Soheil:
+  if (.not. allocated(mpi_req)) allocate(mpi_req(np_rows))   !TODO: deallocate it later
+    
+  if (.not. allocated(mpi_wait_status)) allocate(mpi_wait_status(MPI_STATUS_SIZE, np_rows))
 
+  if (.not. allocated(owner_ranks)) allocate(owner_ranks(np_cols))   !TODO: deallocate it later
+  
+  call mpi_comm_rank(mpi_comm_world, my_id, mpierr)   !TODO: use parent comm. instead
+
+  call mpi_gather(my_id, 1, MPI_INTEGER, owner_ranks, 1, MPI_INTEGER, 0, mpi_comm_cols, mpierr)
+
+  call mpi_bcast(owner_ranks, np_cols, MPI_INTEGER, 0, mpi_comm_world, mpierr)
+
+  call mpi_comm_group(MPI_COMM_WORLD, world_group, mpierr)
+  call mpi_group_incl(world_group, np_cols, owner_ranks, owner_group, mpierr)
+  call mpi_comm_create_group(MPI_COMM_WORLD, owner_group, 0, mpi_comm_owner, mpierr)
+  
+  !Shmem:
+  call mpi_comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &
+       mpi_comm_shmem, mpierr)
+  call mpi_comm_rank(mpi_comm_shmem, shmem_rank, mpierr)
+  call mpi_comm_size(mpi_comm_shmem, shmem_size, mpierr)
+
+  
   ! Semibandwith nbw must be a multiple of blocksize nblk
   if (mod(nbw,nblk)/=0) then
     if (my_prow==0 .and. my_pcol==0) then
@@ -427,8 +458,8 @@ max_threads, isSkewsymmetric)
               &MATH_DATATYPE&
               &: error when allocating vr "//errorMessage
       stop 1
-    endif
-
+   endif
+      
     successGPU = gpu_malloc_host(vmr_host,vmr_size*size_of_datatype)
     check_host_alloc_gpu("bandred: vmr_host", successGPU)
     call c_f_pointer(vmr_host, vmrGPU, (/vmr_size/))
@@ -576,8 +607,8 @@ max_threads, isSkewsymmetric)
 
     else !useQR
 #endif /* REALCASE == 1 */
-      do lc = n_cols, 1, -1
-
+       do lc = n_cols, 1, -1
+          
         ncol = istep*nbw + lc ! absolute column number of householder Vector
         nrow = ncol - nbw ! Absolute number of pivot row
 
@@ -589,7 +620,9 @@ max_threads, isSkewsymmetric)
         if (nrow == 1) exit ! Nothing to do
 
         cur_pcol = pcol(ncol, nblk, np_cols) ! Processor column owning current block
-
+        !Soheil
+        cur_prow = 0 !prow(nrow, nblk, np_rows)
+        
         if (my_pcol==cur_pcol) then
 
           ! Get Vector to be transformed; distribute last element and norm of
@@ -639,11 +672,49 @@ max_threads, isSkewsymmetric)
           else
             a_mat(1:lr,lch) = vr(1:lr)
           endif
-
-        endif
-
+          !Soheil:                  
+          if ((my_prow /= cur_prow)) then
+             call mpi_send(vr, int(lr,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+                  int(cur_prow, kind=MPI_KIND), int(my_prow,kind=MPI_KIND), &
+                  int(mpi_comm_rows,kind=MPI_KIND), mpierr)
+          else
+             !Soheil
+             if (.not. allocated(buffer))  allocate(buffer(np_rows*(l_rows)))   ! size(vr)=(l_rows+1)
+             req_cntr = 0
+             mpi_req(:) = 0
+             do pcnt=0,np_rows-1
+                if (pcnt /= cur_prow) then
+                   req_cntr = req_cntr+1
+                   call mpi_Irecv(buffer(pcnt*(lr)+1), int(lr,kind=MPI_KIND), &
+                        MPI_MATH_DATATYPE_PRECISION, &
+                        int(pcnt,kind=MPI_KIND), int(pcnt,kind=MPI_KIND), &
+                        int(mpi_comm_rows,kind=MPI_KIND), mpi_req(req_cntr), mpi_status, &
+                        mpierr)                
+                end if
+             end do
+             buffer(1:lr) = vr(1:lr)
+             call mpi_comm_rank(mpi_comm_owner, owner, mpierr)
+             call mpi_waitall(req_cntr, mpi_req(1:req_cntr), mpi_wait_status(:, 1:req_cntr), &
+                  mpierr)
+             
+          end if
+          !TODO: if (allocated(mpi_req))   deallocate(mpi_req)
+       endif   ! (my_pcol==cur_pcol)             
+       
         ! Broadcast Householder Vector and tau along columns
+       !Soheil
+       if (.not. allocated(buffer))  allocate(buffer(np_rows*(l_rows)))   ! size(vr)=(l_rows+1)
+       !Informa everybody who the owner is:
+       call MPI_Bcast(owner, int(1,kind=MPI_KIND), MPI_INTEGER, &
+            int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
 
+       !Bcast the buffer among the owners
+       if (my_prow==0) then
+          call MPI_Bcast(buffer, int(np_rows*(l_rows),kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+               int(owner,kind=MPI_KIND), int(mpi_comm_owner,kind=MPI_KIND), mpierr)
+       end if
+       
+       
         vr(lr+1) = tau
 #ifdef WITH_MPI
         if (wantDebug) call obj%timer%start("mpi_communication")
