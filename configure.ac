@@ -110,6 +110,12 @@ if test x"${with_mpi}" = x"yes"; then
   AC_DEFINE([WITH_MPI], [1], [use MPI])
 fi
 
+AC_ARG_WITH(mpi-shmem, [AS_HELP_STRING([--with-mpi-shmem=[[yes|no]]], [Use MPI3 shared memory. Default: no])],,[with_mpi_shmem=no])
+AM_CONDITIONAL([WITH_MPI_SHMEM],[test x"$with_mpi_shmem" = x"yes"])
+if test x"${with_mpi_shmem}" = x"yes"; then
+  AC_DEFINE([WITH_MPI_SHMEM], [1], [use MPI3 shared memory])
+fi
+
 dnl CPP
 AC_LANG_PUSH([C++])
 AC_PROG_CXX

@@ -153,16 +153,7 @@ max_threads, isSkewsymmetric)
   MATH_DATATYPE(kind=rck), allocatable :: tmpGPU(:)
   MATH_DATATYPE(kind=rck), pointer     :: vmrGPU(:), umcGPU(:)
   MATH_DATATYPE(kind=rck), allocatable :: tmpCPU(:,:), vmrCPU(:,:), umcCPU(:,:)
-  MATH_DATATYPE(kind=rck), allocatable :: vr(:)
-  !Soheil:
-  MATH_DATATYPE(kind=rck), allocatable :: buffer(:)
-  integer               :: mpi_status(MPI_STATUS_SIZE), pcnt, req_cntr, counter, recv_req
-  integer, allocatable  :: mpi_req(:), mpi_wait_status(:,:), owner_ranks(:)
-  integer(kind=ik)      :: mpi_comm_shmem, shmem_size, shmem_rank
-  integer(kind=ik)      :: mpi_comm_owner, world_group, owner_group
-  integer(kind=ik), allocatable   ::   lr_dist(:)
-  integer(kind=ik)      :: flag, my_id, owner, offset
-  
+  MATH_DATATYPE(kind=rck), allocatable :: vr(:) 
 #if REALCASE == 1
   ! needed for blocked QR decomposition
   integer(kind=ik)                            :: PQRPARAM(11), work_size
@@ -171,9 +162,28 @@ max_threads, isSkewsymmetric)
 #endif
   integer(kind=C_intptr_T)                    :: a_dev, vmr_dev, umc_dev, tmat_dev, vav_dev
   type(c_ptr)                                 :: vmr_host, umc_host
+  
 #ifdef WITH_MPI
   !integer(kind=ik), external                  :: numroc -> use elpa_scalapack
-#endif
+#ifdef WITH_MPI_SHMEM
+  MATH_DATATYPE(kind=rck), allocatable :: buffer(:)
+  integer(kind=ik), allocatable        ::   lr_dist(:)
+  integer, allocatable                 :: mpi_req(:), mpi_wait_status(:,:), owner_ranks(:)
+  
+  integer               :: mpi_status(MPI_STATUS_SIZE), pcnt, req_cntr, counter, recv_req
+  integer(kind=ik)      :: mpi_comm_owner, world_group, owner_group
+  integer(kind=ik)      :: flag, my_id, owner, offset
+
+  !Shmem windows props
+  integer(kind=ik)                 :: mpi_comm_shmem, shmem_size, shmem_rank, shmem_win
+  integer(kind=MPI_ADDRESS_KIND)   :: buffer_size, lb, dtype_size
+  integer                          :: disp_unit
+  type(c_ptr)                      :: buffer_c_ptr
+  MATH_DATATYPE(kind=rck), pointer, asynchronous   :: buffer_ptr(:)  
+  
+#endif  /* WITH_MPI_SHMEM */ 
+#endif  /* WITH_MPI */
+  
   integer(kind=ik)                            :: ierr
   integer(kind=ik)                            :: cur_l_rows, cur_l_cols, vmr_size, umc_size
   integer(kind=ik)                            :: l_rows2, vmr_size2, umc_size2
@@ -270,17 +280,14 @@ max_threads, isSkewsymmetric)
   if (wantDebug) call obj%timer%stop("mpi_communication")
   success = .true.
 
-  !Soheil:
-  if (.not. allocated(mpi_req)) allocate(mpi_req(np_rows))   !TODO: deallocate it later
-    
+#ifdef WITH_MPI
+#ifdef WITH_MPI_SHMEM
+  if (.not. allocated(mpi_req))         allocate(mpi_req(np_rows))   !TODO: deallocate it later    
   if (.not. allocated(mpi_wait_status)) allocate(mpi_wait_status(MPI_STATUS_SIZE, np_rows))
-
-  if (.not. allocated(owner_ranks)) allocate(owner_ranks(np_cols))   !TODO: deallocate it later
+  if (.not. allocated(owner_ranks))     allocate(owner_ranks(np_cols))   !TODO: deallocate it later
   
   call mpi_comm_rank(mpi_comm_world, my_id, mpierr)   !TODO: use parent comm. instead
-
   call mpi_gather(my_id, 1, MPI_INTEGER, owner_ranks, 1, MPI_INTEGER, 0, mpi_comm_cols, mpierr)
-
   call mpi_bcast(owner_ranks, np_cols, MPI_INTEGER, 0, mpi_comm_world, mpierr)
 
   call mpi_comm_group(MPI_COMM_WORLD, world_group, mpierr)
@@ -293,6 +300,8 @@ max_threads, isSkewsymmetric)
   call mpi_comm_rank(mpi_comm_shmem, shmem_rank, mpierr)
   call mpi_comm_size(mpi_comm_shmem, shmem_size, mpierr)
 
+#endif  /* WITH_MPI_SHMEM */
+#endif  /* WITH_MPI */
   
   ! Semibandwith nbw must be a multiple of blocksize nblk
   if (mod(nbw,nblk)/=0) then
@@ -321,7 +330,16 @@ max_threads, isSkewsymmetric)
     na_colsBLAS = numroc(int(na,kind=BLAS_KIND), int(nblk,kind=BLAS_KIND), &
                          int(my_pcol,kind=BLAS_KIND), 0_BLAS_KIND, int(np_cols,kind=BLAS_KIND))
     na_cols = int(na_colsBLAS,kind=c_int)
-#else
+    
+#ifdef WITH_MPI_SHMEM
+    call mpi_type_get_extent(MPI_MATH_DATATYPE_PRECISION, lb, dtype_size, mpierr)
+    buffer_size = np_rows * na_cols * dtype_size
+    disp_unit = dtype_size
+    call MPI_Win_allocate_shared(buffer_size, disp_unit, MPI_INFO_NULL, mpi_comm_shmem, buffer_c_ptr, shmem_win, mpierr)
+    call c_f_pointer(buffer_c_ptr, buffer_ptr, (/np_rows * na_cols/)) 
+#endif /* WITH_MPI_SHMEM */
+    
+#else  /* WITH_MPI */
 #if COMPLEXCASE == 1
     na_rows = na
 #endif
@@ -620,11 +638,21 @@ max_threads, isSkewsymmetric)
         if (nrow == 1) exit ! Nothing to do
 
         cur_pcol = pcol(ncol, nblk, np_cols) ! Processor column owning current block
-        !Soheil
-        cur_prow = 0 !prow(nrow, nblk, np_rows)
-        if (.not. allocated(buffer))  allocate(buffer(np_rows*lr))   ! size(vr)=(l_rows+1)
+        
+#ifdef WITH_MPI
+#ifdef WITH_MPI_SHMEM        
         if (.not. allocated(lr_dist)) allocate(lr_dist(np_rows))
         call mpi_gather(lr, 1, MPI_INTEGER, lr_dist, 1, MPI_INTEGER, 0, mpi_comm_rows, mpierr)
+        do counter=1,np_rows
+           lr_dist(counter) = lr_dist(counter) + 1   ! Add one because tau will be padded later as well
+        end do
+        
+        cur_prow = 0 !prow(nrow, nblk, np_rows)
+        if (my_prow == cur_prow) then
+           if (.not. allocated(buffer))  allocate(buffer(sum(lr_dist)))   ! size(vr)=(l_rows+1)
+        end if
+#endif  /* WITH_MPI_SHMEM*/
+#endif  /* WITH_MPI */
         
         if (my_pcol==cur_pcol) then
 
@@ -675,15 +703,15 @@ max_threads, isSkewsymmetric)
           else
             a_mat(1:lr,lch) = vr(1:lr)
           endif
-          !Soheil:
           vr(lr+1) = tau
+          
+#ifdef WITH_MPI          
+#ifdef WITH_MPI_SHMEM          
           if ((my_prow /= cur_prow)) then
-             call mpi_send(vr, int(lr,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+             call mpi_send(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
                   int(cur_prow, kind=MPI_KIND), int(my_prow,kind=MPI_KIND), &
                   int(mpi_comm_rows,kind=MPI_KIND), mpierr)
           else
-             !Soheil
-             !if (.not. allocated(buffer))  allocate(buffer(np_rows*(l_rows)))   ! size(vr)=(l_rows+1)
              req_cntr = 0
              mpi_req(:) = 0
              do pcnt=0,np_rows-1
@@ -697,18 +725,22 @@ max_threads, isSkewsymmetric)
                         mpierr)                
                 end if
              end do
-             buffer(1:lr) = vr(1:lr)
+             buffer(1:lr+1) = vr(1:lr+1)
+             !shmem
+             buffer_ptr(1:lr+1) = vr(1:lr+1)
              call mpi_comm_rank(mpi_comm_owner, owner, mpierr)
              call mpi_waitall(req_cntr, mpi_req(1:req_cntr), mpi_wait_status(:, 1:req_cntr), &
                   mpierr)
              
           end if
           !TODO: if (allocated(mpi_req))   deallocate(mpi_req)
+#endif  /* WITH_MPI_SHMEM */
+#endif  /* WITH_MPI */          
        endif   ! (my_pcol==cur_pcol)             
        
-        ! Broadcast Householder Vector and tau along columns
-
-       !Soheil
+       ! Broadcast Householder Vector and tau along columns
+#ifdef WITH_MPI       
+#ifdef WITH_MPI_SHMEM
        ! inform everybody who the owner is:
        call MPI_Bcast(owner, int(1,kind=MPI_KIND), MPI_INTEGER, &
             int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
@@ -726,16 +758,15 @@ max_threads, isSkewsymmetric)
              call mpi_Isend(buffer(offset), int(lr_dist(pcnt+1),kind=MPI_KIND), &
                   MPI_MATH_DATATYPE_PRECISION, &
                   int(pcnt,kind=MPI_KIND), int(pcnt,kind=MPI_KIND), &
-                  int(mpi_comm_rows,kind=MPI_KIND), mpi_req(req_cntr), mpierr)
-                   
-             ! call mpi_Isend(buffer(pcnt*(lr)+1), int(lr,kind=MPI_KIND), &
-             !      MPI_MATH_DATATYPE_PRECISION, &
-             !      int(pcnt,kind=MPI_KIND), int(pcnt,kind=MPI_KIND), &
-             !      int(mpi_comm_rows,kind=MPI_KIND), mpi_req(req_cntr), mpierr)                
+                  int(mpi_comm_rows,kind=MPI_KIND), mpi_req(req_cntr), mpierr)                   
           end do
-          vr(1:lr) = buffer(1:lr)  
+          !shmem:
+          call mpi_win_lock_all(MPI_MODE_NOCHECK,win_shm,mpierr)
+          vr(1:lr+1) = buffer_ptr(1:lr+1)
+          
+          vr(1:lr+1) = buffer(1:lr+1)  
        else
-          call mpi_recv(vr, int(lr,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, & 
+          call mpi_recv(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, & 
                MPI_ANY_SOURCE, MPI_ANY_TAG, & !int(0, kind=MPI_KIND), int(my_prow,kind=MPI_KIND), &
                int(mpi_comm_rows,kind=MPI_KIND), mpi_status, mpierr)
        end if
@@ -743,18 +774,16 @@ max_threads, isSkewsymmetric)
        if (my_prow==0) then
           call mpi_waitall(req_cntr, mpi_req(1:req_cntr), mpi_wait_status(:, 1:req_cntr), &
                mpierr)
-       !else
-       !   call mpi_wait(recv_req, mpi_status, mpierr)
        end if
        
-!        vr(lr+1) = tau
-! #ifdef WITH_MPI
-!         if (wantDebug) call obj%timer%start("mpi_communication")
-!         call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
-!                       int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
-!         if (wantDebug) call obj%timer%stop("mpi_communication")
-
-! #endif /* WITH_MPI */
+#else  /* WITH_MPI_SHMEM */
+        if (wantDebug) call obj%timer%start("mpi_communication")
+        call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+                      int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
+        if (wantDebug) call obj%timer%stop("mpi_communication")
+        
+#endif /* WITH_MPI_SHMEM*/
+#endif /* WITH_MPI */
 
         if (useGPU_reduction_lower_block_to_tridiagonal .and. .not.(useIntelGPU)) then
           vmrGPU(cur_l_rows * (lc - 1) + 1 : cur_l_rows * (lc - 1) + lr) = vr(1:lr)
