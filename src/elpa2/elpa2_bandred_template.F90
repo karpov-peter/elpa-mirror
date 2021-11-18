@@ -156,12 +156,12 @@ max_threads, isSkewsymmetric)
   MATH_DATATYPE(kind=rck), allocatable :: vr(:)
   !Soheil:
   MATH_DATATYPE(kind=rck), allocatable :: buffer(:)
-  integer               :: mpi_status(MPI_STATUS_SIZE), pcnt, req_cntr, counter
+  integer               :: mpi_status(MPI_STATUS_SIZE), pcnt, req_cntr, counter, recv_req
   integer, allocatable  :: mpi_req(:), mpi_wait_status(:,:), owner_ranks(:)
   integer(kind=ik)      :: mpi_comm_shmem, shmem_size, shmem_rank
   integer(kind=ik)      :: mpi_comm_owner, world_group, owner_group
-  
-  integer(kind=ik)      :: flag, my_id, owner
+  integer(kind=ik), allocatable   ::   lr_dist(:)
+  integer(kind=ik)      :: flag, my_id, owner, offset
   
 #if REALCASE == 1
   ! needed for blocked QR decomposition
@@ -622,6 +622,9 @@ max_threads, isSkewsymmetric)
         cur_pcol = pcol(ncol, nblk, np_cols) ! Processor column owning current block
         !Soheil
         cur_prow = 0 !prow(nrow, nblk, np_rows)
+        if (.not. allocated(buffer))  allocate(buffer(np_rows*lr))   ! size(vr)=(l_rows+1)
+        if (.not. allocated(lr_dist)) allocate(lr_dist(np_rows))
+        call mpi_gather(lr, 1, MPI_INTEGER, lr_dist, 1, MPI_INTEGER, 0, mpi_comm_rows, mpierr)
         
         if (my_pcol==cur_pcol) then
 
@@ -672,20 +675,22 @@ max_threads, isSkewsymmetric)
           else
             a_mat(1:lr,lch) = vr(1:lr)
           endif
-          !Soheil:                  
+          !Soheil:
+          vr(lr+1) = tau
           if ((my_prow /= cur_prow)) then
              call mpi_send(vr, int(lr,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
                   int(cur_prow, kind=MPI_KIND), int(my_prow,kind=MPI_KIND), &
                   int(mpi_comm_rows,kind=MPI_KIND), mpierr)
           else
              !Soheil
-             if (.not. allocated(buffer))  allocate(buffer(np_rows*(l_rows)))   ! size(vr)=(l_rows+1)
+             !if (.not. allocated(buffer))  allocate(buffer(np_rows*(l_rows)))   ! size(vr)=(l_rows+1)
              req_cntr = 0
              mpi_req(:) = 0
              do pcnt=0,np_rows-1
                 if (pcnt /= cur_prow) then
                    req_cntr = req_cntr+1
-                   call mpi_Irecv(buffer(pcnt*(lr)+1), int(lr,kind=MPI_KIND), &
+                   offset = sum(lr_dist(1:pcnt))+1
+                   call mpi_Irecv(buffer(offset), int(lr_dist(pcnt+1),kind=MPI_KIND), &
                         MPI_MATH_DATATYPE_PRECISION, &
                         int(pcnt,kind=MPI_KIND), int(pcnt,kind=MPI_KIND), &
                         int(mpi_comm_rows,kind=MPI_KIND), mpi_req(req_cntr), mpi_status, &
@@ -702,27 +707,54 @@ max_threads, isSkewsymmetric)
        endif   ! (my_pcol==cur_pcol)             
        
         ! Broadcast Householder Vector and tau along columns
+
        !Soheil
-       if (.not. allocated(buffer))  allocate(buffer(np_rows*(l_rows)))   ! size(vr)=(l_rows+1)
-       !Informa everybody who the owner is:
+       ! inform everybody who the owner is:
        call MPI_Bcast(owner, int(1,kind=MPI_KIND), MPI_INTEGER, &
             int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
 
-       !Bcast the buffer among the owners
+       ! !Bcast the buffer among the owners
        if (my_prow==0) then
-          call MPI_Bcast(buffer, int(np_rows*(l_rows),kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+          call MPI_Bcast(buffer, int(sum(lr_dist),kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, & !np_rows*lr
                int(owner,kind=MPI_KIND), int(mpi_comm_owner,kind=MPI_KIND), mpierr)
+          !Unpack the buffer
+          req_cntr = 0
+          mpi_req(:) = 0
+          do pcnt=1,np_rows-1
+             req_cntr = req_cntr+1
+             offset = sum(lr_dist(1:pcnt))+1
+             call mpi_Isend(buffer(offset), int(lr_dist(pcnt+1),kind=MPI_KIND), &
+                  MPI_MATH_DATATYPE_PRECISION, &
+                  int(pcnt,kind=MPI_KIND), int(pcnt,kind=MPI_KIND), &
+                  int(mpi_comm_rows,kind=MPI_KIND), mpi_req(req_cntr), mpierr)
+                   
+             ! call mpi_Isend(buffer(pcnt*(lr)+1), int(lr,kind=MPI_KIND), &
+             !      MPI_MATH_DATATYPE_PRECISION, &
+             !      int(pcnt,kind=MPI_KIND), int(pcnt,kind=MPI_KIND), &
+             !      int(mpi_comm_rows,kind=MPI_KIND), mpi_req(req_cntr), mpierr)                
+          end do
+          vr(1:lr) = buffer(1:lr)  
+       else
+          call mpi_recv(vr, int(lr,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, & 
+               MPI_ANY_SOURCE, MPI_ANY_TAG, & !int(0, kind=MPI_KIND), int(my_prow,kind=MPI_KIND), &
+               int(mpi_comm_rows,kind=MPI_KIND), mpi_status, mpierr)
+       end if
+
+       if (my_prow==0) then
+          call mpi_waitall(req_cntr, mpi_req(1:req_cntr), mpi_wait_status(:, 1:req_cntr), &
+               mpierr)
+       !else
+       !   call mpi_wait(recv_req, mpi_status, mpierr)
        end if
        
-       
-        vr(lr+1) = tau
-#ifdef WITH_MPI
-        if (wantDebug) call obj%timer%start("mpi_communication")
-        call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
-                      int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
-        if (wantDebug) call obj%timer%stop("mpi_communication")
+!        vr(lr+1) = tau
+! #ifdef WITH_MPI
+!         if (wantDebug) call obj%timer%start("mpi_communication")
+!         call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+!                       int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
+!         if (wantDebug) call obj%timer%stop("mpi_communication")
 
-#endif /* WITH_MPI */
+! #endif /* WITH_MPI */
 
         if (useGPU_reduction_lower_block_to_tridiagonal .and. .not.(useIntelGPU)) then
           vmrGPU(cur_l_rows * (lc - 1) + 1 : cur_l_rows * (lc - 1) + lr) = vr(1:lr)
@@ -904,7 +936,7 @@ max_threads, isSkewsymmetric)
           endif
         enddo
 #endif /* WITH_OPENMP_TRADITIONAL */
-      enddo ! lc
+     enddo ! lc
 
       if (useGPU_reduction_lower_block_to_tridiagonal .and. .not.(useIntelGPU)) then
         ! store column tiles back to GPU
