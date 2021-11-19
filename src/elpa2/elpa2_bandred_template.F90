@@ -329,16 +329,7 @@ max_threads, isSkewsymmetric)
 #endif
     na_colsBLAS = numroc(int(na,kind=BLAS_KIND), int(nblk,kind=BLAS_KIND), &
                          int(my_pcol,kind=BLAS_KIND), 0_BLAS_KIND, int(np_cols,kind=BLAS_KIND))
-    na_cols = int(na_colsBLAS,kind=c_int)
-    
-#ifdef WITH_MPI_SHMEM
-    call mpi_type_get_extent(MPI_MATH_DATATYPE_PRECISION, lb, dtype_size, mpierr)
-    buffer_size = np_rows * na_cols * dtype_size
-    disp_unit = dtype_size
-    call MPI_Win_allocate_shared(buffer_size, disp_unit, MPI_INFO_NULL, mpi_comm_shmem, buffer_c_ptr, shmem_win, mpierr)
-    call c_f_pointer(buffer_c_ptr, buffer_ptr, (/np_rows * na_cols/)) 
-#endif /* WITH_MPI_SHMEM */
-    
+    na_cols = int(na_colsBLAS,kind=c_int)        
 #else  /* WITH_MPI */
 #if COMPLEXCASE == 1
     na_rows = na
@@ -497,7 +488,14 @@ max_threads, isSkewsymmetric)
   !if (useIntelGPU) then
      ! needed later when explict mem copy
   !endif ! useIntelGPU
-
+  
+#ifdef WITH_MPI_SHMEM
+    call mpi_type_get_extent(MPI_MATH_DATATYPE_PRECISION, lb, dtype_size, mpierr)
+    buffer_size = np_rows * na * dtype_size
+    disp_unit = dtype_size
+    call MPI_Win_allocate_shared(buffer_size, disp_unit, MPI_INFO_NULL, mpi_comm_shmem, buffer_c_ptr, shmem_win, mpierr)
+    call c_f_pointer(buffer_c_ptr, buffer_ptr, (/np_rows * na_cols/)) 
+#endif /* WITH_MPI_SHMEM */
 
   do istep = blk_end, 1, -1
 
@@ -651,6 +649,8 @@ max_threads, isSkewsymmetric)
         if (my_prow == cur_prow) then
            if (.not. allocated(buffer))  allocate(buffer(sum(lr_dist)))   ! size(vr)=(l_rows+1)
         end if
+        !if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call MPI_F_sync_reg(buffer_ptr, mpierr)
+        call mpi_win_fence(0, shmem_win, mpierr)
 #endif  /* WITH_MPI_SHMEM*/
 #endif  /* WITH_MPI */
         
@@ -728,6 +728,7 @@ max_threads, isSkewsymmetric)
              buffer(1:lr+1) = vr(1:lr+1)
              !shmem
              buffer_ptr(1:lr+1) = vr(1:lr+1)
+             
              call mpi_comm_rank(mpi_comm_owner, owner, mpierr)
              call mpi_waitall(req_cntr, mpi_req(1:req_cntr), mpi_wait_status(:, 1:req_cntr), &
                   mpierr)
@@ -741,10 +742,16 @@ max_threads, isSkewsymmetric)
        ! Broadcast Householder Vector and tau along columns
 #ifdef WITH_MPI       
 #ifdef WITH_MPI_SHMEM
+       call mpi_win_fence(0, shmem_win, mpierr)
+       !if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call MPI_F_sync_reg(buffer_ptr, mpierr)
+
        ! inform everybody who the owner is:
        call MPI_Bcast(owner, int(1,kind=MPI_KIND), MPI_INTEGER, &
             int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
 
+       !if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call MPI_F_sync_reg(buffer_ptr, mpierr)
+       call mpi_win_fence(0, shmem_win, mpierr)
+       
        ! !Bcast the buffer among the owners
        if (my_prow==0) then
           call MPI_Bcast(buffer, int(sum(lr_dist),kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, & !np_rows*lr
@@ -760,11 +767,10 @@ max_threads, isSkewsymmetric)
                   int(pcnt,kind=MPI_KIND), int(pcnt,kind=MPI_KIND), &
                   int(mpi_comm_rows,kind=MPI_KIND), mpi_req(req_cntr), mpierr)                   
           end do
-          !shmem:
-          call mpi_win_lock_all(MPI_MODE_NOCHECK,win_shm,mpierr)
+          !shmem:          
           vr(1:lr+1) = buffer_ptr(1:lr+1)
-          
-          vr(1:lr+1) = buffer(1:lr+1)  
+          ! Non-shmem
+          !!!!vr(1:lr+1) = buffer(1:lr+1)  
        else
           call mpi_recv(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, & 
                MPI_ANY_SOURCE, MPI_ANY_TAG, & !int(0, kind=MPI_KIND), int(my_prow,kind=MPI_KIND), &
@@ -775,7 +781,8 @@ max_threads, isSkewsymmetric)
           call mpi_waitall(req_cntr, mpi_req(1:req_cntr), mpi_wait_status(:, 1:req_cntr), &
                mpierr)
        end if
-       
+       call mpi_win_fence(0, shmem_win, mpierr)
+       !if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call MPI_F_sync_reg(buffer_ptr, mpierr)
 #else  /* WITH_MPI_SHMEM */
         if (wantDebug) call obj%timer%start("mpi_communication")
         call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
