@@ -76,6 +76,16 @@ module elpa_gpu
   integer(kind=c_intptr_t), parameter :: size_of_single_complex = 8_ck4
 #endif
 
+  ! function to query system limit on pinned memory
+  interface 
+    function pagelim_c() result (limit) &
+             bind(C, name="pageLimFromC")
+      use, intrinsic  ::  iso_c_binding
+
+      integer(kind=c_size_t)  ::  limit
+    end function
+  end interface
+
   interface gpu_memcpy
     module procedure gpu_memcpy_intptr
     module procedure gpu_memcpy_cptr
@@ -1355,6 +1365,11 @@ module elpa_gpu
       endif
     end subroutine
 
+    function pagelim() result (limit) 
+    
+      integer(kind=c_size_t)  ::  limit
+      limit = pagelim_c()
+    end function pagelim
 
 end module
 

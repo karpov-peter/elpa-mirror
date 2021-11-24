@@ -69,6 +69,9 @@
 #include <cusolverDn.h>
 #endif
 
+#include <sys/time.h>
+#include <sys/resource.h>
+
 
 #define errormessage(x, ...) do { fprintf(stderr, "%s:%d " x, __FILE__, __LINE__, __VA_ARGS__ ); } while (0)
 
@@ -80,6 +83,21 @@
 
 #ifdef WITH_NVIDIA_GPU_VERSION
 extern "C" {
+
+  unsigned int pageLimFromC() {
+	//Compute the limit on page-lock memory
+        struct rlimit rlim;
+        rlim.rlim_cur = 0;   rlim.rlim_max = 0;
+
+        int err = getrlimit(RLIMIT_MEMLOCK, &rlim);
+        if (err == 0) {
+                return (size_t)rlim.rlim_cur;   //conservative limit
+        }
+        else {
+                printf("Warning: failed to retrieve system limit on page-locked memory.");
+        	return 0;	
+        }      
+  }
 
   int cublasCreateFromC(intptr_t *cublas_handle) {
     *cublas_handle = (intptr_t) malloc(sizeof(cublasHandle_t));
