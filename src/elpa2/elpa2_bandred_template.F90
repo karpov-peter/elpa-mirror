@@ -110,6 +110,10 @@ max_threads, isSkewsymmetric)
   use elpa_blas_interfaces
 #ifdef WITH_MPI
   use elpa_scalapack_interfaces
+#ifdef WITH_MPI_SHMEM
+  use mpi
+  use fmpi_sync
+#endif
 #endif
   use elpa_abstract_impl
 
@@ -165,12 +169,13 @@ max_threads, isSkewsymmetric)
   
 #ifdef WITH_MPI
   !integer(kind=ik), external                  :: numroc -> use elpa_scalapack
+  !integer(kind=ik) :: my_id   !DEBUG
 #ifdef WITH_MPI_SHMEM
-  MATH_DATATYPE(kind=rck), allocatable :: buffer(:)
+  MATH_DATATYPE(kind=rck), allocatable :: buffer(:), buffer_DEBUG(:)
   integer(kind=ik), allocatable        ::   lr_dist(:)
   integer, allocatable                 :: mpi_req(:), mpi_wait_status(:,:), owner_ranks(:)
   
-  integer               :: mpi_status(MPI_STATUS_SIZE), pcnt, req_cntr, counter, recv_req
+  integer               :: mpi_stat(MPI_STATUS_SIZE), pcnt, req_cntr, counter, recv_req
   integer(kind=ik)      :: mpi_comm_owner, world_group, owner_group
   integer(kind=ik)      :: flag, my_id, owner, offset, top_most_rank
 
@@ -282,9 +287,7 @@ max_threads, isSkewsymmetric)
 
 #ifdef WITH_MPI
 #ifdef WITH_MPI_SHMEM
-  if (.not. allocated(mpi_req))         allocate(mpi_req(np_rows))   !TODO: deallocate it later    
-  if (.not. allocated(mpi_wait_status)) allocate(mpi_wait_status(MPI_STATUS_SIZE, np_rows))
-  if (.not. allocated(owner_ranks))     allocate(owner_ranks(np_cols))   !TODO: deallocate it later
+  if (.not. allocated(owner_ranks))     allocate(owner_ranks(np_colsMPI))   
   
   call mpi_comm_rank(mpi_comm_world, my_id, mpierr)   !TODO: use parent comm. instead
   call mpi_gather(my_id, 1, MPI_INTEGER, owner_ranks, 1, MPI_INTEGER, 0, mpi_comm_cols, mpierr)
@@ -297,8 +300,8 @@ max_threads, isSkewsymmetric)
   !Shmem:
   call mpi_comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &
        mpi_comm_shmem, mpierr)
-  call mpi_comm_rank(mpi_comm_shmem, shmem_rank, mpierr)
-  call mpi_comm_size(mpi_comm_shmem, shmem_size, mpierr)
+  !call mpi_comm_rank(mpi_comm_shmem, shmem_rank, mpierr)
+  !call mpi_comm_size(mpi_comm_shmem, shmem_size, mpierr)
 
 #endif  /* WITH_MPI_SHMEM */
 #endif  /* WITH_MPI */
@@ -496,6 +499,9 @@ max_threads, isSkewsymmetric)
   disp_unit = dtype_size
   call MPI_Win_allocate_shared(buffer_size, disp_unit, MPI_INFO_NULL, mpi_comm_shmem, buffer_c_ptr, shmem_win, mpierr)
   call c_f_pointer(buffer_c_ptr, buffer_ptr, (/local_win_size/)) 
+!DEBUG:
+  if (.not. allocated(mpi_req))  allocate(mpi_req(np_rows))
+  if (.not. allocated(mpi_wait_status)) allocate(mpi_wait_status(MPI_STATUS_SIZE, np_rows))
 #endif /* WITH_MPI_SHMEM */
 #endif /* WITH_MPI */
     
@@ -641,17 +647,27 @@ max_threads, isSkewsymmetric)
         
 #ifdef WITH_MPI
 #ifdef WITH_MPI_SHMEM        
-        if (.not. allocated(lr_dist)) allocate(lr_dist(np_rows))
-        call mpi_gather(lr, 1, MPI_INTEGER, lr_dist, 1, MPI_INTEGER, 0, mpi_comm_rows, mpierr)
-        do counter=1,np_rows
-           lr_dist(counter) = lr_dist(counter) + 1   ! Add one because tau will be padded later as well
-        end do
-        
-        top_most_rank = 0 !prow(nrow, nblk, np_rows)
+!DEBUG: correct formatting!
+!print *,"GlobID: ", my_id, " cur_pcol: ", cur_pcol, " myCol: ", my_pcol, " myRow: ", my_prow
+!END DEBUG
+        top_most_rank = 0  !!!Allocation can be moved outside the loop
         if (my_prow == top_most_rank) then
+           if (.not. allocated(lr_dist)) allocate(lr_dist(np_rows))
+        end if
+        
+        call mpi_gather(lr, 1, MPI_INTEGER, lr_dist, 1, MPI_INTEGER, top_most_rank, mpi_comm_rows, mpierr)
+
+        if (my_prow == top_most_rank) then
+           do counter=1,np_rows
+              lr_dist(counter) = lr_dist(counter) + 1   ! Add one because tau will be padded later as well
+           end do
+                        
            if (.not. allocated(buffer))  allocate(buffer(sum(lr_dist)))   ! size(vr)=(l_rows+1)
+           buffer(:) = 6.66   !DEBUG
+           if (.not. allocated(buffer_DEBUG))  allocate(buffer_DEBUG(sum(lr_dist)))   ! DEBUG
         end if
 
+        owner            = MPI_PROC_NULL
         owner_shmem_rank = MPI_PROC_NULL   ! initialize
         
 #endif  /* WITH_MPI_SHMEM*/
@@ -707,77 +723,173 @@ max_threads, isSkewsymmetric)
             a_mat(1:lr,lch) = vr(1:lr)
           endif
           vr(lr+1) = tau
-          
+!DEBUG
+#if REALCASE == 1
+if (any(isnan(vr)))  print *,"NaN computed in the HH vector."
+#endif
+!END DEBUG          
        endif   ! (my_pcol==cur_pcol)             
 
 #ifdef WITH_MPI          
 #ifdef WITH_MPI_SHMEM
-       !if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call MPI_F_sync_reg(buffer_ptr, mpierr)
+       call obj%timer%start("write_HH_inSHMEM")
        call mpi_win_fence(0, shmem_win, mpierr)
+       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(buffer_ptr) 
        if (my_pcol==cur_pcol) then
           buffer_ptr(1:lr+1) = vr(1:lr+1)
 
           if ((my_prow == top_most_rank)) then
              call mpi_comm_rank(mpi_comm_owner, owner, mpierr)
-             call mpi_comm_rank(mpi_comm_shmem, owner_shmem_rank, mpierr)
+             !call mpi_comm_rank(mpi_comm_shmem, owner_shmem_rank, mpierr)
           end if
        end if   !(my_pcol==cur_pcol)
        call mpi_win_fence(0, shmem_win, mpierr)
-       !if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call MPI_F_sync_reg(buffer_ptr, mpierr)
-               
-       ! Broadcast Householder Vector and tau along columns
-       ! inform everybody who the owner is:
-       call MPI_Bcast(owner, int(1,kind=MPI_KIND), MPI_INTEGER, &
-            int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
-       call MPI_Bcast(owner_shmem_rank, int(1,kind=MPI_KIND), MPI_INTEGER, &
-            int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
-       call MPI_Bcast(owner_shmem_rank, int(1,kind=MPI_KIND), MPI_INTEGER, &
-            int(0,kind=MPI_KIND), int(mpi_comm_rows,kind=MPI_KIND), mpierr)              
-       
-       !shmem: packing the local shmem arrays into a buffer
-       if ((my_pcol==cur_pcol) .and. (my_prow==top_most_rank)) then          
-          do counter=1, np_rows-1
-             offset = sum(lr_dist(1:counter))+1
-             buffer(offset:offset+lr_dist(counter+1)-1) = buffer_ptr(counter*local_win_size+1:counter*local_win_size+lr+1) 
-          end do
-          buffer(1:lr+1) = buffer_ptr(1:lr+1)   ! my own part          
-       end if
-      
-       ! prepare for writing into the shmem window
-       call mpi_win_fence(0, shmem_win, mpierr)
-       !if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call MPI_F_sync_reg(buffer_ptr, mpierr)
+       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(buffer_ptr) 
+       call obj%timer%stop("write_HH_inSHMEM")
 
-       if (my_prow==top_most_rank) then
-          !Bcast the buffer among the owners
-          call MPI_Bcast(buffer, int(sum(lr_dist),kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, & 
-               int(owner,kind=MPI_KIND), int(mpi_comm_owner,kind=MPI_KIND), mpierr)
-          
-       !    !Bcast the buffer_ptr among the owners
-       !    call MPI_Bcast(buffer_ptr, int(local_win_size*np_rows,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
-       !         int(owner,kind=MPI_KIND), int(mpi_comm_owner,kind=MPI_KIND), mpierr)
-       end if
+        if (wantDebug) call obj%timer%start("mpi_communication")
+        call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+                      int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
+        if (wantDebug) call obj%timer%stop("mpi_communication")
 
-       ! Unpack the buffer
-       if ((my_prow==top_most_rank) .and. (my_pcol/=cur_pcol)) then
-          do counter=1, np_rows-1
-             offset = sum(lr_dist(1:counter))+1
-             buffer_ptr(counter*local_win_size+1:counter*local_win_size+lr+1) = buffer(offset:offset+lr_dist(counter+1)-1)
-          end do
-          buffer_ptr(1:lr+1) = buffer(1:lr+1)   ! my own part
-       end if
-
-       !writing complete
-       call mpi_win_fence(0, shmem_win, mpierr)
-       !if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call MPI_F_sync_reg(buffer_ptr, mpierr)
-
-       ! read epoch
-       vr(1:lr+1) = buffer_ptr(1:lr+1)            
-       
+!Test Bcast by disabling the whole rest of the code from here
+!!SEND/RECV DEBUG:
+!!Non-shmem
+!   if (my_pcol==cur_pcol) then
+!       if ((my_prow /= top_most_rank)) then
+!          !call mpi_send(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+!          call mpi_send(buffer_ptr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+!               int(top_most_rank, kind=MPI_KIND), int(my_prow,kind=MPI_KIND), &
+!               int(mpi_comm_rows,kind=MPI_KIND), mpierr)
+!       else
+!          req_cntr = 0
+!          mpi_req(:) = 0
+!          do pcnt=1,np_rows-1
+!                req_cntr = req_cntr+1
+!                offset = sum(lr_dist(1:pcnt))+1
+!                call mpi_Irecv(buffer_DEBUG(offset), int(lr_dist(pcnt+1),kind=MPI_KIND), &
+!                     MPI_MATH_DATATYPE_PRECISION, &
+!                     int(pcnt,kind=MPI_KIND), int(pcnt,kind=MPI_KIND), &
+!                     int(mpi_comm_rows,kind=MPI_KIND), mpi_req(req_cntr), mpi_stat, &
+!                     mpierr)                
+!          end do
+!          !buffer_DEBUG(1:lr+1) = vr(1:lr+1)
+!          buffer_DEBUG(1:lr+1) = buffer_ptr(1:lr+1)
+!          call mpi_waitall(req_cntr, mpi_req(1:req_cntr), mpi_wait_status(:, 1:req_cntr), mpierr)
+!        end if
+!   end if
+!       ! Broadcast Householder Vector and tau along columns
+!       ! ! not using buffering:
+!       ! call mpi_win_fence(0, shmem_win, mpierr)
+!       ! !if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call MPI_F_sync_reg(buffer_ptr, mpierr)
+!       ! if (my_prow==top_most_rank) then                 
+!       !    !Bcast the buffer_ptr among the owners
+!       !    call MPI_Bcast(buffer_ptr, int(local_win_size*np_rows,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+!       !         int(owner,kind=MPI_KIND), int(mpi_comm_owner,kind=MPI_KIND), mpierr)
+!       ! end if
+!       ! call mpi_win_fence(0, shmem_win, mpierr)
+!       ! !if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call MPI_F_sync_reg(buffer_ptr, mpierr)
+!
+!       ! using buffering:
+!       
+!       ! inform everybody who the owner is:
+!       call obj%timer%start("inform_owner")
+!       call MPI_Bcast(owner, int(1,kind=MPI_KIND), MPI_INTEGER, &
+!            int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
+!       call obj%timer%stop("inform_owner")
+!!broadcasting owner_shmem_rank may be needed if the row proc.s are not part of the same shmem group
+!!       call MPI_Bcast(owner_shmem_rank, int(1,kind=MPI_KIND), MPI_INTEGER, &
+!!            int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
+!!       call MPI_Bcast(owner_shmem_rank, int(1,kind=MPI_KIND), MPI_INTEGER, &
+!!            int(0,kind=MPI_KIND), int(mpi_comm_rows,kind=MPI_KIND), mpierr)              
+!!SEND/RECV DEBUG:
+!
+!    ! !Bcast the buffer among the owners
+!    if (my_prow==0) &
+!       call MPI_Bcast(buffer_DEBUG, int(sum(lr_dist),kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, & !np_rows*lr
+!            int(owner,kind=MPI_KIND), int(mpi_comm_owner,kind=MPI_KIND), mpierr)
+!
+!  if(my_pcol/=cur_pcol) then
+!    if (my_prow==0) then
+!       !Unpack the buffer
+!       req_cntr = 0
+!       mpi_req(:) = 0
+!       do pcnt=1,np_rows-1
+!          req_cntr = req_cntr+1
+!          offset = sum(lr_dist(1:pcnt))+1
+!          call mpi_Isend(buffer_DEBUG(offset), int(lr_dist(pcnt+1),kind=MPI_KIND), &
+!               MPI_MATH_DATATYPE_PRECISION, &
+!               int(pcnt,kind=MPI_KIND), int(pcnt,kind=MPI_KIND), &
+!               int(mpi_comm_rows,kind=MPI_KIND), mpi_req(req_cntr), mpierr)                   
+!       end do          
+!       ! Non-shmem
+!       vr(1:lr+1) = buffer_DEBUG(1:lr+1)          
+!    else
+!       call mpi_recv(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, & 
+!            MPI_ANY_SOURCE, MPI_ANY_TAG, & !int(0, kind=MPI_KIND), int(my_prow,kind=MPI_KIND), &
+!            int(mpi_comm_rows,kind=MPI_KIND), mpi_stat, mpierr)
+!    end if
+!
+!    if (my_prow==0) then
+!       call mpi_waitall(req_cntr, mpi_req(1:req_cntr), mpi_wait_status(:, 1:req_cntr), mpierr)
+!    end if
+!  end if
+!!DEBUG
+!!if (my_prow==top_most_rank) &
+!!     print *,"lc: ", lc, " my_id: ", my_id, " owner ret: ", owner 
+!!END DEBUG       
+!!!!TEMPORAR. DISABLED:
+!!!!!!       !shmem: packing the local shmem arrays into a buffer
+!!!!!!       call obj%timer%start("buffer_pack")
+!!!!!!       if ((my_pcol==cur_pcol) .and. (my_prow==top_most_rank)) then          
+!!!!!!          do counter=1, np_rows-1
+!!!!!!             offset = sum(lr_dist(1:counter))+1
+!!!!!!             !buffer(offset:offset+lr_dist(counter+1)-1) = buffer_ptr(counter*local_win_size+1:counter*local_win_size+lr+1) 
+!!!!!!   buffer(offset:offset+lr_dist(counter+1)-1) = buffer_ptr(counter*local_win_size+1:counter*local_win_size+lr_dist(counter+1)) 
+!!!!!!          end do
+!!!!!!          buffer(1:lr+1) = buffer_ptr(1:lr+1)   ! my own part          
+!!!!!!       end if
+!!!!!!       call obj%timer%stop("buffer_pack")
+!!!!!!
+!!!!!!       call obj%timer%start("bcast_buff")
+!!!!!!       !Bcast the buffer among the owners
+!!!!!!       if (my_prow==top_most_rank) then
+!!!!!!          call MPI_Bcast(buffer, int(sum(lr_dist),kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, & 
+!!!!!!               int(owner,kind=MPI_KIND), int(mpi_comm_owner,kind=MPI_KIND), mpierr)          
+!!!!!!       end if
+!!!!!!       call obj%timer%stop("bcast_buff")
+!!!!!!
+!!!!!!       ! prepare for writing into the shmem window
+!!!!!!       call obj%timer%start("buff_unpack")
+!!!!!!       call mpi_win_fence(0, shmem_win, mpierr)
+!!!!!!       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(buffer_ptr) 
+!!!!!!       
+!!!!!!       ! Unpack the buffer into the local shmem arrays of each proc. row
+!!!!!!       if ((my_prow==top_most_rank) .and. (my_pcol/=cur_pcol)) then
+!!!!!!          do counter=1, np_rows-1
+!!!!!!             offset = sum(lr_dist(1:counter))+1
+!!!!!!             !buffer_ptr(counter*local_win_size+1:counter*local_win_size+lr+1) = buffer(offset:offset+lr_dist(counter+1)-1)
+!!!!!!   buffer_ptr(counter*local_win_size+1:counter*local_win_size+lr_dist(counter+1)) = buffer(offset:offset+lr_dist(counter+1)-1)
+!!!!!!          end do
+!!!!!!          buffer_ptr(1:lr+1) = buffer(1:lr+1)   ! my own part
+!!!!!!       end if
+!!!!!!       
+!!!!!!       !writing complete
+!!!!!!       call mpi_win_fence(0, shmem_win, mpierr)
+!!!!!!       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(buffer_ptr) 
+!!!!!!       call obj%timer%stop("buff_unpack")
+!!!!!!
+!!!!!!       ! read epoch
+!!!!!!       vr(1:lr+1) = buffer_ptr(1:lr+1)            
+!!!!!!print '(A,I4,A,I3,A,I4,A,f7.3,f7.3,f7.3)', "step: ", istep, " lc: ", lc, " my_id: ", my_id, " B: ", vr(1:3) 
+!!!!!!       !call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+!!!!!!       !     int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
 #else  /* WITH_MPI_SHMEM */
         if (wantDebug) call obj%timer%start("mpi_communication")
         call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
                       int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
         if (wantDebug) call obj%timer%stop("mpi_communication")
+print '(A,I4,A,I3,A,I4,A,f7.3,f7.3,f7.3)', "step: ", istep, " lc: ", lc, " my_id: ", my_id, " A: ", vr(1:3) 
         
 #endif /* WITH_MPI_SHMEM*/
 #endif /* WITH_MPI */
@@ -1961,7 +2073,18 @@ max_threads, isSkewsymmetric)
     deallocate(vmrCPU, stat=istat, errmsg=errorMessage)
     check_deallocate("bandred: vmrCPU", istat, errorMessage)
   endif
-
+#ifdef WITH_MPI
+#ifdef WITH_MPI_SHMEM
+  call mpi_win_free(shmem_win, mpierr)
+!  do counter=1,size(owner_ranks)
+!    if (my_id == counter) then
+!      call mpi_comm_free(mpi_comm_owner, mpierr)
+!    end if
+!  end do
+  if (allocated(owner_ranks))     deallocate(owner_ranks)   
+#endif
+#endif
+  
 #if REALCASE == 1
   if (useQR) then
     if (which_qr_decomposition == 1) then
