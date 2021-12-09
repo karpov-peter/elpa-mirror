@@ -179,7 +179,7 @@ max_threads, isSkewsymmetric)
   integer(kind=ik)      :: my_id, owner, offset, top_most_rank
 
   !Shmem windows props
-  integer(kind=ik)                 :: mpi_comm_shmem, shmem_size, shmem_rank, shmem_win, owner_shmem_rank, local_win_size
+  integer(kind=ik)                 :: mpi_comm_shmem, shmem_size, shmem_rank, shmem_win, owner_shmem_rank, local_win_size, win_size_max, win_size_globMax
   integer(kind=MPI_ADDRESS_KIND)   :: buffer_size, lb, dtype_size
   integer                          :: disp_unit
   type(c_ptr)                      :: buffer_c_ptr
@@ -492,8 +492,20 @@ max_threads, isSkewsymmetric)
   !endif ! useIntelGPU
 #ifdef WITH_MPI  
 #ifdef WITH_MPI_SHMEM
+  ! compute max. window size
+  l_rows = local_index(1*nbw, my_prow, np_rows, nblk, -1)
+  win_size_max = l_rows
+  do istep = blk_end, 2, -1
+    l_rows = local_index(istep*nbw, my_prow, np_rows, nblk, -1)
+    if (l_rows > win_size_max) &
+       win_size_max = l_rows
+  end do
+  
+  ! global reduction of win_size_max
+  call mpi_allreduce(win_size_max, win_size_globMax, 1, MPI_INTEGER, MPI_MAX, mpi_comm_world, mpierr)
+
   call mpi_type_get_extent(MPI_MATH_DATATYPE_PRECISION, lb, dtype_size, mpierr)
-  local_win_size = na  !TODO: find the minimum possible size of the local window 
+  local_win_size = win_size_globMax+1  !na  !TODO: find the minimum possible size of the local window 
   buffer_size = local_win_size * dtype_size
   disp_unit = dtype_size
   call MPI_Win_allocate_shared(buffer_size, disp_unit, MPI_INFO_NULL, mpi_comm_shmem, buffer_c_ptr, shmem_win, mpierr)
