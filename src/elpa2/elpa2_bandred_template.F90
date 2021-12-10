@@ -492,6 +492,8 @@ max_threads, isSkewsymmetric)
   !endif ! useIntelGPU
 #ifdef WITH_MPI  
 #ifdef WITH_MPI_SHMEM
+  top_most_rank = 0  
+
   ! compute max. window size
   l_rows = local_index(1*nbw, my_prow, np_rows, nblk, -1)
   win_size_max = l_rows
@@ -505,16 +507,19 @@ max_threads, isSkewsymmetric)
   call mpi_allreduce(win_size_max, win_size_globMax, 1, MPI_INTEGER, MPI_MAX, mpi_comm_world, mpierr)
 
   call mpi_type_get_extent(MPI_MATH_DATATYPE_PRECISION, lb, dtype_size, mpierr)
-  local_win_size = win_size_globMax+1   
+  !local_win_size = win_size_globMax+1   
+  if (my_prow == top_most_rank) then
+     local_win_size = na
+     if (.not. allocated(lr_dist)) allocate(lr_dist(np_rows))   ! we'll need it later inside the (do lc...) loop
+  else
+     local_win_size = 0
+  end if
+
   buffer_size = local_win_size * dtype_size
   disp_unit = dtype_size
   call MPI_Win_allocate_shared(buffer_size, disp_unit, MPI_INFO_NULL, mpi_comm_shmem, buffer_c_ptr, shmem_win, mpierr)
   call c_f_pointer(buffer_c_ptr, buffer_ptr, (/local_win_size/)) 
 
-  top_most_rank = 0  
-  if (my_prow == top_most_rank) then
-     if (.not. allocated(lr_dist)) allocate(lr_dist(np_rows))   ! we'll need it later inside the (do lc...) loop
-  end if
   
   !initialize
   owner            = MPI_PROC_NULL
