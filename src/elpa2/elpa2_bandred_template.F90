@@ -505,11 +505,20 @@ max_threads, isSkewsymmetric)
   call mpi_allreduce(win_size_max, win_size_globMax, 1, MPI_INTEGER, MPI_MAX, mpi_comm_world, mpierr)
 
   call mpi_type_get_extent(MPI_MATH_DATATYPE_PRECISION, lb, dtype_size, mpierr)
-  local_win_size = win_size_globMax+1  !na  !TODO: find the minimum possible size of the local window 
+  local_win_size = win_size_globMax+1   
   buffer_size = local_win_size * dtype_size
   disp_unit = dtype_size
   call MPI_Win_allocate_shared(buffer_size, disp_unit, MPI_INFO_NULL, mpi_comm_shmem, buffer_c_ptr, shmem_win, mpierr)
   call c_f_pointer(buffer_c_ptr, buffer_ptr, (/local_win_size/)) 
+
+  top_most_rank = 0  
+  if (my_prow == top_most_rank) then
+     if (.not. allocated(lr_dist)) allocate(lr_dist(np_rows))   ! we'll need it later inside the (do lc...) loop
+  end if
+  
+  !initialize
+  owner            = MPI_PROC_NULL
+  owner_shmem_rank = MPI_PROC_NULL  
 
 #endif /* WITH_MPI_SHMEM */
 #endif /* WITH_MPI */
@@ -656,10 +665,6 @@ max_threads, isSkewsymmetric)
         
 #ifdef WITH_MPI
 #ifdef WITH_MPI_SHMEM        
-        top_most_rank = 0  !!!TODO: Allocation can be moved outside the loop
-        if (my_prow == top_most_rank) then
-           if (.not. allocated(lr_dist)) allocate(lr_dist(np_rows))
-        end if
         
         call mpi_gather(lr, 1, MPI_INTEGER, lr_dist, 1, MPI_INTEGER, top_most_rank, mpi_comm_rows, mpierr)
 
@@ -671,9 +676,6 @@ max_threads, isSkewsymmetric)
            if (.not. allocated(buffer))  allocate(buffer(sum(lr_dist)))   ! size(vr)=(l_rows+1)
            buffer(:) = 0.0   
         end if
-
-        owner            = MPI_PROC_NULL
-        owner_shmem_rank = MPI_PROC_NULL   ! initialize
         
 #endif  /* WITH_MPI_SHMEM*/
 #endif  /* WITH_MPI */
