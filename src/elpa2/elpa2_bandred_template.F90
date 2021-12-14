@@ -181,8 +181,8 @@ max_threads, isSkewsymmetric)
   integer(kind=ik)                 :: mpi_comm_shmem, shmem_size, shmem_rank, shmem_win, owner_shmem_rank, local_win_size, win_size_max, win_size_globMax
   integer(kind=MPI_ADDRESS_KIND)   :: buffer_size, lb, dtype_size
   integer                          :: disp_unit
-  type(c_ptr)                      :: buffer_c_ptr, rma_c_ptr
-  MATH_DATATYPE(kind=rck), pointer, asynchronous   :: buffer_ptr(:), rma_ptr(:)
+  type(c_ptr)                      :: rma_c_ptr
+  MATH_DATATYPE(kind=rck), pointer, asynchronous   :: rma_ptr(:)
   
 #endif  /* WITH_MPI_SHMEM */ 
 #endif  /* WITH_MPI */
@@ -509,22 +509,21 @@ max_threads, isSkewsymmetric)
 
   call mpi_type_get_extent(MPI_MATH_DATATYPE_PRECISION, lb, dtype_size, mpierr)
 
-  !!!if (my_prow == top_most_rank) then
+  if (my_prow == top_most_rank) then
      local_win_size = (win_size_globMax+1)*np_rows
-  !!!else
-  !!!   local_win_size = 0
-  !!!end if
+  else
+     local_win_size = 0
+  end if
 
   buffer_size = local_win_size * dtype_size
   disp_unit = dtype_size
 
   call MPI_Win_allocate_shared(buffer_size, disp_unit, MPI_INFO_NULL, mpi_comm_shmem, rma_c_ptr, shmem_win, mpierr)
-  !!!call c_f_pointer(buffer_c_ptr, buffer_ptr, (/local_win_size/)) 
 
   call mpi_win_shared_query(shmem_win, (shmem_rank - my_prow), buffer_size, disp_unit, rma_c_ptr, mpierr)
   call c_f_pointer(rma_c_ptr, rma_ptr, (/(win_size_globMax+1)*np_rows/)) 
-
-!!!  call mpi_win_lock_all(MPI_MODE_NOCHECK, shmem_win, mpierr)
+!DEBUG  
+  call mpi_win_lock_all(MPI_MODE_NOCHECK, shmem_win, mpierr)
   
   !initialize
   owner            = MPI_PROC_NULL
@@ -695,14 +694,27 @@ max_threads, isSkewsymmetric)
            lr_dist(counter) = lr_dist(counter) + 1   ! Add one because tau will be padded later as well
         end do
 
-        if (my_prow == top_most_rank) then                        
-           if (.not. allocated(buffer))  allocate(buffer(sum(lr_dist)))   ! size(vr)=(l_rows+1)
-           buffer(:) = 0.0   
-        end if
-        
 #endif  /* WITH_MPI_SHMEM*/
 #endif  /* WITH_MPI */
         
+#ifdef WITH_MPI          
+#ifdef WITH_MPI_SHMEM
+
+       if (my_pcol==cur_pcol) then
+          if (my_prow == top_most_rank) then          
+             call mpi_comm_rank(mpi_comm_owner, owner, mpierr)
+             !call mpi_comm_rank(mpi_comm_shmem, owner_shmem_rank, mpierr)
+          end if
+       end if
+
+! sync shmem win before write the HH vector starts
+       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+       call mpi_win_sync(shmem_win, mpierr)
+       call mpi_barrier(mpi_comm_shmem,mpierr)
+
+#endif   /* WITH_MPI_SHMEM */
+#endif   /* WITH_MPI */
+
         if (my_pcol==cur_pcol) then
 
           ! Get Vector to be transformed; distribute last element and norm of
@@ -753,45 +765,76 @@ max_threads, isSkewsymmetric)
             a_mat(1:lr,lch) = vr(1:lr)
           endif
           vr(lr+1) = tau
+#ifdef WITH_MPI          
+#ifdef WITH_MPI_SHMEM
+       call obj%timer%start("write_HH_inSHMEM")
+          if (my_prow/=top_most_rank) then
+             offset = sum(lr_dist(1:my_prow))+1
+             rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
+          else
+             rma_ptr(1:lr+1) = vr(1:lr+1)
+          end if
+       call obj%timer%stop("write_HH_inSHMEM")
+#endif   /* WITH_MPI_SHMEM */
+#endif   /* WITH_MPI */
        endif   ! (my_pcol==cur_pcol)             
 
 #ifdef WITH_MPI          
 #ifdef WITH_MPI_SHMEM
+!Old code
+!!!!!       !write the HH vector into the shmem buffer
+!!!!!       call obj%timer%start("write_HH_inSHMEM")
 
-       !shmem: writing the HH vector into the shmem buffer
-       call obj%timer%start("write_HH_inSHMEM")
-       call mpi_win_fence(0, shmem_win, mpierr)
+!!!!!       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+!!!!!       !!!call mpi_win_fence(MPI_MODE_NOPRECEDE, shmem_win, mpierr)
+
+!!!!!       call mpi_win_sync(shmem_win, mpierr)
+!!!!!       call mpi_barrier(mpi_comm_shmem,mpierr)
+!!!!!
+!!!!!       if (my_pcol==cur_pcol) then
+!!!!!          if (my_prow/=top_most_rank) then
+!!!!!             offset = sum(lr_dist(1:my_prow))+1
+!!!!!             rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
+!!!!!          else
+!!!!!             rma_ptr(1:lr+1) = vr(1:lr+1)  ! my own part
+!!!!!          end if
+!!!!!
+!!!!!          !!!offset = ( my_prow * (win_size_globMax+1) ) + 1
+!!!!!          !!!rma_ptr(offset : offset+lr) = vr(1:lr+1)
+!!!!!
+!!!!!          !!!if (my_prow/=top_most_rank) then          
+!!!!!          !!!   !do counter=1, np_rows-1
+!!!!!          !!!   offset = sum(lr_dist(1:my_prow))+1
+!!!!!          !!!   rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
+!!!!!          !!!else 
+!!!!!          !!!   rma_ptr(1:lr+1) = vr(1:lr+1)   ! my own part          
+!!!!!          !!!
+!!!!!          !!!   call mpi_comm_rank(mpi_comm_owner, owner, mpierr)
+!!!!!          !!!   !call mpi_comm_rank(mpi_comm_shmem, owner_shmem_rank, mpierr)
+!!!!!          !!!end if
+!!!!!       end if   !(my_pcol==cur_pcol)
+!!!!!
+
+!!New code
+!       if (my_pcol==cur_pcol) then
+!          if (my_prow/=top_most_rank) then
+!             offset = sum(lr_dist(1:my_prow))+1
+!             rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = rma_ptr(offset:offset+lr_dist(my_prow+1)-1) * xf
+!             rma_ptr(offset+lr_dist(my_prow+1)-1) = tau
+!          else
+!             rma_ptr(1:lr) = rma_ptr(1:lr) * xf
+!             rma_ptr(lr+1) = tau
+!          end if
+!       end if   !(my_pcol==cur_pcol)
+
+       call mpi_win_sync(shmem_win, mpierr)
+       call mpi_barrier(mpi_comm_shmem,mpierr)
+
+       !!!call mpi_win_fence(0, shmem_win, mpierr)
        if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
 
-    !!!call mpi_win_flush_all(shmem_win, mpierr)
-    !!!call mpi_win_sync(shmem_win, mpierr)
-    !!!call mpi_barrier(mpi_comm_shmem,mpierr)
-
-       if (my_pcol==cur_pcol) then
-             offset = ( my_prow * (win_size_globMax+1) ) + 1
-             rma_ptr(offset : offset+lr) = vr(1:lr+1)
-          !!!if (my_prow/=top_most_rank) then          
-          !!!   !do counter=1, np_rows-1
-          !!!   offset = sum(lr_dist(1:my_prow))+1
-          !!!   rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
-          !!!else 
-          !!!   rma_ptr(1:lr+1) = vr(1:lr+1)   ! my own part          
-          !!!
-          !!!   call mpi_comm_rank(mpi_comm_owner, owner, mpierr)
-          !!!   !call mpi_comm_rank(mpi_comm_shmem, owner_shmem_rank, mpierr)
-          !!!end if
-
-          if (my_prow == top_most_rank) then          
-             call mpi_comm_rank(mpi_comm_owner, owner, mpierr)
-             !call mpi_comm_rank(mpi_comm_shmem, owner_shmem_rank, mpierr)
-          end if
-       end if   !(my_pcol==cur_pcol)
-    !!!call mpi_win_flush_all(shmem_win, mpierr)
-    !!!call mpi_win_sync(shmem_win, mpierr)
-    !!!call mpi_barrier(mpi_comm_shmem,mpierr)
-       call mpi_win_fence(0, shmem_win, mpierr)
-       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
-       call obj%timer%stop("write_HH_inSHMEM")
+!!!!!       call obj%timer%stop("write_HH_inSHMEM")
+! end of the write epoch
 
        ! inform everybody who the owner is:
        call obj%timer%start("inform_owner")
@@ -802,30 +845,12 @@ max_threads, isSkewsymmetric)
        ! Broadcast Householder Vector and tau among the owners
        if (my_prow==top_most_rank) then                 
           call obj%timer%start("bcast_buff")
-          call MPI_Bcast(rma_ptr, int((win_size_globMax+1)*np_rows,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+
+          !call MPI_Bcast(rma_ptr, int((win_size_globMax+1)*np_rows,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+          call MPI_Bcast(rma_ptr, int(sum(lr_dist),kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
                int(owner,kind=MPI_KIND), int(mpi_comm_owner,kind=MPI_KIND), mpierr)
           call obj%timer%stop("bcast_buff")
        end if
-
-!DEBUG
-!!!       if (my_prow == top_most_rank) then
-!!!           offset = ( 2 * (win_size_globMax+1) ) + 1 ! checking for my_prow=2       
-!!!           print '(A,I2,A,I2,A,5F7.3)', "col: ", my_pcol, " owner: ", owner, " rma: ", rma_ptr(offset : offset+4)          
-!!!       end if
-!!!
-!!!       call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
-!!!                      int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)   !DEBUG
-!!!
-!!!       call mpi_win_fence(0, shmem_win, mpierr)
-!!!       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
-!!!       if (my_pcol /= cur_pcol) then
-!!!             offset = ( my_prow * (win_size_globMax+1) ) + 1
-!!!          if (my_prow == 2) then
-!!!             print '(A,I2,A,5F7.3,A,5F7.3)', "col: ", my_pcol, " vr: ", vr(1:5), " rma: ", rma_ptr(offset : offset+4)
-!!!          end if
-!!!       end if
-!!!       call mpi_win_fence(0, shmem_win, mpierr)
-!!!       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
 
 !!broadcasting owner_shmem_rank may be needed if the row proc.s are not part of the same shmem group
 !!       call MPI_Bcast(owner_shmem_rank, int(1,kind=MPI_KIND), MPI_INTEGER, &
@@ -836,25 +861,30 @@ max_threads, isSkewsymmetric)
 
        ! Unpack the buffer into the local shmem arrays of each proc. row
        if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
-       call mpi_win_fence(0, shmem_win, mpierr)
+       !!!call mpi_win_fence(0, shmem_win, mpierr)
+
+       !!!call mpi_win_flush_all(shmem_win, mpierr)
+
+       call mpi_win_sync(shmem_win, mpierr)
+       call mpi_barrier(mpi_comm_shmem,mpierr)
+
        if (my_pcol/=cur_pcol) then
-             offset = ( my_prow * (win_size_globMax+1) ) + 1
-             vr(1:lr+1) = rma_ptr(offset : offset+lr)  
-!!!          if (my_prow/=top_most_rank) then
-!!!             !!do counter=1, np_rows-1
-!!!             !offset = sum(lr_dist(1:my_prow))+1
-!!!             !vr(1:lr+1) = rma_ptr(offset:offset+lr_dist(my_prow+1)-1)
-!!!          else
-!!!             vr(1:lr+1) = rma_ptr(1:lr+1)   ! my own part
-!!!          end if
-!!!          if (my_prow == 2) then
 !!!             offset = ( my_prow * (win_size_globMax+1) ) + 1
-!!!!DEBUG
-!!!print '(A,I2,A,5F7.3,A,5F7.3)', "col: ", my_pcol, " vr: ", vr(1:5), " rma: ", rma_ptr(offset : offset+4)
-!!!             !vr(1:lr+1) = rma_ptr(offset : offset+lr)
-!!!          end if
+!!!             vr(1:lr+1) = rma_ptr(offset : offset+lr)  
+          if (my_prow/=top_most_rank) then
+             offset = sum(lr_dist(1:my_prow))+1
+             vr(1:lr+1) = rma_ptr(offset:offset+lr_dist(my_prow+1)-1)
+          else
+             vr(1:lr+1) = rma_ptr(1:lr+1)   ! my own part
+          end if
        end if
-       call mpi_win_fence(0, shmem_win, mpierr)
+
+       !!!call mpi_win_flush_all(shmem_win, mpierr)
+
+       call mpi_win_sync(shmem_win, mpierr)
+       call mpi_barrier(mpi_comm_shmem,mpierr)
+
+       !!!call mpi_win_fence(0, shmem_win, mpierr)
        if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
 
 #else  /* WITH_MPI_SHMEM */
@@ -2049,7 +2079,7 @@ max_threads, isSkewsymmetric)
   endif
 #ifdef WITH_MPI
 #ifdef WITH_MPI_SHMEM
-!!!  call mpi_win_unlock_all(shmem_win, mpierr)
+  call mpi_win_unlock_all(shmem_win, mpierr)
   call mpi_win_free(shmem_win, mpierr)
 !  do counter=1,size(owner_ranks)
 !    if (my_id == counter) then
