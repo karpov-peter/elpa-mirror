@@ -507,9 +507,11 @@ max_threads, isSkewsymmetric)
 #ifdef WITH_MPI  
 #ifdef WITH_MPI_SHMEM
   leader = 0   ! rank of the leading processor col.  
-  if (my_prow == leader)   leader_shmem_rank = shmem_rank
-  
-  if (.not. allocated(lr_dist)) allocate(lr_dist(np_rows))   ! we'll need it later inside the (do lc...) loop
+  !!!if (my_prow == leader)   
+  leader_shmem_rank = shmem_rank - my_prow 
+
+  ! later in the lc loop we'll need the distribution of lr among p_rows
+  if (.not. allocated(lr_dist)) allocate(lr_dist(np_rows))   
 
   ! compute max. window size
   l_rows = local_index(1*nbw, my_prow, np_rows, nblk, -1)
@@ -526,7 +528,9 @@ max_threads, isSkewsymmetric)
   call mpi_type_get_extent(MPI_MATH_DATATYPE_PRECISION, lb, dtype_size, mpierr)
 
   if (np_rows > shmem_size) then
-     num_middle_man = (np_rows-1) / shmem_size   ! number of middle processors needed to transmit the HH vector all the way up to the leader
+
+     ! number of middle processors needed to transmit the HH vector all the way up to the leader
+     num_middle_man = (np_rows-1) / shmem_size   
      if (.not. allocated(mid_man_row_idx))   allocate(mid_man_row_idx(num_middle_man))
           
      call MPI_Bcast(leader_shmem_rank, int(1,kind=MPI_KIND), MPI_INTEGER, &
@@ -537,26 +541,29 @@ max_threads, isSkewsymmetric)
      end do
 
      ! now we should handle the case where np_rows <= shmem_size
-  else if (mod(shmem_size, np_rows) == 0) then   ! this is a perfect arrangement which does not need any middle man
+
+  ! for the perfect arrangement not needing any middle man
+  else if (mod(shmem_size, np_rows) == 0) then   
      num_middle_man = 0
      
   else
-     num_middle_man = 0   ! some columns in the processor grid may still consist entirely of shmem processes
-     
-     ! only for the following conditions an overflow occurs when distributing shmem_size processes over np_rows,
-     ! and thus there will be a middle man
+
+     ! some columns in the processor grid may still consist entirely of shmem processes
+     num_middle_man = 0        
+
+     ! only for the following conditions an overflow occurs when distributing shmem_size processes 
+     ! over np_rows, and thus there will be a middle man
      
      if ( (shmem_rank - my_prow) < 0 ) then
         num_middle_man    = 1
         if (.not. allocated(mid_man_row_idx))   allocate(mid_man_row_idx(num_middle_man))
-        leader_shmem_rank = shmem_rank - my_prow + shmem_size
+        !!!leader_shmem_rank = shmem_rank - my_prow + shmem_size
         mid_man_row_idx   = shmem_size - leader_shmem_rank
      end if
 
      if ( (shmem_rank - my_prow) > (shmem_size-np_rows) ) then
         num_middle_man    = 1
         if (.not. allocated(mid_man_row_idx))   allocate(mid_man_row_idx(num_middle_man))
-        leader_shmem_rank = shmem_rank - my_prow 
         mid_man_row_idx   = shmem_size - leader_shmem_rank
      end if
   end if
@@ -567,9 +574,9 @@ max_threads, isSkewsymmetric)
   num_proc_below = np_rows
   
   if (num_middle_man > 0) then
-     if (my_prow == mid_man_row_idx(num_middle_man))   num_proc_below = np_rows - my_prow   ! always true for the very last one
+     if (my_prow == mid_man_row_idx(num_middle_man))   num_proc_below = np_rows - my_prow   ! always true for the very last middle process
      
-     if (num_middle_man > 1) then   ! this is true for the ones between the leader and the last middle man
+     if (num_middle_man > 1) then   ! valid for the ones between the leader and the last middle man
         do counter = 1, num_middle_man-1
            if ( my_prow == mid_man_row_idx(counter) )  num_proc_below = shmem_size
         end do        
@@ -577,19 +584,18 @@ max_threads, isSkewsymmetric)
 
      ! and now for the leader himself:
      if (my_prow == leader)   num_proc_below = mid_man_row_idx(1)
-
   end if
 
   ! allocate shmem window
   if (my_prow == leader) then
      local_win_size = (win_size_globMax+1)*num_proc_below   !the addition of 1 is to accomodate for tau
-  else
+  else        
      local_win_size = 0
   end if
-
+!OBS: need shmem win only if num_proc_below > 1; if it is 1, I just send my buffer 
   if (num_middle_man > 0) then      
      do counter = 1, num_middle_man
-        if ( my_prow == mid_man_row_idx(counter) )   local_win_size = (win_size_globMax+1)*num_proc_below 
+        if (my_prow == mid_man_row_idx(counter))   local_win_size = (win_size_globMax+1)*num_proc_below 
      end do
   end if
 
@@ -599,7 +605,7 @@ max_threads, isSkewsymmetric)
 
   call MPI_Win_allocate_shared(buffer_size, disp_unit, MPI_INFO_NULL, mpi_comm_shmem, rma_c_ptr, shmem_win, mpierr)
 
-  call mpi_win_shared_query(shmem_win, (shmem_rank - my_prow), buffer_size, disp_unit, rma_c_ptr, mpierr)
+  call mpi_win_shared_query(shmem_win, leader_shmem_rank, buffer_size, disp_unit, rma_c_ptr, mpierr)
   call c_f_pointer(rma_c_ptr, rma_ptr, (/(win_size_globMax+1)*np_rows/)) 
 !DEBUG  
   call mpi_win_lock_all(MPI_MODE_NOCHECK, shmem_win, mpierr)
