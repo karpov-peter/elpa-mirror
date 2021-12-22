@@ -171,14 +171,18 @@ max_threads, isSkewsymmetric)
 #ifdef WITH_MPI_SHMEM
   MATH_DATATYPE(kind=rck), allocatable :: buffer(:)
   integer(kind=ik), allocatable        :: lr_dist(:)
-  integer, allocatable                 :: owner_ranks(:)
+  integer, allocatable                 :: leader_ranks(:)
   
   integer               :: pcnt, counter
-  integer(kind=ik)      :: mpi_comm_owner, world_group, owner_group
-  integer(kind=ik)      :: my_id, owner, offset, top_most_rank, sync_buff
+  integer(kind=ik)      :: mpi_comm_leader, world_group, leader_group
+  integer(kind=ik)      :: my_id, owner, offset, leader, sync_buff
 
+  ! generic case
+  integer(kind=ik)      :: num_middle_man, num_proc_below
+  integer(kind=ik), allocatable      :: mid_man_row_idx(:)
+  
   !Shmem windows props
-  integer(kind=ik)                 :: mpi_comm_shmem, shmem_size, shmem_rank, shmem_win, owner_shmem_rank, local_win_size, win_size_max, win_size_globMax
+  integer(kind=ik)                 :: mpi_comm_shmem, shmem_size, shmem_rank, shmem_win, leader_shmem_rank, local_win_size, win_size_max, win_size_globMax
   integer(kind=MPI_ADDRESS_KIND)   :: buffer_size, lb, dtype_size
   integer                          :: disp_unit
   type(c_ptr)                      :: rma_c_ptr
@@ -286,34 +290,31 @@ max_threads, isSkewsymmetric)
 #ifdef WITH_MPI
 #ifdef WITH_MPI_SHMEM
 !       call obj%timer%start("sync_SHMEM")
-!          if (my_prow==top_most_rank) then
+!          if (my_prow==leader) then
 !             do counter=1,np_rows-1
 !                call mpi_send(my_prow, 0, MPI_INTEGER, counter, my_prow, mpi_comm_rows, mpierr)
 !             end do
 !          else
-!             call mpi_recv(sync_buff, 0, MPI_INTEGER, top_most_rank, top_most_rank, mpi_comm_rows, MPI_STATUS_IGNORE, mpierr)
+!             call mpi_recv(sync_buff, 0, MPI_INTEGER, leader, leader, mpi_comm_rows, MPI_STATUS_IGNORE, mpierr)
 !          end if
 !       call obj%timer%stop("sync_SHMEM")
-!!broadcasting owner_shmem_rank may be needed if the row proc.s are not part of the same shmem group
-!!       call MPI_Bcast(owner_shmem_rank, int(1,kind=MPI_KIND), MPI_INTEGER, &
-!!            int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
-!!       call MPI_Bcast(owner_shmem_rank, int(1,kind=MPI_KIND), MPI_INTEGER, &
-!!            int(0,kind=MPI_KIND), int(mpi_comm_rows,kind=MPI_KIND), mpierr)              
-  if (.not. allocated(owner_ranks))     allocate(owner_ranks(np_colsMPI))   
+             
+  if (.not. allocated(leader_ranks))     allocate(leader_ranks(np_colsMPI))   
   
   call mpi_comm_rank(mpi_comm_world, my_id, mpierr)   !TODO: use parent comm. instead
-  call mpi_gather(my_id, 1, MPI_INTEGER, owner_ranks, 1, MPI_INTEGER, 0, mpi_comm_cols, mpierr)
-  call mpi_bcast(owner_ranks, np_cols, MPI_INTEGER, 0, mpi_comm_world, mpierr)
+!TODO: there's a cheaper way to compute the leader ranks than the following gather+bcast
+  call mpi_gather(my_id, 1, MPI_INTEGER, leader_ranks, 1, MPI_INTEGER, 0, mpi_comm_cols, mpierr)
+  call mpi_bcast(leader_ranks, np_cols, MPI_INTEGER, 0, mpi_comm_world, mpierr)
 
   call mpi_comm_group(MPI_COMM_WORLD, world_group, mpierr)
-  call mpi_group_incl(world_group, np_cols, owner_ranks, owner_group, mpierr)
-  call mpi_comm_create_group(MPI_COMM_WORLD, owner_group, 0, mpi_comm_owner, mpierr)
+  call mpi_group_incl(world_group, np_cols, leader_ranks, leader_group, mpierr)
+  call mpi_comm_create_group(MPI_COMM_WORLD, leader_group, 0, mpi_comm_leader, mpierr)
   
   !Shmem:
   call mpi_comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &
        mpi_comm_shmem, mpierr)
   call mpi_comm_rank(mpi_comm_shmem, shmem_rank, mpierr)
-  !call mpi_comm_size(mpi_comm_shmem, shmem_size, mpierr)
+  call mpi_comm_size(mpi_comm_shmem, shmem_size, mpierr)
 
 #endif  /* WITH_MPI_SHMEM */
 #endif  /* WITH_MPI */
@@ -505,8 +506,9 @@ max_threads, isSkewsymmetric)
   !endif ! useIntelGPU
 #ifdef WITH_MPI  
 #ifdef WITH_MPI_SHMEM
-  top_most_rank = 0  
-
+  leader = 0   ! rank of the leading processor col.  
+  if (my_prow == leader)   leader_shmem_rank = shmem_rank
+  
   if (.not. allocated(lr_dist)) allocate(lr_dist(np_rows))   ! we'll need it later inside the (do lc...) loop
 
   ! compute max. window size
@@ -523,11 +525,74 @@ max_threads, isSkewsymmetric)
 
   call mpi_type_get_extent(MPI_MATH_DATATYPE_PRECISION, lb, dtype_size, mpierr)
 
-  if (my_prow == top_most_rank) then
-     local_win_size = (win_size_globMax+1)*np_rows
+  if (np_rows > shmem_size) then
+     num_middle_man = (np_rows-1) / shmem_size   ! number of middle processors needed to transmit the HH vector all the way up to the leader
+     if (.not. allocated(mid_man_row_idx))   allocate(mid_man_row_idx(num_middle_man))
+          
+     call MPI_Bcast(leader_shmem_rank, int(1,kind=MPI_KIND), MPI_INTEGER, &
+          int(leader,kind=MPI_KIND), int(mpi_comm_rows,kind=MPI_KIND), mpierr)
+      
+     do counter = 1, num_middle_man
+        mid_man_row_idx(counter) = counter*shmem_size - leader_shmem_rank              
+     end do
+
+     ! now we should handle the case where np_rows <= shmem_size
+  else if (mod(shmem_size, np_rows) == 0) then   ! this is a perfect arrangement which does not need any middle man
+     num_middle_man = 0
+     
+  else
+     num_middle_man = 0   ! some columns in the processor grid may still consist entirely of shmem processes
+     
+     ! only for the following conditions an overflow occurs when distributing shmem_size processes over np_rows,
+     ! and thus there will be a middle man
+     
+     if ( (shmem_rank - my_prow) < 0 ) then
+        num_middle_man    = 1
+        if (.not. allocated(mid_man_row_idx))   allocate(mid_man_row_idx(num_middle_man))
+        leader_shmem_rank = shmem_rank - my_prow + shmem_size
+        mid_man_row_idx   = shmem_size - leader_shmem_rank
+     end if
+
+     if ( (shmem_rank - my_prow) > (shmem_size-np_rows) ) then
+        num_middle_man    = 1
+        if (.not. allocated(mid_man_row_idx))   allocate(mid_man_row_idx(num_middle_man))
+        leader_shmem_rank = shmem_rank - my_prow 
+        mid_man_row_idx   = shmem_size - leader_shmem_rank
+     end if
+  end if
+
+  ! determine the number of processes located below each middle man as that many processes
+  ! will have to write into the mid_man's shmem window. Then we can allocate an appropriate
+  ! window size. In general:
+  num_proc_below = np_rows
+  
+  if (num_middle_man > 0) then
+     if (my_prow == mid_man_row_idx(num_middle_man))   num_proc_below = np_rows - my_prow   ! always true for the very last one
+     
+     if (num_middle_man > 1) then   ! this is true for the ones between the leader and the last middle man
+        do counter = 1, num_middle_man-1
+           if ( my_prow == mid_man_row_idx(counter) )  num_proc_below = shmem_size
+        end do        
+     end if
+
+     ! and now for the leader himself:
+     if (my_prow == leader)   num_proc_below = mid_man_row_idx(1)
+
+  end if
+
+  ! allocate shmem window
+  if (my_prow == leader) then
+     local_win_size = (win_size_globMax+1)*num_proc_below   !the addition of 1 is to accomodate for tau
   else
      local_win_size = 0
   end if
+
+  if (num_middle_man > 0) then      
+     do counter = 1, num_middle_man
+        if ( my_prow == mid_man_row_idx(counter) )   local_win_size = (win_size_globMax+1)*num_proc_below 
+     end do
+  end if
+
 
   buffer_size = local_win_size * dtype_size
   disp_unit = dtype_size
@@ -540,8 +605,8 @@ max_threads, isSkewsymmetric)
   call mpi_win_lock_all(MPI_MODE_NOCHECK, shmem_win, mpierr)
   
   !initialize
-  owner            = MPI_PROC_NULL
-  owner_shmem_rank = MPI_PROC_NULL  
+  owner             = MPI_PROC_NULL
+  leader_shmem_rank = MPI_PROC_NULL  
 
 #endif /* WITH_MPI_SHMEM */
 #endif /* WITH_MPI */
@@ -754,7 +819,7 @@ max_threads, isSkewsymmetric)
 #ifdef WITH_MPI_SHMEM
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
        call obj%timer%start("write_HH_inSHMEM")
-          if (my_prow/=top_most_rank) then
+          if (my_prow/=leader) then
              offset = sum(lr_dist(1:my_prow))+1
              rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
           else
@@ -779,12 +844,12 @@ max_threads, isSkewsymmetric)
           call mpi_barrier(mpi_comm_shmem,mpierr)
        call obj%timer%stop("barrier_SHMEM_1")
 
-       ! Broadcast Householder Vector and tau among the owners
-       if (my_prow==top_most_rank) then                 
+       ! Broadcast Householder Vector and tau among the leaders
+       if (my_prow==leader) then                 
           call obj%timer%start("bcast_buff")
 
           call MPI_Bcast(rma_ptr, int(sum(lr_dist),kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
-               int(cur_pcol,kind=MPI_KIND), int(mpi_comm_owner,kind=MPI_KIND), mpierr)
+               int(cur_pcol,kind=MPI_KIND), int(mpi_comm_leader,kind=MPI_KIND), mpierr)
           call obj%timer%stop("bcast_buff")
        end if
 
@@ -792,7 +857,7 @@ max_threads, isSkewsymmetric)
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
 
        call obj%timer%start("sync_SHMEM")
-       if ( (my_pcol/=cur_pcol) .and. (my_prow==top_most_rank) ) then
+       if ( (my_pcol/=cur_pcol) .and. (my_prow==leader) ) then
           call mpi_win_sync(shmem_win, mpierr)
        end if
 
@@ -801,7 +866,7 @@ max_threads, isSkewsymmetric)
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
 
        if (my_pcol/=cur_pcol) then
-          if (my_prow/=top_most_rank) then
+          if (my_prow/=leader) then
              offset = sum(lr_dist(1:my_prow))+1
              vr(1:lr+1) = rma_ptr(offset:offset+lr_dist(my_prow+1)-1)
           else
@@ -2003,12 +2068,13 @@ max_threads, isSkewsymmetric)
 #ifdef WITH_MPI_SHMEM
   call mpi_win_unlock_all(shmem_win, mpierr)
   call mpi_win_free(shmem_win, mpierr)
-!  do counter=1,size(owner_ranks)
+!  do counter=1,size(leader_ranks)
 !    if (my_id == counter) then
-!      call mpi_comm_free(mpi_comm_owner, mpierr)
+!      call mpi_comm_free(mpi_comm_leader, mpierr)
 !    end if
 !  end do
-  if (allocated(owner_ranks))     deallocate(owner_ranks)   
+  if (allocated(leader_ranks))     deallocate(leader_ranks)   
+  if (allocated(mid_man_row_idx))     deallocate(mid_man_row_idx)   
 #endif
 #endif
   
