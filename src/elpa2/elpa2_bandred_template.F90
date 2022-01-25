@@ -170,6 +170,9 @@ max_threads, isSkewsymmetric)
   !integer(kind=ik), external                  :: numroc -> use elpa_scalapack
 #ifdef WITH_MPI_SHMEM
   MATH_DATATYPE(kind=rck), allocatable :: buffer(:)
+!DEBUG:
+  MATH_DATATYPE(kind=rck) :: my_true_sum, global_true_sum, reference_sum
+
   integer(kind=ik), allocatable        :: lr_dist(:)
   integer, allocatable                 :: leader_ranks(:)
   
@@ -557,14 +560,20 @@ max_threads, isSkewsymmetric)
      if ( (shmem_rank - my_prow) < 0 ) then
         num_middle_man    = 1
         if (.not. allocated(mid_man_row_idx))   allocate(mid_man_row_idx(num_middle_man))
-        !!!leader_shmem_rank = shmem_rank - my_prow + shmem_size
-        mid_man_row_idx   = shmem_size - leader_shmem_rank
+        leader_shmem_rank = shmem_rank - my_prow + shmem_size
+        mid_man_row_idx   = shmem_size - leader_shmem_rank 
+!DEBUG
+        if (mid_man_row_idx(1) >= np_rows)   print *,"Error in mid row comp. for lower ranks."
+!!!        print "(A,I4,A,I4,A,I4)","I'm (",my_prow,",",my_pcol,") mid_man: ",mid_man_row_idx
      end if
 
      if ( (shmem_rank - my_prow) > (shmem_size-np_rows) ) then
         num_middle_man    = 1
         if (.not. allocated(mid_man_row_idx))   allocate(mid_man_row_idx(num_middle_man))
-        mid_man_row_idx   = shmem_size - leader_shmem_rank
+        mid_man_row_idx   = shmem_size - leader_shmem_rank 
+!DEBUG
+        if (mid_man_row_idx(1) >= np_rows)   print *,"Error in mid row comp. for upper ranks."
+!!!        print "(A,I4,A,I4,A,I4)","I'm (",my_prow,",",my_pcol,") mid_man: ",mid_man_row_idx
      end if
   end if
 
@@ -574,21 +583,29 @@ max_threads, isSkewsymmetric)
   num_proc_below = np_rows
   
   if (num_middle_man > 0) then
-     if (my_prow == mid_man_row_idx(num_middle_man))   num_proc_below = np_rows - my_prow   ! always true for the very last middle process
+     if (my_prow == mid_man_row_idx(num_middle_man)) then
+        num_proc_below = np_rows - my_prow   ! always true for the very last middle process
+        !DEBUG
+!!!        print "(A,I4,A,I4,A,I4)","I'm (",my_prow,",",my_pcol,") np_below: ",num_proc_below
+     end if
      
      if (num_middle_man > 1) then   ! valid for the ones between the leader and the last middle man
+!DEBUG
+       print *,"More than one middle man exist."
         do counter = 1, num_middle_man-1
            if ( my_prow == mid_man_row_idx(counter) )  num_proc_below = shmem_size
         end do        
      end if
 
      ! and now for the leader himself:
-     if (my_prow == leader)   num_proc_below = mid_man_row_idx(1)
+     ! if (my_prow == leader)   num_proc_below = mid_man_row_idx(1)   !!!Leader always has np_rows below him
+!!!DEBUG
+!!       print "(A,I4,A,I4,A,I4,A,I4)","I'm (",my_prow,",",my_pcol,") mid_man: ",mid_man_row_idx,", np_below: ",num_proc_below
   end if
 
   ! allocate shmem window
   if (my_prow == leader) then
-     local_win_size = (win_size_globMax+1)*num_proc_below   !the addition of 1 is to accomodate for tau
+     local_win_size = (win_size_globMax+1)*np_rows   !the addition of 1 is to accomodate for tau
   else        
      local_win_size = 0
   end if
@@ -605,14 +622,22 @@ max_threads, isSkewsymmetric)
 
   call MPI_Win_allocate_shared(buffer_size, disp_unit, MPI_INFO_NULL, mpi_comm_shmem, rma_c_ptr, shmem_win, mpierr)
 
-  call mpi_win_shared_query(shmem_win, leader_shmem_rank, buffer_size, disp_unit, rma_c_ptr, mpierr)
+  if ( (num_middle_man > 0) .AND. (my_prow >= mid_man_row_idx(1)) ) then
+     call mpi_win_shared_query(shmem_win, 0, buffer_size, disp_unit, rma_c_ptr, mpierr)
+  else
+     call mpi_win_shared_query(shmem_win, leader_shmem_rank, buffer_size, disp_unit, rma_c_ptr, mpierr)
+  end if
+!Maybe this is the error. I guess this
   call c_f_pointer(rma_c_ptr, rma_ptr, (/(win_size_globMax+1)*np_rows/)) 
+!must be:
+!  call c_f_pointer(rma_c_ptr, rma_ptr, (/local_win_size/)) 
 !DEBUG  
   call mpi_win_lock_all(MPI_MODE_NOCHECK, shmem_win, mpierr)
   
   !initialize
   owner             = MPI_PROC_NULL
-  leader_shmem_rank = MPI_PROC_NULL  
+!OBS: We have already set leader_shmem_rank
+!!!  leader_shmem_rank = MPI_PROC_NULL  
 
 #endif /* WITH_MPI_SHMEM */
 #endif /* WITH_MPI */
@@ -820,11 +845,61 @@ max_threads, isSkewsymmetric)
           endif
 
           vr(lr+1) = tau
+!!OLD VERSION:
+!#ifdef WITH_MPI          
+!#ifdef WITH_MPI_SHMEM
+!    if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+!       call obj%timer%start("write_HH_inSHMEM")
+!          if (my_prow/=leader) then
+!             offset = sum(lr_dist(1:my_prow))+1
+!             rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
+!          else
+!             rma_ptr(1:lr+1) = vr(1:lr+1)
+!
+!             ! end of the write epoch
+!             call mpi_win_sync(shmem_win, mpierr)       
+!          end if
+!       call obj%timer%stop("write_HH_inSHMEM")
+!    if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+!
+!#endif   /* WITH_MPI_SHMEM */
+!#endif   /* WITH_MPI */
 
+!NEW VERSION:
 #ifdef WITH_MPI          
 #ifdef WITH_MPI_SHMEM
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
        call obj%timer%start("write_HH_inSHMEM")
+
+        if (num_middle_man > 0) then
+          ! for processes above the middle man
+          if ( (my_prow > leader) .and. & 
+               (my_prow < mid_man_row_idx(1)) ) then
+             offset = sum(lr_dist(1:my_prow))+1
+             rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
+          end if
+!!===>
+          if (my_prow > mid_man_row_idx(1)) then
+             offset = sum(lr_dist(mid_man_row_idx(1)+1:my_prow))+1
+             !!DEBUG
+             !print "(A,I4,A,I4,A,I5,A,I5)","I'm (",my_prow,",",my_pcol,") offset: ", & 
+             !       offset, ":",offset+lr_dist(my_prow+1)-1        
+!!             do counter=1,np_rows
+!!             print "(A,I3,A,I5)", "cnt.: ", counter, " lr(): ", lr_dist(counter)
+!!             end do
+             rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
+          !DEBUG
+          !print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") Executed for the lower ranks."        
+          end if
+!!<===
+          if ( (my_prow == leader) .OR. & 
+               (my_prow == mid_man_row_idx(1)) ) then
+             rma_ptr(1:lr+1) = vr(1:lr+1)
+
+             ! end of the write epoch
+             call mpi_win_sync(shmem_win, mpierr)       
+          end if
+        else
           if (my_prow/=leader) then
              offset = sum(lr_dist(1:my_prow))+1
              rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
@@ -834,6 +909,8 @@ max_threads, isSkewsymmetric)
              ! end of the write epoch
              call mpi_win_sync(shmem_win, mpierr)       
           end if
+        end if
+
        call obj%timer%stop("write_HH_inSHMEM")
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
 
@@ -844,20 +921,51 @@ max_threads, isSkewsymmetric)
 
 #ifdef WITH_MPI          
 #ifdef WITH_MPI_SHMEM
+!!!!!DEBUG:
+!!        call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
+!!                      int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
 
        ! alternative to Barrier?
        call obj%timer%start("barrier_SHMEM_1")
           call mpi_barrier(mpi_comm_shmem,mpierr)
        call obj%timer%stop("barrier_SHMEM_1")
+!!===>>
+       ! collect data from the middle man
+       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+       call obj%timer%start("collect from mid. man")
 
-       ! Broadcast Householder Vector and tau among the leaders
-       if (my_prow==leader) then                 
-          call obj%timer%start("bcast_buff")
+       if ( (num_middle_man > 0) .AND. (my_pcol==cur_pcol) ) then
+         if (my_prow==mid_man_row_idx(1)) then
+            call mpi_send(rma_ptr, int(sum(lr_dist(my_prow+1:)),kind=MPI_KIND),   &
+                          MPI_MATH_DATATYPE_PRECISION, int(leader,kind=MPI_KIND), & 
+                          my_prow, int(mpi_comm_rows,kind=MPI_KIND), mpierr )
 
-          call MPI_Bcast(rma_ptr, int(sum(lr_dist),kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
-               int(cur_pcol,kind=MPI_KIND), int(mpi_comm_leader,kind=MPI_KIND), mpierr)
-          call obj%timer%stop("bcast_buff")
-       end if
+         else if (my_prow==leader) then                 
+           !offset = sum( lr_dist(1:mid_man_row_idx(1)-1) ) + 1
+           offset = sum( lr_dist(1:mid_man_row_idx(1)) ) + 1
+           call mpi_recv(rma_ptr(offset), int(sum(lr_dist(mid_man_row_idx(1)+1:)),kind=MPI_KIND), & 
+                         MPI_MATH_DATATYPE_PRECISION,  int(mid_man_row_idx(1),kind=MPI_KIND), & 
+                         mid_man_row_idx(1),int(mpi_comm_rows,kind=MPI_KIND), MPI_STATUS_IGNORE, mpierr )
+
+           call mpi_win_sync(shmem_win, mpierr)
+
+         end if
+       endif   ! (my_pcol==cur_pcol)             
+
+       call mpi_barrier(mpi_comm_shmem,mpierr)
+
+       call obj%timer%stop("collect from mid. man")
+       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+
+       ! Broadcast Householder Vector and tau among the leaders       
+         if (my_prow==leader) then                 
+           call obj%timer%start("bcast_buff")
+           call MPI_Bcast(rma_ptr, int(sum(lr_dist),kind=MPI_KIND), &
+                          MPI_MATH_DATATYPE_PRECISION, int(cur_pcol,kind=MPI_KIND), & 
+                          int(mpi_comm_leader,kind=MPI_KIND), mpierr)
+
+           call obj%timer%stop("bcast_buff")
+         end if      
 
 ! Read access to unpack the buffer into the local shmem arrays of each proc. row
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
@@ -870,16 +978,107 @@ max_threads, isSkewsymmetric)
        call mpi_barrier(mpi_comm_shmem,mpierr)
        call obj%timer%stop("sync_SHMEM")
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+    
+    if (my_pcol/=cur_pcol) then
+       if (num_middle_man > 0)  then 
+       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+          call obj%timer%start("sync_SHMEM")
 
-       if (my_pcol/=cur_pcol) then
+          ! share data with the middle man
+          if (my_prow==mid_man_row_idx(1)) then
+               call mpi_recv(rma_ptr, int(sum(lr_dist(my_prow+1:)),kind=MPI_KIND),   &
+                             MPI_MATH_DATATYPE_PRECISION, int(leader,kind=MPI_KIND), my_prow, & 
+                             int(mpi_comm_rows,kind=MPI_KIND), MPI_STATUS_IGNORE, mpierr )
+            !DEBUG
+!!!            print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") RECV from leader to unpack."        
+
+          else if (my_prow==leader) then                 
+              !offset = sum( lr_dist(1:mid_man_row_idx(1)-1) ) + 1
+              offset = sum( lr_dist(1:mid_man_row_idx(1)) ) + 1
+              call mpi_send(rma_ptr(offset), int(sum(lr_dist(mid_man_row_idx(1)+1:)),kind=MPI_KIND), & 
+                            MPI_MATH_DATATYPE_PRECISION,  int(mid_man_row_idx(1),kind=MPI_KIND), & 
+                            mid_man_row_idx(1), int(mpi_comm_rows,kind=MPI_KIND), mpierr )         
+            !DEBUG
+!!!            print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") SEND to the middle rank to unpack."        
+          endif                
+
+          if (my_prow==mid_man_row_idx(1)) &
+             call mpi_win_sync(shmem_win, mpierr)
+
+          call obj%timer%stop("sync_SHMEM")
+       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+
+       end if   ! num_mid_man > 0
+    end if      ! my_pcol /= cur_pcol
+
+    call mpi_barrier(mpi_comm_shmem,mpierr)
+
+    if (my_pcol/=cur_pcol) then
+!!!       !DEBUG:
+!!!       my_true_sum = 0.0
+!!!       global_true_sum = 0.0
+!!!       reference_sum = 0.0
+!!!
+       if (num_middle_man > 0)  then 
+          if ( (my_prow > leader) .and. & 
+               (my_prow <  mid_man_row_idx(1)) ) then  
+!!!               !DEBUG:
+!!!          if (my_prow > leader) then 
+!!!               my_true_sum = sum(vr(1:lr+1))
+             offset = sum(lr_dist(1:my_prow))+1
+             vr(1:lr+1) = rma_ptr(offset:offset+lr_dist(my_prow+1)-1)
+            !DEBUG
+!!!            print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") Pull for the upper rank."        
+          end if
+
+!!===>
+          if (my_prow > mid_man_row_idx(1)) then
+             offset = sum(lr_dist(mid_man_row_idx(1)+1:my_prow))+1
+             vr(1:lr+1) = rma_ptr(offset:offset+lr_dist(my_prow+1)-1)
+            !DEBUG
+!!!            print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") Pull for the lower rank."        
+          end if
+!!<===
+          if ( (my_prow == leader) .OR. & 
+               (my_prow == mid_man_row_idx(1)) ) then
+
+             vr(1:lr+1) = rma_ptr(1:lr+1)
+            !DEBUG
+!!!            print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") Pull for the master rank."        
+          end if
+       else   ! (num_middle_man > 0)
           if (my_prow/=leader) then
              offset = sum(lr_dist(1:my_prow))+1
              vr(1:lr+1) = rma_ptr(offset:offset+lr_dist(my_prow+1)-1)
           else
              vr(1:lr+1) = rma_ptr(1:lr+1)   ! my own part
           end if
-       end if
-
+       end if   ! (num_middle_man > 0)
+    end if   !(my_pcol/=cur_pcol)
+!!!DEBUG:
+!!call mpi_reduce(my_true_sum, global_true_sum, 1, MPI_MATH_DATATYPE_PRECISION, MPI_SUM, leader, &
+!!                   mpi_comm_rows, mpierr)
+!!if (my_pcol /= cur_pcol) then
+!!   if ((my_prow==leader) .AND. (num_middle_man > 0))  then 
+!!      global_true_sum =  global_true_sum + sum(vr(1:lr+1)) 
+!!
+!!      !!offset = sum(lr_dist(1:mid_man_row_idx(1))) 
+!!      offset = sum(lr_dist(:)) 
+!!      reference_sum = sum(rma_ptr(lr_dist(1)+1:offset))
+!!      reference_sum = reference_sum + sum(vr(1:lr+1)) 
+!!
+!!!!      offset = sum(lr_dist(1:11)) 
+!!!!      reference_sum = sum(rma_ptr(1:offset))
+!!
+!!     if (abs(global_true_sum - reference_sum) > 1e-3) then
+!!      print "(A,I4,A,I4,A,I4,A,I4,A,F6.2,A,F6.2)", & 
+!!            "lc: ", lc, " istep: ",istep," I'm ",my_prow,", ",my_pcol," true_sum: ",global_true_sum," ref.: ",reference_sum
+!!      !print "(A,I4,A,I4,A,F6.2,A,I4)", & 
+!!      !      "I'm ",my_prow,", ",my_pcol," true_sum: ",global_true_sum," off.: ",offset
+!!     end if
+!!   end if
+!!end if
+!!<<=====
 #else  /* WITH_MPI_SHMEM */
         if (wantDebug) call obj%timer%start("mpi_communication")
         call obj%timer%start("Bcast")
