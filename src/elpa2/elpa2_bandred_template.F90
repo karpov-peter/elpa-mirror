@@ -306,6 +306,7 @@ max_threads, isSkewsymmetric)
   
   call mpi_comm_rank(mpi_comm_world, my_id, mpierr)   !TODO: use parent comm. instead
 !TODO: there's a cheaper way to compute the leader ranks than the following gather+bcast
+!gather will not be needed if rank 0 "computes" the leader ranks and then bcast it
   call mpi_gather(my_id, 1, MPI_INTEGER, leader_ranks, 1, MPI_INTEGER, 0, mpi_comm_cols, mpierr)
   call mpi_bcast(leader_ranks, np_cols, MPI_INTEGER, 0, mpi_comm_world, mpierr)
 
@@ -510,7 +511,6 @@ max_threads, isSkewsymmetric)
 #ifdef WITH_MPI  
 #ifdef WITH_MPI_SHMEM
   leader = 0   ! rank of the leading processor col.  
-  !!!if (my_prow == leader)   
   leader_shmem_rank = shmem_rank - my_prow 
 
   ! later in the lc loop we'll need the distribution of lr among p_rows
@@ -526,7 +526,8 @@ max_threads, isSkewsymmetric)
   end do
   
   ! global reduction of win_size_max
-  call mpi_allreduce(win_size_max, win_size_globMax, 1, MPI_INTEGER, MPI_MAX, mpi_comm_world, mpierr)
+  call mpi_allreduce(win_size_max, win_size_globMax, 1, MPI_INTEGER, MPI_MAX, mpi_comm_world, &
+                     mpierr)
 
   call mpi_type_get_extent(MPI_MATH_DATATYPE_PRECISION, lb, dtype_size, mpierr)
 
@@ -538,7 +539,19 @@ max_threads, isSkewsymmetric)
           
      call MPI_Bcast(leader_shmem_rank, int(1,kind=MPI_KIND), MPI_INTEGER, &
           int(leader,kind=MPI_KIND), int(mpi_comm_rows,kind=MPI_KIND), mpierr)
-      
+!!Alternative to Bcast above      
+!!     do counter = 0, num_middle_man
+!!        remainder = counter*shmem_size + (shmem_rank-my_prow)
+!!        if (remainder >= 0) then
+!!           if ( (remainder/shmem_size)==0 ) then
+!!              leader_shmem_rank = (shmem_rank - my_prow) + counter*shmem_size
+!!              exit
+!!           end if
+!!        else
+!!           cycle
+!!        end if
+!!     end do
+
      do counter = 1, num_middle_man
         mid_man_row_idx(counter) = counter*shmem_size - leader_shmem_rank              
      end do
@@ -570,7 +583,8 @@ max_threads, isSkewsymmetric)
      if ( (shmem_rank - my_prow) > (shmem_size-np_rows) ) then
         num_middle_man    = 1
         if (.not. allocated(mid_man_row_idx))   allocate(mid_man_row_idx(num_middle_man))
-        mid_man_row_idx   = shmem_size - leader_shmem_rank 
+        mid_man_row_idx   = shmem_size - leader_shmem_rank  ! if my_prow - counter <= shmem_size
+        ! => then use counter as the multiplication factor 
 !DEBUG
         if (mid_man_row_idx(1) >= np_rows)   print *,"Error in mid row comp. for upper ranks."
 !!!        print "(A,I4,A,I4,A,I4)","I'm (",my_prow,",",my_pcol,") mid_man: ",mid_man_row_idx
