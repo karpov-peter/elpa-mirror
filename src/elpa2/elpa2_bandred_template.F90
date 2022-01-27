@@ -176,7 +176,7 @@ max_threads, isSkewsymmetric)
   integer(kind=ik), allocatable        :: lr_dist(:)
   integer, allocatable                 :: leader_ranks(:)
   
-  integer               :: pcnt, counter
+  integer               :: pcnt, counter, msg_count
   integer(kind=ik)      :: mpi_comm_leader, world_group, leader_group
   integer(kind=ik)      :: my_id, owner, offset, leader, sync_buff
 
@@ -641,17 +641,15 @@ max_threads, isSkewsymmetric)
   else
      call mpi_win_shared_query(shmem_win, leader_shmem_rank, buffer_size, disp_unit, rma_c_ptr, mpierr)
   end if
-!Maybe this is the error. I guess this
-  call c_f_pointer(rma_c_ptr, rma_ptr, (/(win_size_globMax+1)*np_rows/)) 
-!must be:
-!  call c_f_pointer(rma_c_ptr, rma_ptr, (/local_win_size/)) 
-!DEBUG  
-  call mpi_win_lock_all(MPI_MODE_NOCHECK, shmem_win, mpierr)
+! this seems incorrect:
+!  call c_f_pointer(rma_c_ptr, rma_ptr, (/(win_size_globMax+1)*np_rows/)) 
+! it must be:
+  call c_f_pointer(rma_c_ptr, rma_ptr, (/local_win_size/)) 
   
+  call mpi_win_lock_all(MPI_MODE_NOCHECK, shmem_win, mpierr)
+ 
   !initialize
   owner             = MPI_PROC_NULL
-!OBS: We have already set leader_shmem_rank
-!!!  leader_shmem_rank = MPI_PROC_NULL  
 
 #endif /* WITH_MPI_SHMEM */
 #endif /* WITH_MPI */
@@ -884,7 +882,6 @@ max_threads, isSkewsymmetric)
 #ifdef WITH_MPI_SHMEM
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
        call obj%timer%start("write_HH_inSHMEM")
-
         if (num_middle_man > 0) then
           ! for processes above the middle man
           if ( (my_prow > leader) .and. & 
@@ -893,27 +890,38 @@ max_threads, isSkewsymmetric)
              rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
           end if
 !!===>
-          if (my_prow > mid_man_row_idx(1)) then
-             offset = sum(lr_dist(mid_man_row_idx(1)+1:my_prow))+1
-             !!DEBUG
-             !print "(A,I4,A,I4,A,I5,A,I5)","I'm (",my_prow,",",my_pcol,") offset: ", & 
-             !       offset, ":",offset+lr_dist(my_prow+1)-1        
-!!             do counter=1,np_rows
-!!             print "(A,I3,A,I5)", "cnt.: ", counter, " lr(): ", lr_dist(counter)
-!!             end do
-             rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
-          !DEBUG
-          !print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") Executed for the lower ranks."        
-          end if
+!!          if (my_prow > mid_man_row_idx(1)) then
+!!             offset = sum(lr_dist(mid_man_row_idx(1)+1:my_prow))+1
+!!             rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
+!!          end if
+! the more generic impl.:
+          do counter = 1, num_middle_man
+            if ( (my_prow > mid_man_row_idx(counter)) .AND. &
+                 (my_prow < mid_man_row_idx(counter) + shmem_size) ) then
+
+               offset = sum(lr_dist(mid_man_row_idx(counter)+1:my_prow))+1
+               rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
+            end if            
+          end do
+
+! For the middle men:
+          do counter = 1, num_middle_man
+            if (my_prow == mid_man_row_idx(counter))  then
+             rma_ptr(1:lr+1) = vr(1:lr+1)
+             call mpi_win_sync(shmem_win, mpierr)       
+            end if
+          end do
 !!<===
-          if ( (my_prow == leader) .OR. & 
-               (my_prow == mid_man_row_idx(1)) ) then
+! For the leader:
+          if ( (my_prow == leader) ) then !!!.OR. & 
+               !!!(my_prow == mid_man_row_idx(1)) ) then
              rma_ptr(1:lr+1) = vr(1:lr+1)
 
              ! end of the write epoch
-             call mpi_win_sync(shmem_win, mpierr)       
+             ! is it necessary for the leader to sync here? We can do it after send/recv.
+             !!!!!call mpi_win_sync(shmem_win, mpierr)       
           end if
-        else
+        else   !(num_middle_man > 0)  
           if (my_prow/=leader) then
              offset = sum(lr_dist(1:my_prow))+1
              rma_ptr(offset:offset+lr_dist(my_prow+1)-1) = vr(1:lr+1)
@@ -921,9 +929,10 @@ max_threads, isSkewsymmetric)
              rma_ptr(1:lr+1) = vr(1:lr+1)
 
              ! end of the write epoch
+             ! in the absence of middle men, the leader must sync here:
              call mpi_win_sync(shmem_win, mpierr)       
           end if
-        end if
+        end if   !(num_middle_man > 0)
 
        call obj%timer%stop("write_HH_inSHMEM")
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
@@ -935,10 +944,6 @@ max_threads, isSkewsymmetric)
 
 #ifdef WITH_MPI          
 #ifdef WITH_MPI_SHMEM
-!!!!!DEBUG:
-!!        call MPI_Bcast(vr, int(lr+1,kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, &
-!!                      int(cur_pcol,kind=MPI_KIND), int(mpi_comm_cols,kind=MPI_KIND), mpierr)
-
        ! alternative to Barrier?
        call obj%timer%start("barrier_SHMEM_1")
           call mpi_barrier(mpi_comm_shmem,mpierr)
@@ -947,23 +952,54 @@ max_threads, isSkewsymmetric)
        ! collect data from the middle man
        if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
        call obj%timer%start("collect from mid. man")
+!!!Old vers.:
+!!       if ( (num_middle_man > 0) .AND. (my_pcol==cur_pcol) ) then
+!!         if (my_prow==mid_man_row_idx(1)) then
+!!            call mpi_send(rma_ptr, int(sum(lr_dist(my_prow+1:)),kind=MPI_KIND),   &
+!!                          MPI_MATH_DATATYPE_PRECISION, int(leader,kind=MPI_KIND), & 
+!!                          my_prow, int(mpi_comm_rows,kind=MPI_KIND), mpierr )
+!!
+!!         else if (my_prow==leader) then                 
+!!           !offset = sum( lr_dist(1:mid_man_row_idx(1)-1) ) + 1
+!!           offset = sum( lr_dist(1:mid_man_row_idx(1)) ) + 1
+!!           call mpi_recv(rma_ptr(offset), int(sum(lr_dist(mid_man_row_idx(1)+1:)),kind=MPI_KIND), & 
+!!                         MPI_MATH_DATATYPE_PRECISION,  int(mid_man_row_idx(1),kind=MPI_KIND), & 
+!!                         mid_man_row_idx(1),int(mpi_comm_rows,kind=MPI_KIND), MPI_STATUS_IGNORE, mpierr )
+!!
+!!           call mpi_win_sync(shmem_win, mpierr)
+!!
+!!         end if
+!!       endif   ! (my_pcol==cur_pcol)             
+!New vers.:
+       if (my_pcol==cur_pcol) then
+         if (num_middle_man > 0) then
+           do counter=1, num_middle_man
+             if (my_prow==mid_man_row_idx(counter)) then
+               call mpi_send(rma_ptr, & 
+                             int(sum(lr_dist(my_prow+1:my_prow+num_proc_below)),kind=MPI_KIND), &
+                             MPI_MATH_DATATYPE_PRECISION, int(leader,kind=MPI_KIND), & 
+                             my_prow, int(mpi_comm_rows,kind=MPI_KIND), mpierr )
+             end if
+             if (my_prow==leader) then                 
+               !offset = sum( lr_dist(1:mid_man_row_idx(1)-1) ) + 1
+               offset = sum( lr_dist(1:mid_man_row_idx(counter)) ) + 1
+               if (counter==num_middle_man) then
+                  msg_count = np_rows - mid_man_row_idx(counter)
+               else 
+                  msg_count = mid_man_row_idx(counter+1) - mid_man_row_idx(counter)
+               end if
+               call mpi_recv(rma_ptr(offset), & 
+             int(sum(lr_dist(mid_man_row_idx(counter)+1:mid_man_row_idx(counter)+msg_count)), & 
+                             kind=MPI_KIND), MPI_MATH_DATATYPE_PRECISION, & 
+                             int(mid_man_row_idx(counter),kind=MPI_KIND), & 
+                             mid_man_row_idx(counter), int(mpi_comm_rows,kind=MPI_KIND), & 
+                             MPI_STATUS_IGNORE, mpierr )
+             end if
+           end do
+         end if   !(num_middle_man > 0)
 
-       if ( (num_middle_man > 0) .AND. (my_pcol==cur_pcol) ) then
-         if (my_prow==mid_man_row_idx(1)) then
-            call mpi_send(rma_ptr, int(sum(lr_dist(my_prow+1:)),kind=MPI_KIND),   &
-                          MPI_MATH_DATATYPE_PRECISION, int(leader,kind=MPI_KIND), & 
-                          my_prow, int(mpi_comm_rows,kind=MPI_KIND), mpierr )
+         if (my_prow==leader)  call mpi_win_sync(shmem_win, mpierr)
 
-         else if (my_prow==leader) then                 
-           !offset = sum( lr_dist(1:mid_man_row_idx(1)-1) ) + 1
-           offset = sum( lr_dist(1:mid_man_row_idx(1)) ) + 1
-           call mpi_recv(rma_ptr(offset), int(sum(lr_dist(mid_man_row_idx(1)+1:)),kind=MPI_KIND), & 
-                         MPI_MATH_DATATYPE_PRECISION,  int(mid_man_row_idx(1),kind=MPI_KIND), & 
-                         mid_man_row_idx(1),int(mpi_comm_rows,kind=MPI_KIND), MPI_STATUS_IGNORE, mpierr )
-
-           call mpi_win_sync(shmem_win, mpierr)
-
-         end if
        endif   ! (my_pcol==cur_pcol)             
 
        call mpi_barrier(mpi_comm_shmem,mpierr)
@@ -981,6 +1017,7 @@ max_threads, isSkewsymmetric)
            call obj%timer%stop("bcast_buff")
          end if      
 
+ !=====> Verified
 ! Read access to unpack the buffer into the local shmem arrays of each proc. row
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
 
