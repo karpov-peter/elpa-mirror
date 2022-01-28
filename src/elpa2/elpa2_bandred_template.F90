@@ -510,6 +510,7 @@ max_threads, isSkewsymmetric)
   !endif ! useIntelGPU
 #ifdef WITH_MPI  
 #ifdef WITH_MPI_SHMEM
+ call obj%timer%start("shmem_win_allocation")
   leader = 0   ! rank of the leading processor col.  
   leader_shmem_rank = shmem_rank - my_prow 
 
@@ -651,6 +652,7 @@ max_threads, isSkewsymmetric)
   !initialize
   owner             = MPI_PROC_NULL
 
+ call obj%timer%stop("shmem_win_allocation")
 #endif /* WITH_MPI_SHMEM */
 #endif /* WITH_MPI */
     
@@ -796,13 +798,14 @@ max_threads, isSkewsymmetric)
         
 #ifdef WITH_MPI
 #ifdef WITH_MPI_SHMEM        
-        
-        call mpi_allgather(lr, 1, MPI_INTEGER, lr_dist, 1, MPI_INTEGER, mpi_comm_rows, mpierr)
+ call obj%timer%start("shmem_size_distribution")       
 
-        do counter=1,np_rows
-           lr_dist(counter) = lr_dist(counter) + 1   ! Add one because tau will be padded later as well
-        end do
+     call mpi_allgather(lr, 1, MPI_INTEGER, lr_dist, 1, MPI_INTEGER, mpi_comm_rows, mpierr)
+     do counter=1,np_rows
+        lr_dist(counter) = lr_dist(counter) + 1   !+1 is because later tau will be added too
+     end do
 
+ call obj%timer%stop("shmem_size_distribution")       
 #endif   /* WITH_MPI_SHMEM */
 #endif   /* WITH_MPI */
 
@@ -880,8 +883,9 @@ max_threads, isSkewsymmetric)
 !NEW VERSION:
 #ifdef WITH_MPI          
 #ifdef WITH_MPI_SHMEM
+    call obj%timer%start("write_HH_inSHMEM")
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
-       call obj%timer%start("write_HH_inSHMEM")
+
         if (num_middle_man > 0) then
           ! for processes above the middle man
           if ( (my_prow > leader) .and. & 
@@ -934,9 +938,8 @@ max_threads, isSkewsymmetric)
           end if
         end if   !(num_middle_man > 0)
 
-       call obj%timer%stop("write_HH_inSHMEM")
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
-
+    call obj%timer%stop("write_HH_inSHMEM")
 #endif   /* WITH_MPI_SHMEM */
 #endif   /* WITH_MPI */
 
@@ -950,8 +953,8 @@ max_threads, isSkewsymmetric)
        call obj%timer%stop("barrier_SHMEM_1")
 !!===>>
        ! collect data from the middle man
+       call obj%timer%start("collect from mid_man")
        if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
-       call obj%timer%start("collect from mid. man")
 !!!Old vers.:
 !!       if ( (num_middle_man > 0) .AND. (my_pcol==cur_pcol) ) then
 !!         if (my_prow==mid_man_row_idx(1)) then
@@ -1002,10 +1005,12 @@ max_threads, isSkewsymmetric)
 
        endif   ! (my_pcol==cur_pcol)             
 
-       call mpi_barrier(mpi_comm_shmem,mpierr)
-
-       call obj%timer%stop("collect from mid. man")
        if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+       call obj%timer%stop("collect from mid_man")
+
+       call obj%timer%start("barrier after mid_man")
+         call mpi_barrier(mpi_comm_shmem,mpierr)
+       call obj%timer%stop("barrier after mid_man")
 
        ! Broadcast Householder Vector and tau among the leaders       
          if (my_prow==leader) then                 
@@ -1018,8 +1023,8 @@ max_threads, isSkewsymmetric)
          end if      
 
 ! Read access to unpack the buffer into the local shmem arrays of each proc. row
-    if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
-
+! We don't need the sync guards here (independence from rma_ptr)
+!!    if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
        call obj%timer%start("sync_SHMEM")
        if ( (my_pcol/=cur_pcol) .and. (my_prow==leader) ) then
           call mpi_win_sync(shmem_win, mpierr)
@@ -1027,12 +1032,12 @@ max_threads, isSkewsymmetric)
 
        call mpi_barrier(mpi_comm_shmem,mpierr)
        call obj%timer%stop("sync_SHMEM")
-    if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+!!    if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
     
     if (my_pcol/=cur_pcol) then
        if (num_middle_man > 0)  then 
+         call obj%timer%start("SHMEM_dist_to_mid_man")
          if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
-         call obj%timer%start("sync_SHMEM")
          do counter=1, num_middle_man
           ! share data with the middle man
           if (my_prow==mid_man_row_idx(counter)) then
@@ -1057,21 +1062,24 @@ max_threads, isSkewsymmetric)
                   !    int(sum(lr_dist(mid_man_row_idx(1)+1:)),kind=MPI_KIND), & 
           endif
          end do
+         if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+         call obj%timer%stop("SHMEM_dist_to_mid_man")
 
+         call obj%timer%start("sync_SHMEM")
          do counter=1, num_middle_man
            if (my_prow==mid_man_row_idx(counter)) &
             call mpi_win_sync(shmem_win, mpierr)
          end do
-
          call obj%timer%stop("sync_SHMEM")
-         if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
        end if   ! num_mid_man > 0
     end if      ! my_pcol /= cur_pcol
 
-    call mpi_barrier(mpi_comm_shmem,mpierr)
+    call obj%timer%start("barrier_dist_to_mid_man")
+     call mpi_barrier(mpi_comm_shmem,mpierr)
+    call obj%timer%stop("barrier_dist_to_mid_man")
 
- !=====> Verified
     if (my_pcol/=cur_pcol) then
+       call obj%timer%start("shmem_unpack")
 !!!       !DEBUG:
 !!!       my_true_sum = 0.0
 !!!       global_true_sum = 0.0
@@ -1129,6 +1137,7 @@ max_threads, isSkewsymmetric)
              vr(1:lr+1) = rma_ptr(1:lr+1)   ! my own part
           end if
        end if   ! (num_middle_man > 0)
+       call obj%timer%stop("shmem_unpack")
     end if   !(my_pcol/=cur_pcol)
 !!!DEBUG:
 !!call mpi_reduce(my_true_sum, global_true_sum, 1, MPI_MATH_DATATYPE_PRECISION, MPI_SUM, leader, &
@@ -2353,6 +2362,9 @@ max_threads, isSkewsymmetric)
 !      call mpi_comm_free(mpi_comm_leader, mpierr)
 !    end if
 !  end do
+
+  call mpi_comm_free(mpi_comm_shmem, mpierr)
+
   if (allocated(leader_ranks))     deallocate(leader_ranks)   
   if (allocated(mid_man_row_idx))     deallocate(mid_man_row_idx)   
 #endif
