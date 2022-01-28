@@ -1017,7 +1017,6 @@ max_threads, isSkewsymmetric)
            call obj%timer%stop("bcast_buff")
          end if      
 
- !=====> Verified
 ! Read access to unpack the buffer into the local shmem arrays of each proc. row
     if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
 
@@ -1032,38 +1031,46 @@ max_threads, isSkewsymmetric)
     
     if (my_pcol/=cur_pcol) then
        if (num_middle_man > 0)  then 
-       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
-          call obj%timer%start("sync_SHMEM")
-
+         if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
+         call obj%timer%start("sync_SHMEM")
+         do counter=1, num_middle_man
           ! share data with the middle man
-          if (my_prow==mid_man_row_idx(1)) then
-               call mpi_recv(rma_ptr, int(sum(lr_dist(my_prow+1:)),kind=MPI_KIND),   &
-                             MPI_MATH_DATATYPE_PRECISION, int(leader,kind=MPI_KIND), my_prow, & 
-                             int(mpi_comm_rows,kind=MPI_KIND), MPI_STATUS_IGNORE, mpierr )
-            !DEBUG
-!!!            print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") RECV from leader to unpack."        
+          if (my_prow==mid_man_row_idx(counter)) then
+             call mpi_recv(rma_ptr, & 
+                           int(sum(lr_dist(my_prow+1:my_prow+num_proc_below)),kind=MPI_KIND), &
+                           MPI_MATH_DATATYPE_PRECISION, int(leader,kind=MPI_KIND), my_prow,   & 
+                           int(mpi_comm_rows,kind=MPI_KIND), MPI_STATUS_IGNORE, mpierr )
 
           else if (my_prow==leader) then                 
-              !offset = sum( lr_dist(1:mid_man_row_idx(1)-1) ) + 1
-              offset = sum( lr_dist(1:mid_man_row_idx(1)) ) + 1
-              call mpi_send(rma_ptr(offset), int(sum(lr_dist(mid_man_row_idx(1)+1:)),kind=MPI_KIND), & 
-                            MPI_MATH_DATATYPE_PRECISION,  int(mid_man_row_idx(1),kind=MPI_KIND), & 
-                            mid_man_row_idx(1), int(mpi_comm_rows,kind=MPI_KIND), mpierr )         
-            !DEBUG
-!!!            print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") SEND to the middle rank to unpack."        
-          endif                
+             !offset = sum( lr_dist(1:mid_man_row_idx(1)-1) ) + 1
+             offset = sum( lr_dist(1:mid_man_row_idx(counter)) ) + 1
+             if (counter==num_middle_man) then
+                msg_count = np_rows - mid_man_row_idx(counter)
+             else 
+                msg_count = mid_man_row_idx(counter+1) - mid_man_row_idx(counter)
+             end if
+             call mpi_send(rma_ptr(offset), & 
+             int(sum(lr_dist(mid_man_row_idx(counter)+1:mid_man_row_idx(counter)+msg_count))), & 
+                           MPI_MATH_DATATYPE_PRECISION, & 
+                           int(mid_man_row_idx(counter),kind=MPI_KIND), & 
+                           mid_man_row_idx(counter), int(mpi_comm_rows,kind=MPI_KIND), mpierr )  
+                  !    int(sum(lr_dist(mid_man_row_idx(1)+1:)),kind=MPI_KIND), & 
+          endif
+         end do
 
-          if (my_prow==mid_man_row_idx(1)) &
-             call mpi_win_sync(shmem_win, mpierr)
+         do counter=1, num_middle_man
+           if (my_prow==mid_man_row_idx(counter)) &
+            call mpi_win_sync(shmem_win, mpierr)
+         end do
 
-          call obj%timer%stop("sync_SHMEM")
-       if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
-
+         call obj%timer%stop("sync_SHMEM")
+         if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
        end if   ! num_mid_man > 0
     end if      ! my_pcol /= cur_pcol
 
     call mpi_barrier(mpi_comm_shmem,mpierr)
 
+ !=====> Verified
     if (my_pcol/=cur_pcol) then
 !!!       !DEBUG:
 !!!       my_true_sum = 0.0
@@ -1072,30 +1079,47 @@ max_threads, isSkewsymmetric)
 !!!
        if (num_middle_man > 0)  then 
           if ( (my_prow > leader) .and. & 
-               (my_prow <  mid_man_row_idx(1)) ) then  
+               (my_prow < mid_man_row_idx(1)) ) then  
 !!!               !DEBUG:
 !!!          if (my_prow > leader) then 
 !!!               my_true_sum = sum(vr(1:lr+1))
              offset = sum(lr_dist(1:my_prow))+1
              vr(1:lr+1) = rma_ptr(offset:offset+lr_dist(my_prow+1)-1)
-            !DEBUG
-!!!            print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") Pull for the upper rank."        
           end if
-
 !!===>
-          if (my_prow > mid_man_row_idx(1)) then
-             offset = sum(lr_dist(mid_man_row_idx(1)+1:my_prow))+1
-             vr(1:lr+1) = rma_ptr(offset:offset+lr_dist(my_prow+1)-1)
-            !DEBUG
-!!!            print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") Pull for the lower rank."        
-          end if
-!!<===
-          if ( (my_prow == leader) .OR. & 
-               (my_prow == mid_man_row_idx(1)) ) then
+!!          if (my_prow > mid_man_row_idx(1)) then
+!!             offset = sum(lr_dist(mid_man_row_idx(1)+1:my_prow))+1
+!!             vr(1:lr+1) = rma_ptr(offset:offset+lr_dist(my_prow+1)-1)
+!!            !DEBUG
+!!!!!            print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") Pull for the lower rank."        
+!!          end if
+! the more generic impl.:
+          do counter = 1, num_middle_man
+            if ( (my_prow > mid_man_row_idx(counter)) .AND. &
+                 (my_prow < mid_man_row_idx(counter) + shmem_size) ) then
 
+               offset = sum(lr_dist(mid_man_row_idx(counter)+1:my_prow))+1
+               vr(1:lr+1) = rma_ptr(offset:offset+lr_dist(my_prow+1)-1)
+            end if            
+          end do
+!!<===
+! For the middle men:
+   ! old version:
+!!          if ( (my_prow == leader) .OR. & 
+!!               (my_prow == mid_man_row_idx(1)) ) then
+!!
+!!             vr(1:lr+1) = rma_ptr(1:lr+1)
+!!          end if
+   ! new version:
+          do counter = 1, num_middle_man
+            if (my_prow == mid_man_row_idx(counter))  then
              vr(1:lr+1) = rma_ptr(1:lr+1)
-            !DEBUG
-!!!            print "(A,I4,A,I4,A)","I'm (",my_prow,",",my_pcol,") Pull for the master rank."        
+            end if
+          end do
+
+! For the leader:
+          if ( (my_prow == leader) ) then  
+             vr(1:lr+1) = rma_ptr(1:lr+1)
           end if
        else   ! (num_middle_man > 0)
           if (my_prow/=leader) then
