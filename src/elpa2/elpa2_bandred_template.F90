@@ -953,7 +953,6 @@ max_threads, isSkewsymmetric)
        call obj%timer%stop("barrier_SHMEM_1")
 !!===>>
        ! collect data from the middle man
-       call obj%timer%start("collect from mid_man")
        if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
 !!!Old vers.:
 !!       if ( (num_middle_man > 0) .AND. (my_pcol==cur_pcol) ) then
@@ -976,6 +975,7 @@ max_threads, isSkewsymmetric)
 !New vers.:
        if (my_pcol==cur_pcol) then
          if (num_middle_man > 0) then
+           call obj%timer%start("collect from mid_man")
            do counter=1, num_middle_man
              if (my_prow==mid_man_row_idx(counter)) then
                call mpi_send(rma_ptr, & 
@@ -999,6 +999,7 @@ max_threads, isSkewsymmetric)
                              MPI_STATUS_IGNORE, mpierr )
              end if
            end do
+           call obj%timer%stop("collect from mid_man")
          end if   !(num_middle_man > 0)
 
          if (my_prow==leader)  call mpi_win_sync(shmem_win, mpierr)
@@ -1006,7 +1007,6 @@ max_threads, isSkewsymmetric)
        endif   ! (my_pcol==cur_pcol)             
 
        if (.not. MPI_ASYNC_PROTECTS_NONBLOCKING) call force_sync(rma_ptr) 
-       call obj%timer%stop("collect from mid_man")
 
        call obj%timer%start("barrier after mid_man")
          call mpi_barrier(mpi_comm_shmem,mpierr)
