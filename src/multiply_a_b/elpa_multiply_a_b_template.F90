@@ -65,7 +65,7 @@
   use ELPA_utilities, only : local_index, check_deallocate_f, check_dealloc_gpu_f, &
                              check_host_dealloc_gpu_f, check_alloc_gpu_f, check_host_alloc_gpu_f, &
                              check_host_unregister_gpu_f, check_memcpy_gpu_f, check_allocate_f, &
-                             check_host_register_gpu_f, check_alloc
+                             check_host_register_gpu_f, check_alloc, error_unit
   implicit none
 
 #include "../../src/general/precision_kinds.F90"
@@ -206,17 +206,48 @@
   endif
 
   call obj%timer%start("mpi_communication")
-  call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND) ,my_prowMPI ,mpierr)
-  call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI ,mpierr)
-  call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI ,mpierr)
-  call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI ,mpierr)
-  call mpi_comm_rank(int(mpi_comm_all, kind=MPI_KIND) ,myidMPI ,mpierr)
+  !call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND) ,my_prowMPI ,mpierr)
+  !call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI ,mpierr)
+  !call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI ,mpierr)
+  !call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI ,mpierr)
+  !call mpi_comm_rank(int(mpi_comm_all, kind=MPI_KIND) ,myidMPI ,mpierr)
 
-  my_prow = int(my_prowMPI,kind=c_int)
-  np_rows = int(np_rowsMPI,kind=c_int)
-  my_pcol = int(my_pcolMPI,kind=c_int)
-  np_cols = int(np_colsMPI,kind=c_int)
-  myid    = int(myidMPI,kind=c_int)
+  !my_prow = int(my_prowMPI,kind=c_int)
+  !np_rows = int(np_rowsMPI,kind=c_int)
+  !my_pcol = int(my_pcolMPI,kind=c_int)
+  !np_cols = int(np_colsMPI,kind=c_int)
+  !myid    = int(myidMPI,kind=c_int)
+
+  call obj%get("num_process_rows", np_rows, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting size of mpi_comm_rows in multiply_a_b. Aborting..."
+    stop
+  endif
+
+  call obj%get("process_row", my_prow, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting rank of mpi_comm_rows in multiply_a_b. Aborting..."
+    stop
+  endif
+
+  call obj%get("num_process_cols", np_cols, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting size of mpi_comm_cols in multiply_a_b. Aborting..."
+    stop
+  endif
+
+  call obj%get("process_col", my_pcol, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting rank of mpi_comm_cols in multiply_a_b. Aborting..."
+    stop
+  endif
+
+  call obj%get("num_processes", myid, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting rank of mpi_comm_parent in multiply_a_b. Aborting..."
+    stop
+  endif
+
   call obj%timer%stop("mpi_communication")
   l_rows = local_index(na,  my_prow, np_rows, nblk, -1) ! Local rows of a and b
   l_cols = local_index(ncb, my_pcol, np_cols, nblk, -1) ! Local cols of b

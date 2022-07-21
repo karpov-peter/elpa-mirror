@@ -88,15 +88,32 @@
 
      ! collect some necessary values
      ! and np_rows and np_cols
-     call obj%get("mpi_comm_rows",mpi_comm_rows,error)
-     call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
-     call obj%get("mpi_comm_cols",mpi_comm_cols,error)
-     call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
+     call obj%get("mpi_comm_rows", mpi_comm_rows, error)
+     if (error .ne. ELPA_OK) then
+       write(error_unit,*) "Problem getting mpi_comm_rows in elpa_redistribure. Aborting..."
+       stop
+     endif
+     !call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
+     call obj%get("mpi_comm_cols", mpi_comm_cols, error)
+     if (error .ne. ELPA_OK) then
+       write(error_unit,*) "Problem getting mpi_comm_cols in elpa_redistribure. Aborting..."
+       stop
+     endif
+     !call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
 
-     np_rows = int(np_rowsMPI,kind=c_int)
-     np_cols = int(np_colsMPI,kind=c_int)
+     !np_rows = int(np_rowsMPI,kind=c_int)
+     !np_cols = int(np_colsMPI,kind=c_int)
+     call obj%get("num_process_rows", np_rows, error)
+     if (error .ne. ELPA_OK) then
+       write(error_unit,*) "Problem getting size of mpi_comm_rows in elpa_redistribute. Aborting..."
+       stop
+     endif
 
-
+     call obj%get("num_process_cols", np_cols, error)
+     if (error .ne. ELPA_OK) then
+       write(error_unit,*) "Problem getting size of mpi_comm_cols in elpa_redistribute. Aborting..."
+       stop
+     endif
 
      ! create a new internal blacs discriptor
      ! matrix will still be distributed over the same process grid

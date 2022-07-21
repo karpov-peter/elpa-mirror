@@ -304,14 +304,26 @@ subroutine trans_ev_tridi_to_band_&
 
   call obj%get("nbc_row_elpa2_tridi_to_band", non_blocking_collectives_rows, error)
   if (error .ne. ELPA_OK) then
-    print *,"Problem setting option for non blocking collectives for rows in elpa2_tridi_to_band. Aborting..."
-    stop
+    write(error_unit,*) "Problem getting option for non blocking collectives for rows in elpa2_tridi_to_band. Aborting..."
+    success = .false.
+    call obj%timer%stop("trans_ev_tridi_to_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    return
   endif
 
   call obj%get("nbc_col_elpa2_tridi_to_band", non_blocking_collectives_cols, error)
   if (error .ne. ELPA_OK) then
-    print *,"Problem setting option for non blocking collectives for cols in elpa2_tridi_to_band. Aborting..."
-    stop
+    write(error_unit,*) "Problem getting option for non blocking collectives for cols in elpa2_tridi_to_band. Aborting..."
+    success = .false.
+    call obj%timer%stop("trans_ev_tridi_to_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    return
   endif
 
   if (non_blocking_collectives_rows .eq. 1) then
@@ -337,15 +349,64 @@ subroutine trans_ev_tridi_to_band_&
   kernel_flops = 0
 
   if (wantDebug) call obj%timer%start("mpi_communication")
-  call MPI_Comm_rank(int(mpi_comm_rows,kind=MPI_KIND) , my_prowMPI , mpierr)
-  call MPI_Comm_size(int(mpi_comm_rows,kind=MPI_KIND) , np_rowsMPI , mpierr)
-  call MPI_Comm_rank(int(mpi_comm_cols,kind=MPI_KIND) , my_pcolMPI , mpierr)
-  call MPI_Comm_size(int(mpi_comm_cols,kind=MPI_KIND) , np_colsMPI , mpierr)
+  !call MPI_Comm_rank(int(mpi_comm_rows,kind=MPI_KIND) , my_prowMPI , mpierr)
+  !call MPI_Comm_size(int(mpi_comm_rows,kind=MPI_KIND) , np_rowsMPI , mpierr)
+  !call MPI_Comm_rank(int(mpi_comm_cols,kind=MPI_KIND) , my_pcolMPI , mpierr)
+  !call MPI_Comm_size(int(mpi_comm_cols,kind=MPI_KIND) , np_colsMPI , mpierr)
 
-  my_prow = int(my_prowMPI,kind=c_int)
-  my_pcol = int(my_pcolMPI,kind=c_int)
-  np_rows = int(np_rowsMPI,kind=c_int)
-  np_cols = int(np_colsMPI,kind=c_int)
+  !my_prow = int(my_prowMPI,kind=c_int)
+  !my_pcol = int(my_pcolMPI,kind=c_int)
+  !np_rows = int(np_rowsMPI,kind=c_int)
+  !np_cols = int(np_colsMPI,kind=c_int)
+
+  call obj%get("num_process_rows", np_rows, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting size of mpi_comm_rows in elpa2_tridi_to_band. Aborting..."
+    success = .false.
+    call obj%timer%stop("trans_ev_tridi_to_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    return
+  endif
+
+  call obj%get("process_row", my_prow, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting rank of mpi_comm_rows in elpa2_tridi_to_band. Aborting..."
+    success = .false.
+    call obj%timer%stop("trans_ev_tridi_to_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    return
+  endif
+
+  call obj%get("num_process_cols", np_cols, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting size of mpi_comm_cols in elpa2_tridi_to_band. Aborting..."
+    success = .false.
+    call obj%timer%stop("trans_ev_tridi_to_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    return
+  endif
+
+  call obj%get("process_col", my_pcol, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting rank of mpi_comm_cols in elpa2_tridi_to_band. Aborting..."
+    success = .false.
+    call obj%timer%stop("trans_ev_tridi_to_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    return
+  endif
+
 
   if (wantDebug) call obj%timer%stop("mpi_communication")
 
@@ -401,6 +462,16 @@ subroutine trans_ev_tridi_to_band_&
 
 #if REALCASE == 1
       call obj%get("stripewidth_real",stripe_width, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting option for stripewidth_real in elpa2_tridi_to_band. Aborting..."
+        success = .false.
+        call obj%timer%stop("trans_ev_tridi_to_band_&
+        &MATH_DATATYPE&
+        &" // &
+        &PRECISION_SUFFIX //&
+        gpuString)
+        return
+      endif
 
 #ifdef DOUBLE_PRECISION_REAL
       !stripe_width = 48 ! Must be a multiple of 4
@@ -412,6 +483,16 @@ subroutine trans_ev_tridi_to_band_&
 
 #if COMPLEXCASE == 1
       call obj%get("stripewidth_complex",stripe_width, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting option for stripewidth_complex in elpa2_tridi_to_band. Aborting..."
+        success = .false.
+        call obj%timer%stop("trans_ev_tridi_to_band_&
+        &MATH_DATATYPE&
+        &" // &
+        &PRECISION_SUFFIX //&
+        gpuString)
+        return
+      endif
 
 #ifdef DOUBLE_PRECISION_COMPLEX
       !stripe_width = 48 ! Must be a multiple of 2
@@ -522,6 +603,16 @@ subroutine trans_ev_tridi_to_band_&
     else ! useGPU
 #if REALCASE == 1
       call obj%get("stripewidth_real",stripe_width, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting option for stripewidth_real in elpa2_tridi_to_band. Aborting..."
+        success = .false.
+        call obj%timer%stop("trans_ev_tridi_to_band_&
+        &MATH_DATATYPE&
+        &" // &
+        &PRECISION_SUFFIX //&
+        gpuString)
+        return
+      endif
 
 #ifdef DOUBLE_PRECISION_REAL
       !stripe_width = 48 ! Must be a multiple of 4
@@ -533,6 +624,16 @@ subroutine trans_ev_tridi_to_band_&
 
 #if COMPLEXCASE == 1
       call obj%get("stripewidth_complex",stripe_width, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting option for stripewidth_complex in elpa2_tridi_to_band. Aborting..."
+        success = .false.
+        call obj%timer%stop("trans_ev_tridi_to_band_&
+        &MATH_DATATYPE&
+        &" // &
+        &PRECISION_SUFFIX //&
+        gpuString)
+        return
+      endif
 
 #ifdef DOUBLE_PRECISION_COMPLEX
       !stripe_width = 48 ! Must be a multiple of 2
@@ -4336,7 +4437,17 @@ subroutine trans_ev_tridi_to_band_&
   if (ANY(result_recv_request /= MPI_REQUEST_NULL)) write(error_unit,*) '*** ERROR result_recv_request ***',my_prow,my_pcol
 #endif
 
-  call obj%get("print_flops",print_flops,error)
+  call obj%get("print_flops", print_flops, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting option for print_flops in elpa2_tridi_to_band. Aborting..."
+    success = .false.
+    call obj%timer%stop("trans_ev_tridi_to_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    return
+  endif
 
 #ifdef WITH_MPI
 #ifdef HAVE_DETAILED_TIMINGS

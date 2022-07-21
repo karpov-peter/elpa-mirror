@@ -401,7 +401,7 @@
       write(error_unit,*) "Problem getting size of mpi_comm_parent in elpa2_template. Aborting..."
 #include "./elpa2_aborting_template.F90"
     endif
-    call obj%get("process_rows", my_prow, error)
+    call obj%get("process_row", my_prow, error)
     if (error .ne. ELPA_OK) then
       write(error_unit,*) "Problem getting rank of mpi_comm_rows in elpa2_template. Aborting..."
 #include "./elpa2_aborting_template.F90"
@@ -412,7 +412,7 @@
 #include "./elpa2_aborting_template.F90"
     endif
 
-    call obj%get("process_cols", my_pcol, error)
+    call obj%get("process_col", my_pcol, error)
     if (error .ne. ELPA_OK) then
       write(error_unit,*) "Problem getting rank of mpi_comm_cols in elpa2_template. Aborting..."
 #include "./elpa2_aborting_template.F90"

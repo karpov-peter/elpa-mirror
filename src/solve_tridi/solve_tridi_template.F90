@@ -119,7 +119,7 @@ subroutine solve_tridi_&
         return
       endif
 
-      call obj%get("num_process_row", np_rows, error)
+      call obj%get("num_process_rows", np_rows, error)
       if (error .ne. ELPA_OK) then
         write(error_unit,*) "Problem getting size of mpi_comm_rows in solve_tridi. Aborting..."
         success = .false.
@@ -133,7 +133,7 @@ subroutine solve_tridi_&
         return
       endif
 
-      call obj%get("num_process_col", np_cols, error)
+      call obj%get("num_process_cols", np_cols, error)
       if (error .ne. ELPA_OK) then
         write(error_unit,*) "Problem getting size of mpi_comm_cols in solve_tridi. Aborting..."
         success = .false.

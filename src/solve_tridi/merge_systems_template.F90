@@ -133,25 +133,62 @@
                                                                       &PRECISION&
                                                                       &_real
       integer(kind=ik), intent(in)                :: max_threads
+      integer(kind=c_int)                         :: error
 #ifdef WITH_OPENMP_TRADITIONAL
       integer(kind=ik)                            :: my_thread
+#endif
 
+      call obj%timer%start("merge_systems" // PRECISION_SUFFIX)
+#ifdef WITH_OPENMP_TRADITIONAL
       allocate(z_p(na,0:max_threads-1), stat=istat, errmsg=errorMessage)
       check_allocate("merge_systems: z_p",istat, errorMessage)
 #endif
 
-      call obj%timer%start("merge_systems" // PRECISION_SUFFIX)
       success = .true.
       call obj%timer%start("mpi_communication")
-      call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND) ,my_prowMPI, mpierr)
-      call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI, mpierr)
-      call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
-      call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI, mpierr)
+      !call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND) ,my_prowMPI, mpierr)
+      !call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI, mpierr)
+      !call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
+      !call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI, mpierr)
 
-      my_prow = int(my_prowMPI,kind=c_int)
-      np_rows = int(np_rowsMPI,kind=c_int)
-      my_pcol = int(my_pcolMPI,kind=c_int)
-      np_cols = int(np_colsMPI,kind=c_int)
+      !my_prow = int(my_prowMPI,kind=c_int)
+      !np_rows = int(np_rowsMPI,kind=c_int)
+      !my_pcol = int(my_pcolMPI,kind=c_int)
+      !np_cols = int(np_colsMPI,kind=c_int)
+
+      call obj%get("num_process_rows", np_rows, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting size of mpi_comm_rows in merge_systems. Aborting..."
+        success = .false.
+        call obj%timer%stop("merge_systems" // PRECISION_SUFFIX)
+        return
+      endif
+
+      call obj%get("process_row", my_prow, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting rank of mpi_comm_rows in merge_systems. Aborting..."
+        success = .false.
+        call obj%timer%stop("merge_systems" // PRECISION_SUFFIX)
+        return
+      endif
+
+      call obj%get("num_process_cols", np_cols, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting size of mpi_comm_cols in merge_systems. Aborting..."
+        success = .false.
+        call obj%timer%stop("merge_systems" // PRECISION_SUFFIX)
+        return
+      endif
+
+      call obj%get("process_col", my_pcol, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting rank of mpi_comm_cols in merge_systems. Aborting..."
+        success = .false.
+        call obj%timer%stop("merge_systems" // PRECISION_SUFFIX)
+        return
+      endif
+
+
 
       call obj%timer%stop("mpi_communication")
 

@@ -82,7 +82,7 @@ subroutine global_product_&
    return
   endif
 
-  call obj%get("process_cols", my_pcol, error)
+  call obj%get("process_col", my_pcol, error)
   if (error .ne. ELPA_OK) then
    write(error_unit,*) "Problem getting rank of mpi_comm_cols in global_product. Aborting..."
    success = .false.

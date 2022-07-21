@@ -220,7 +220,7 @@ subroutine tridiag_band_&
     return
   endif
 
-  call obj%get("process_rows", my_prow, error)
+  call obj%get("process_row", my_prow, error)
   if (error .ne. ELPA_OK) then
     write(error_unit,*) "Problem getting rank of mpi_comm_row in elpa2_band_to_tridi. Aborting..."
     call obj%timer%stop("tridiag_band_&
@@ -243,7 +243,7 @@ subroutine tridiag_band_&
     success = .false.
     return
   endif
-  call obj%get("process_cols", my_pcol, error)
+  call obj%get("process_col", my_pcol, error)
   if (error .ne. ELPA_OK) then
     write(error_unit,*) "Problem getting rank of mpi_comm_col in elpa2_band_to_tridi. Aborting..."
     call obj%timer%stop("tridiag_band_&
