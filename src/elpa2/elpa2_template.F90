@@ -376,20 +376,53 @@
     endif
 
     call obj%timer%start("mpi_communication")
-    call mpi_comm_rank(int(mpi_comm_all,kind=MPI_KIND) ,my_peMPI ,mpierr)
-    call mpi_comm_size(int(mpi_comm_all,kind=MPI_KIND) ,n_pesMPI ,mpierr)
+    !call mpi_comm_rank(int(mpi_comm_all,kind=MPI_KIND) ,my_peMPI ,mpierr)
+    !call mpi_comm_size(int(mpi_comm_all,kind=MPI_KIND) ,n_pesMPI ,mpierr)
 
-    call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND) ,my_prowMPI ,mpierr)
-    call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI ,mpierr)
-    call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI ,mpierr)
-    call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI ,mpierr)
+    !call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND) ,my_prowMPI ,mpierr)
+    !call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI ,mpierr)
+    !call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI ,mpierr)
+    !call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI ,mpierr)
 
-    my_pe = int(my_peMPI, kind=c_int)
-    n_pes = int(n_pesMPI, kind=c_int)
-    my_prow = int(my_prowMPI, kind=c_int)
-    np_rows = int(np_rowsMPI, kind=c_int)
-    my_pcol = int(my_pcolMPI, kind=c_int)
-    np_cols = int(np_colsMPI, kind=c_int)
+    !my_pe = int(my_peMPI, kind=c_int)
+    !n_pes = int(n_pesMPI, kind=c_int)
+    !my_prow = int(my_prowMPI, kind=c_int)
+    !np_rows = int(np_rowsMPI, kind=c_int)
+    !my_pcol = int(my_pcolMPI, kind=c_int)
+    !np_cols = int(np_colsMPI, kind=c_int)
+
+    call obj%get("process_id", my_pe, error)
+    if (error .ne. ELPA_OK) then
+      write(error_unit,*) "Problem getting rank of mpi_comm_parent in elpa2_template. Aborting..."
+#include "./elpa2_aborting_template.F90"
+    endif
+    call obj%get("num_processes", n_pes, error)
+    if (error .ne. ELPA_OK) then
+      write(error_unit,*) "Problem getting size of mpi_comm_parent in elpa2_template. Aborting..."
+#include "./elpa2_aborting_template.F90"
+    endif
+    call obj%get("process_rows", my_prow, error)
+    if (error .ne. ELPA_OK) then
+      write(error_unit,*) "Problem getting rank of mpi_comm_rows in elpa2_template. Aborting..."
+#include "./elpa2_aborting_template.F90"
+    endif
+    call obj%get("num_process_rows", np_rows, error)
+    if (error .ne. ELPA_OK) then
+      write(error_unit,*) "Problem getting size of mpi_comm_rows in elpa2_template. Aborting..."
+#include "./elpa2_aborting_template.F90"
+    endif
+
+    call obj%get("process_cols", my_pcol, error)
+    if (error .ne. ELPA_OK) then
+      write(error_unit,*) "Problem getting rank of mpi_comm_cols in elpa2_template. Aborting..."
+#include "./elpa2_aborting_template.F90"
+    endif
+    call obj%get("num_process_cols", np_cols, error)
+    if (error .ne. ELPA_OK) then
+      write(error_unit,*) "Problem getting size of mpi_comm_cols in elpa2_template. Aborting..."
+#include "./elpa2_aborting_template.F90"
+    endif
+
 
     call obj%timer%stop("mpi_communication")
 

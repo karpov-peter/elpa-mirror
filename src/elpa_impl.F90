@@ -626,6 +626,27 @@ module elpa_impl
 
 #endif
 
+      ! elpa_setup sets
+      ! - "process_id" if mpi_comm_parent is set or NO MPI     ! rank of task in mpi_comm_parent  ! used in autotune
+      ! - "num_processes" if mpi_comm_parent is set or NO MPI  ! total number of processes ! used in autotune
+
+      ! - "limit_openmp_threads" if threading level not sufficient 
+
+      ! - "mpi_comm_rows" if self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1 or NOT MPI ! rank in row comm
+      ! - "mpi_comm_cols" if self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1 or NOT MPI ! rank in col_comm
+
+      ! - self%communicators_owned = 1 self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1
+
+      ! - "process_row" if ( self%is_set("mpi_comm_rows") == 1 .and.  self%is_set("mpi_comm_cols") == 1) or NOT MPI ! used in elpa_setup
+      ! - "process_col" if ( self%is_set("mpi_comm_rows") == 1 .and.  self%is_set("mpi_comm_cols") == 1) or not MPI ! used in
+      ! elpa_setup
+      ! - self%communicators_owned = 0
+
+      ! - "num_process_rows" if self%is_set("num_process_rows") /= 1) or NO MPI ! size of row_comm ! used in elpa_setup
+      ! - "num_process_cols" if self%is_set("num_process_cols") /= 1) or NO MPI ! size of col_comm ! used in elpa_setup
+
+      !!- self%myGlobalId  ! used in autotuning to print on rank 0 ! should be the same as process_id
+
 #ifdef HAVE_LIKWID
       !initialize likwid
       call likwid_markerInit()
@@ -931,13 +952,20 @@ module elpa_impl
       if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
       call self%set("num_processes", 1, error)
       if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+      call self%set("mpi_comm_parent", 1, error)
+      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+      call self%set("mpi_comm_cols", 1, error)
+      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+      call self%set("mpi_comm_rows", 1, error)
+      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
 #endif /* WITH_MPI */
 
-#ifdef WITH_MPI
-      self%myGlobalId = my_id
-#else
-      self%myGlobalId = 0
-#endif
+!#ifdef WITH_MPI
+!      self%myGlobalId = my_id
+!#else
+!      self%myGlobalId = 0
+!#endif
 
 #if STORE_BUILD_CONFIG
       call self%get("output_build_config",build_config, error)
@@ -1885,6 +1913,7 @@ module elpa_impl
       logical                                       :: unfinished_1stage, unfinished_2stage, compare_solvers
       logical, save                                 :: firstCall = .true.
       integer(kind=c_int)                           :: solver, debug
+      integer(kind=c_int)                           :: myGlobalId
 
 #ifdef USE_FORTRAN2008
       if (present(error)) then
@@ -1893,6 +1922,22 @@ module elpa_impl
 #else
       error = ELPA_OK
 #endif
+      call self%get("process_id", myGlobalId, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "ELPA_AUTOTUNE_STEP: cannot get process_id. Aborting..."
+#ifdef USE_FORTRAN2008
+        if (present(error)) then
+          error = ELPA_ERROR
+          return
+        else
+          return
+        endif
+#else
+        error = ELPA_ERROR_SETUP
+        return
+#endif
+      endif
+
       select type(tune_state)
         type is (elpa_autotune_impl_t)
           ts_impl => tune_state
@@ -1996,7 +2041,7 @@ module elpa_impl
             do_autotune_1stage = .false.
             last_call_1stage = .true.
             if (do_autotune_2stage) then
-              if (self%myGlobalId .eq. 0) write(error_unit, "(a)") "Tuning of ELPA 1stage done: Doing one last call for 1stage"
+              if (myGlobalId .eq. 0) write(error_unit, "(a)") "Tuning of ELPA 1stage done: Doing one last call for 1stage"
               unfinished = .true.
               return
             else
@@ -2020,7 +2065,7 @@ module elpa_impl
             unfinished = unfinished_2stage
             return
           else
-            if (self%myGlobalId .eq. 0) write(error_unit, "(a)") "Tuning of ELPA 2stage done"
+            if (myGlobalId .eq. 0) write(error_unit, "(a)") "Tuning of ELPA 2stage done"
             !if (debug == 1) print *,"Tuning for ELPA_SOLVER_2STAGE DONE"
             do_autotune_2stage = .false.
             last_call_2stage = .true.

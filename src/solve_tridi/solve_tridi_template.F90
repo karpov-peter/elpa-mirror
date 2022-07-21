@@ -83,7 +83,7 @@ subroutine solve_tridi_&
       logical, intent(out)                       :: success
 
       integer(kind=ik)                           :: i, j, n, np, nc, nev1, l_cols, l_rows
-      integer(kind=ik)                           :: my_prow, my_pcol, np_rows, np_cols
+      integer(kind=c_int)                        :: my_prow, my_pcol, np_rows, np_cols
       integer(kind=MPI_KIND)                     :: mpierr, my_prowMPI, my_pcolMPI, np_rowsMPI, np_colsMPI
       integer(kind=ik), allocatable              :: limits(:), l_col(:), p_col(:), l_col_bc(:), p_col_bc(:)
 
@@ -91,6 +91,7 @@ subroutine solve_tridi_&
       character(200)                             :: errorMessage
       character(20)                              :: gpuString
       integer(kind=ik), intent(in)               :: max_threads
+      integer(kind=c_int)                        :: error
 
       if(useGPU) then
         gpuString = "_gpu"
@@ -101,15 +102,43 @@ subroutine solve_tridi_&
       call obj%timer%start("solve_tridi" // PRECISION_SUFFIX // gpuString)
 
       call obj%timer%start("mpi_communication")
-      call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND) ,my_prowMPI, mpierr)
-      call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI, mpierr)
-      call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
-      call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI, mpierr)
+      !call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND) ,my_prowMPI, mpierr)
+      !call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI, mpierr)
+      !call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
+      !call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI, mpierr)
 
-      my_prow = int(my_prowMPI,kind=c_int)
-      np_rows = int(np_rowsMPI,kind=c_int)
-      my_pcol = int(my_pcolMPI,kind=c_int)
-      np_cols = int(np_colsMPI,kind=c_int)
+      !my_prow = int(my_prowMPI,kind=c_int)
+      !np_rows = int(np_rowsMPI,kind=c_int)
+      !my_pcol = int(my_pcolMPI,kind=c_int)
+      !np_cols = int(np_colsMPI,kind=c_int)
+
+      call obj%get("process_row", my_prow, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting rank of mpi_comm_rows in solve_tridi. Aborting..."
+        success = .false.
+        return
+      endif
+
+      call obj%get("num_process_row", np_rows, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting size of mpi_comm_rows in solve_tridi. Aborting..."
+        success = .false.
+        return
+      endif
+
+      call obj%get("process_col", my_pcol, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting rank of mpi_comm_cols in solve_tridi. Aborting..."
+        success = .false.
+        return
+      endif
+
+      call obj%get("num_process_col", np_cols, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting size of mpi_comm_cols in solve_tridi. Aborting..."
+        success = .false.
+        return
+      endif
 
       call obj%timer%stop("mpi_communication")
 
@@ -418,11 +447,26 @@ subroutine solve_tridi_&
       endif
 
       call obj%timer%start("mpi_communication")
-      call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND), my_prowMPI, mpierr)
-      call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
+      !call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND), my_prowMPI, mpierr)
+      !call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
 
-      my_prow = int(my_prowMPI,kind=c_int)
-      np_rows = int(np_rowsMPI,kind=c_int)
+      !my_prow = int(my_prowMPI,kind=c_int)
+      !np_rows = int(np_rowsMPI,kind=c_int)
+
+      call obj%get("process_row", my_prow, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting rank of mpi_comm_rows in solve_tridi_col. Aborting..."
+        success = .false.
+        return
+      endif
+  
+      call obj%get("num_process_rows", np_rows, error)
+      if (error .ne. ELPA_OK) then
+        write(error_unit,*) "Problem getting size of mpi_comm_rows in solve_tridi_col. Aborting..."
+        success = .false.
+        return
+      endif
+  
       call obj%timer%stop("mpi_communication")
       success = .true.
       ! Calculate the number of subdivisions needed.

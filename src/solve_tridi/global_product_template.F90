@@ -58,15 +58,37 @@ subroutine global_product_&
 
 #ifdef WITH_MPI
   call obj%timer%start("mpi_communication")
-  call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI, mpierr)
-  np_rows = int(np_rowsMPI,kind=c_int)
+  !call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI, mpierr)
+  !np_rows = int(np_rowsMPI,kind=c_int)
 
-  call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
-  my_pcol = int(my_pcolMPI,kind=c_int)
-  call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI, mpierr)
-  np_cols = int(np_colsMPI,kind=c_int)
+  !call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
+  !my_pcol = int(my_pcolMPI,kind=c_int)
+  !call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI, mpierr)
+  !np_cols = int(np_colsMPI,kind=c_int)
 
   !!my_pcol = int(my_pcolMPI,kind=c_int)
+
+  call obj%get("num_process_rows", np_rows, error)
+  if (error .ne. ELPA_OK) then
+   write(error_unit,*) "Problem getting size of mpi_comm_rows in global_product. Aborting..."
+   success = .false.
+   return
+  endif
+
+  call obj%get("num_process_cols", np_cols, error)
+  if (error .ne. ELPA_OK) then
+   write(error_unit,*) "Problem getting size of mpi_comm_cols in global_product. Aborting..."
+   success = .false.
+   return
+  endif
+
+  call obj%get("process_cols", my_pcol, error)
+  if (error .ne. ELPA_OK) then
+   write(error_unit,*) "Problem getting rank of mpi_comm_cols in global_product. Aborting..."
+   success = .false.
+   return
+  endif
+
   call obj%timer%stop("mpi_communication")
 #endif
 

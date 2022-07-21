@@ -82,7 +82,7 @@ module elpa_api
     integer(kind=c_int), public, pointer :: local_ncols => NULL()
     integer(kind=c_int), public, pointer :: nblk => NULL()
 
-    integer(kind=c_int), public          :: myGlobalId
+    !integer(kind=c_int), public          :: myGlobalId
 
     contains
       ! general

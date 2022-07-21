@@ -181,20 +181,92 @@ subroutine tridiag_band_&
   endif
 
   if (wantDebug) call obj%timer%start("mpi_communication")
-  call mpi_comm_rank(int(mpi_comm_all,kind=MPI_KIND) ,my_peMPI ,mpierr)
-  call mpi_comm_size(int(mpi_comm_all,kind=MPI_KIND) ,n_pesMPI ,mpierr)
+  !call mpi_comm_rank(int(mpi_comm_all,kind=MPI_KIND) ,my_peMPI ,mpierr)
+  !call mpi_comm_size(int(mpi_comm_all,kind=MPI_KIND) ,n_pesMPI ,mpierr)
 
-  call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND),my_prowMPI ,mpierr)
-  call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND),np_rowsMPI ,mpierr)
-  call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND),my_pcolMPI ,mpierr)
-  call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND),np_colsMPI ,mpierr)
+  !call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND),my_prowMPI ,mpierr)
+  !call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND),np_rowsMPI ,mpierr)
+  !call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND),my_pcolMPI ,mpierr)
+  !call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND),np_colsMPI ,mpierr)
 
-  my_pe = int(my_peMPI,kind=MPI_KIND)
-  n_pes = int(n_pesMPI,kind=MPI_KIND)
-  my_prow = int(my_prowMPI,kind=MPI_KIND)
-  np_rows = int(np_rowsMPI,kind=MPI_KIND)
-  my_pcol = int(my_pcolMPI,kind=MPI_KIND)
-  np_cols = int(np_colsMPI,kind=MPI_KIND)
+  !my_pe = int(my_peMPI,kind=MPI_KIND)
+  !n_pes = int(n_pesMPI,kind=MPI_KIND)
+  !my_prow = int(my_prowMPI,kind=MPI_KIND)
+  !np_rows = int(np_rowsMPI,kind=MPI_KIND)
+  !my_pcol = int(my_pcolMPI,kind=MPI_KIND)
+  !np_cols = int(np_colsMPI,kind=MPI_KIND)
+
+  call obj%get("process_id", my_pe, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting rank of mpi_comm_parent in elpa2_band_to_tridi. Aborting..."
+    call obj%timer%stop("tridiag_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    success = .false.
+    return
+  endif
+
+  call obj%get("num_processes", n_pes, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting size of mpi_comm_parent in elpa2_band_to_tridi. Aborting..."
+    call obj%timer%stop("tridiag_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    success = .false.
+    return
+  endif
+
+  call obj%get("process_rows", my_prow, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting rank of mpi_comm_row in elpa2_band_to_tridi. Aborting..."
+    call obj%timer%stop("tridiag_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    success = .false.
+    return
+  endif
+
+  call obj%get("num_process_rows", np_rows, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting size of mpi_comm_row in elpa2_band_to_tridi. Aborting..."
+    call obj%timer%stop("tridiag_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    success = .false.
+    return
+  endif
+  call obj%get("process_cols", my_pcol, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting rank of mpi_comm_col in elpa2_band_to_tridi. Aborting..."
+    call obj%timer%stop("tridiag_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    success = .false.
+    return
+  endif
+
+  call obj%get("num_process_cols", np_cols, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting size of mpi_comm_col in elpa2_band_to_tridi. Aborting..."
+    call obj%timer%stop("tridiag_band_&
+    &MATH_DATATYPE&
+    &" // &
+    &PRECISION_SUFFIX //&
+    gpuString)
+    success = .false.
+    return
+  endif
+
   if (wantDebug) call obj%timer%stop("mpi_communication")
 
   ! Get global_id mapping 2D procssor coordinates to global id

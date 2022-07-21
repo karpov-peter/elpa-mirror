@@ -149,6 +149,9 @@
       call obj%timer%start("band_band_real" // PRECISION_SUFFIX)
 
       call obj%timer%start("mpi_communication")
+      ! keep here the MPI calls to the communicator since
+      ! it is changing and we do not want a logic to realize
+      ! whether we should query the process_[row|col] object
       call mpi_comm_rank(int(communicator,kind=MPI_KIND) ,my_peMPI ,mpierr)
       call mpi_comm_size(int(communicator,kind=MPI_KIND) ,n_pesMPI ,mpierr)
 

@@ -8,6 +8,7 @@ subroutine transform_columns_&
   use elpa_omp
 #endif
   use elpa_mpi
+  use ELPA_utilities, only : error_unit
   implicit none
   class(elpa_abstract_impl_t), intent(inout) :: obj
   integer(kind=ik), intent(in)               :: na, l_rqs, l_rqe, ldq, matrixCols
@@ -27,16 +28,26 @@ subroutine transform_columns_&
   integer(kind=ik)                           :: col1, col2
   real(kind=REAL_DATATYPE)                   :: tmp(na)
   integer(kind=ik)                           :: pc1, pc2, lc1, lc2
+  integer(kind=c_int)                        :: error
 
   if (l_rows==0) return ! My processor column has no work to do
 
 #ifdef WITH_MPI
   call obj%timer%start("mpi_communication")
-  call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
+  !call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
   !call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI, mpierr)
 
-  my_pcol = int(my_pcolMPI,kind=c_int)
+  !my_pcol = int(my_pcolMPI,kind=c_int)
   !np_cols = int(np_colsMPI,kind=c_int)
+
+  call obj%get("process_col", my_pcol, error)
+  if (error .ne. ELPA_OK) then
+    write(error_unit,*) "Problem getting rank of mpi_comm_cols in transform_columns. Aborting..."
+    stop
+    return
+  endif
+
+
 
   call obj%timer%stop("mpi_communication")
 #else
