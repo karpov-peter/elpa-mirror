@@ -46,9 +46,18 @@ recursive subroutine merge_recursive_&
 
 #ifdef WITH_MPI
    call obj%timer%start("mpi_communication")
-   call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
+   !call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
 
-   my_pcol = int(my_pcolMPI,kind=c_int)
+   !my_pcol = int(my_pcolMPI,kind=c_int)
+
+   call obj%get("process_col", my_pcol, error)
+   if (error .ne. ELPA_OK) then
+     write(error_unit,*) "Problem getting rank of mpi_comm_cols in merge_recursiv. Aborting..."
+     success = .false.
+     call obj%timer%stop("mpi_communication" // PRECISION_SUFFIX)
+     return
+   endif
+
    call obj%timer%stop("mpi_communication")
 #endif
 

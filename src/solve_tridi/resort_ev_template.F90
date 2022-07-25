@@ -38,8 +38,16 @@ subroutine resort_ev_&
     if (l_rows==0) return ! My processor column has no work to do
 
 #ifdef WITH_MPI
-    call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
-    my_pcol = int(my_pcolMPI,kind=c_int)
+    !call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
+    !my_pcol = int(my_pcolMPI,kind=c_int)
+
+
+     call obj%get("process_col", my_pcol, error)
+     if (error .ne. ELPA_OK) then
+       write(error_unit,*) "Problem getting rank of mpi_comm_cols in resort_ev. Aborting..."
+       stop
+     endif
+
 #endif
 
     ! Resorts eigenvectors so that q_new(:,i) = q_old(:,idx_ev(i))
