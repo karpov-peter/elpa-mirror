@@ -88,6 +88,7 @@ module elpa_api
       ! general
       procedure(elpa_setup_i),   deferred, public :: setup          !< method to setup an ELPA object
       procedure(elpa_destroy_i), deferred, public :: destroy        !< method to destroy an ELPA object
+      procedure(elpa_setup_mpi_comm_i),   deferred, public :: setup_mpi_comm !< method to setup (changed) mpi communicators for an ELPA object
 
       ! key/value store
       generic, public :: set => &                                   !< export a method to set integer/double/float key/values
@@ -401,6 +402,20 @@ module elpa_api
   !> \result  error       integer : error code, which can be queried with elpa_strerr()
   abstract interface
     function elpa_setup_i(self) result(error)
+      import elpa_t
+      implicit none
+      class(elpa_t), intent(inout)   :: self
+      integer                        :: error
+    end function
+  end interface
+
+  !> \brief abstract definition of the ELPA setup_mpi_comm method
+  !> Parameters
+  !> \details
+  !> \param   self            class(elpa_t): the ELPA object
+  !> \result  error           integer : error code, which can be queried with elpa_strerr()
+  abstract interface
+    function elpa_setup_mpi_comm_i(self) result(error)
       import elpa_t
       implicit none
       class(elpa_t), intent(inout)   :: self

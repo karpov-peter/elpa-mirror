@@ -108,6 +108,14 @@
 
   success = .true.
 
+   !check whether MPI setup changed
+   error = obj%setup_mpi_comm()
+   if (error .ne. ELPA_OK) then
+     write(error_unit,*) "ELPA_cholesky: Problem checking MPI setup. Aborting..."
+     success = .false.
+     return
+   endif
+
   gpu_cholesky = 0
   ! GPU settings
   if (gpu_vendor() == NVIDIA_GPU) then

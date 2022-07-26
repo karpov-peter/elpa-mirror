@@ -118,6 +118,16 @@
                                                             &MATH_DATATYPE
 
   success = .true.
+
+   !check whether MPI setup changed
+   error = obj%setup_mpi_comm()
+   if (error .ne. ELPA_OK) then
+     write(error_unit,*) "ELPA_multiply_ab: Problem checking MPI setup. Aborting..."
+     success = .false.
+     return
+   endif
+
+
   gpu_multiply_a_b = 0
 
   ! GPU settings

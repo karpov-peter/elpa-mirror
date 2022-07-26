@@ -326,6 +326,13 @@
     &PRECISION&
     &")
 
+   !check whether MPI setup changed
+   error = obj%setup_mpi_comm()
+   if (error .ne. ELPA_OK) then
+     write(error_unit,*) "ELPA2: Problem checking MPI setup. Aborting..."
+#include "./elpa2_aborting_template.F90"
+   endif
+
     call obj%get("debug",debug, error)
     if (error .ne. ELPA_OK) then
       write(error_unit,*) "ELPA2: Problem getting option for debug settings. Aborting..."

@@ -41,6 +41,7 @@ recursive subroutine merge_recursive_&
    integer(kind=ik)                           :: np1, np2, noff, nlen, nmid, n
    logical, intent(in)                        :: useGPU, wantDebug
    logical, intent(out)                       :: success
+   integer(kind=ik)                           :: error
 
    success = .true.
 

@@ -114,7 +114,7 @@
       integer(kind=ik)                            :: l_rnm, nnzu, nnzl, ndef, ncnt, max_local_cols, &
                                                      l_cols_qreorg, np, l_idx, nqcols1, nqcols2
       integer(kind=ik)                            :: my_proc, n_procs, my_prow, my_pcol, np_rows, &
-                                                     np_cols
+                                                     np_cols, my_pcol2, np_rows2, my_prow2
       integer(kind=MPI_KIND)                      :: mpierr
       integer(kind=MPI_KIND)                      :: my_prowMPI, np_rowsMPI, my_pcolMPI, np_colsMPI
       integer(kind=ik)                            :: np_next, np_prev, np_rem
@@ -148,12 +148,14 @@
       call obj%timer%start("mpi_communication")
       !call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND) ,my_prowMPI, mpierr)
       !call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND) ,np_rowsMPI, mpierr)
-      !call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
+
+      ! needed since communicator might be MPI_COMM_SELF
+      call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
       !call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI, mpierr)
 
-      !my_prow = int(my_prowMPI,kind=c_int)
-      !np_rows = int(np_rowsMPI,kind=c_int)
-      !my_pcol = int(my_pcolMPI,kind=c_int)
+      !my_prow2 = int(my_prowMPI,kind=c_int)
+      !np_rows2 = int(np_rowsMPI,kind=c_int)
+      my_pcol = int(my_pcolMPI,kind=c_int)
       !np_cols = int(np_colsMPI,kind=c_int)
 
       call obj%get("num_process_rows", np_rows, error)
@@ -180,15 +182,13 @@
         return
       endif
 
-      call obj%get("process_col", my_pcol, error)
-      if (error .ne. ELPA_OK) then
-        write(error_unit,*) "Problem getting rank of mpi_comm_cols in merge_systems. Aborting..."
-        success = .false.
-        call obj%timer%stop("merge_systems" // PRECISION_SUFFIX)
-        return
-      endif
-
-
+      !call obj%get("process_col", my_pcol, error)
+      !if (error .ne. ELPA_OK) then
+      !  write(error_unit,*) "Problem getting rank of mpi_comm_cols in merge_systems. Aborting..."
+      !  success = .false.
+      !  call obj%timer%stop("merge_systems" // PRECISION_SUFFIX)
+      !  return
+      !endif
 
       call obj%timer%stop("mpi_communication")
 

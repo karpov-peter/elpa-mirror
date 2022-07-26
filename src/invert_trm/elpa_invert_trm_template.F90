@@ -112,6 +112,13 @@
                                                             &PRECISION&
                                                             &_&
                                                             &MATH_DATATYPE
+   !check whether MPI setup changed
+   error = obj%setup_mpi_comm()
+   if (error .ne. ELPA_OK) then
+     write(error_unit,*) "ELPA_invert_trm: Problem checking MPI setup. Aborting..."
+     success = .false.
+     return
+   endif
 
 
   ! GPU settings

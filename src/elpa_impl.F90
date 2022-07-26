@@ -72,6 +72,14 @@ module elpa_impl
   private
   public :: elpa_impl_allocate
 
+  type elpa_impl_mpi_t
+   integer :: communicators_owned_setup
+   integer :: communicators_owned_runtime
+   integer :: mpi_comm_parent, mpi_comm_rows, mpi_comm_cols
+   integer :: mpi_comm_parent_size, mpi_comm_rows_size, mpi_comm_cols_size
+   integer :: mpi_comm_parent_rank, mpi_comm_rows_rank, mpi_comm_cols_rank
+  end type
+
   integer(kind=c_int), private :: autotune_level, autotune_domain
   logical, private, save       :: autotune_substeps_done1stage(0:ELPA_NUMBER_OF_AUTOTUNE_LEVELS-1) = .false.
   logical, private, save       :: autotune_substeps_done2stage(0:ELPA_NUMBER_OF_AUTOTUNE_LEVELS-1) = .false.
@@ -84,10 +92,14 @@ module elpa_impl
 !> \brief Definition of the extended elpa_impl_t type
   type, extends(elpa_abstract_impl_t) :: elpa_impl_t
    private
-   integer :: communicators_owned
+
+   type(elpa_impl_mpi_t) :: mpi_setup
 
    !This object has been created through the legacy api.
    integer :: from_legacy_api
+
+   !ELPA setup has been called
+   integer :: setup_done = 0
 
    !> \brief methods available with the elpa_impl_t type
    contains
@@ -95,6 +107,7 @@ module elpa_impl
      ! con-/destructor
      procedure, public :: setup => elpa_setup                   !< a setup method: implemented in elpa_setup
      procedure, public :: destroy => elpa_destroy               !< a destroy method: implemented in elpa_destroy
+     procedure, public :: setup_mpi_comm => elpa_setup_mpi_comm !< a setup method for mpi communicators: implemented in elpa_setup_mpi_comms
 
      ! KV store
      procedure, public :: is_set => elpa_is_set             !< a method to check whether a key/value pair has been set : implemented
@@ -602,6 +615,550 @@ module elpa_impl
 #endif
 #endif /* ENABLE_AUTOTUNING */
 
+    !> \brief function to setup the MPI communicators internally
+    !> Parameters
+    !> \param   self           class(elpa_impl_t), the allocated ELPA object
+    !> \result  error          integer, the error code
+    function elpa_setup_mpi_comm(self) result(error)
+      use elpa_scalapack_interfaces
+      class(elpa_impl_t), intent(inout)   :: self
+      integer(kind=c_int)                 :: error
+#ifdef WITH_MPI
+      integer                             :: mpi_comm_parent, mpi_comm_rows, mpi_comm_cols, np_rows, np_cols, my_id, &
+                                             process_row, process_col, mpi_string_length, &
+                                             present_np_rows, present_np_cols, np_total, np_rows_tmp, np_cols_tmp
+      integer(kind=MPI_KIND)              :: mpierr, mpierr2, my_idMPI, np_totalMPI, process_rowMPI, process_colMPI
+      integer(kind=MPI_KIND)              :: mpi_comm_rowsMPI, mpi_comm_colsMPI, np_rowsMPI, np_colsMPI, &
+                                             mpi_string_lengthMPI, my_pcolMPI, my_prowMPI, providedMPI
+      character(len=MPI_MAX_ERROR_STRING) :: mpierr_string
+      integer(kind=BLAS_KIND)             :: numroc_resultBLAS
+      integer(kind=c_int)                 :: info
+      integer(kind=c_int)                 :: na, nblk, na_rows, my_pcol, my_prow, numroc_result
+      character(*), parameter             :: MPI_CONSISTENCY_MSG = &
+        "Provide mpi_comm_parent and EITHER process_row and process_col OR mpi_comm_rows and mpi_comm_cols. Aborting..."
+#endif
+
+      ! self%setup_done = 0 -> setup all mpi setting as needed by setup (since called from setup)
+      ! self%setup_done = 1 -> check whether some mpi setting changed, and if yes actualize elpa index
+      
+      error = ELPA_OK
+
+      if (self%setup_done .eq. 0) then
+        ! this procedure is assumed to be called from within setup
+        ! if it is called _before_ setup this will create an error
+
+#ifdef WITH_MPI
+        if (self%is_set("mpi_comm_parent") == 1) then
+          call self%get("mpi_comm_parent", mpi_comm_parent, error)
+          if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+          self%mpi_setup%mpi_comm_parent = mpi_comm_parent
+
+          call mpi_comm_rank(int(mpi_comm_parent,kind=MPI_KIND), my_idMPI, mpierr)
+          my_id = int(my_idMPI, kind=c_int)
+          call self%set("process_id", my_id, error)
+          if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+          self%mpi_setup%mpi_comm_parent_rank = my_id
+
+          call mpi_comm_size(int(mpi_comm_parent,kind=MPI_KIND), np_totalMPI, mpierr)
+          np_total = int(np_totalMPI,kind=c_int)
+          call self%set("num_processes", np_total, error)
+          if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+          self%mpi_setup%mpi_comm_parent_size = np_total
+
+        else ! mpi_comm_parent == 1
+          if (self%from_legacy_api .ne. 1) then
+            write(error_unit,*) MPI_CONSISTENCY_MSG
+            error = ELPA_ERROR
+            return
+          endif
+        endif ! mpi_comm_parent == 1
+
+        ! Create communicators ourselves
+        if (self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1) then
+
+          if (self%is_set("mpi_comm_rows") == 1 .or. self%is_set("mpi_comm_cols") == 1) then
+            write(error_unit,*) MPI_CONSISTENCY_MSG
+            error = ELPA_ERROR
+            return
+          endif
+
+          call self%get("process_row", process_row, error)
+          if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+          self%mpi_setup%mpi_comm_rows_rank = process_row
+
+          call self%get("process_col", process_col, error)
+          if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+          self%mpi_setup%mpi_comm_cols_rank = process_col
+
+          ! mpi_comm_rows is used for communicating WITHIN rows, i.e. all processes
+          ! having the same column coordinate share one mpi_comm_rows.
+          ! So the "color" for splitting is process_col and the "key" is my row coordinate.
+          ! Analogous for mpi_comm_cols
+          call mpi_comm_split(int(mpi_comm_parent,kind=MPI_KIND), int(process_col,kind=MPI_KIND), &
+                              int(process_row,kind=MPI_KIND), mpi_comm_rowsMPI, mpierr)
+          mpi_comm_rows = int(mpi_comm_rowsMPI,kind=c_int)
+          if (mpierr .ne. MPI_SUCCESS) then
+            call MPI_ERROR_STRING(mpierr, mpierr_string, mpi_string_lengthMPI, mpierr2)
+            mpi_string_length = int(mpi_string_lengthMPI, kind=c_int)
+            write(error_unit,*) "MPI ERROR occured during mpi_comm_split for row communicator: ", trim(mpierr_string)
+            error = ELPA_ERROR_SETUP
+            return
+          endif
+
+          self%mpi_setup%mpi_comm_rows = mpi_comm_rows
+
+          call mpi_comm_split(int(mpi_comm_parent,kind=MPI_KIND), int(process_row,kind=MPI_KIND), &
+                              int(process_col,kind=MPI_KIND), mpi_comm_colsMPI, mpierr)
+          mpi_comm_cols = int(mpi_comm_colsMPI,kind=c_int)
+          if (mpierr .ne. MPI_SUCCESS) then
+            call MPI_ERROR_STRING(mpierr, mpierr_string, mpi_string_lengthMPI, mpierr2)
+            mpi_string_length = int(mpi_string_lengthMPI, kind=c_int)
+            write(error_unit,*) "MPI ERROR occured during mpi_comm_split for col communicator: ", trim(mpierr_string)
+            error = ELPA_ERROR_SETUP
+            return
+          endif
+
+          self%mpi_setup%mpi_comm_cols = mpi_comm_cols
+
+!          ! get the sizes and return maybe an error
+!#ifdef WITH_MPI
+!          call mpi_comm_size(mpi_comm_colsMPI, np_colsMPI, mpierr)
+!          np_cols_tmp = int(np_colsMPI)
+!          if (np_cols_tmp .eq. 1) then
+!            write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process col "
+!            error = ELPA_ERROR_SETUP
+!            return
+!          endif
+!
+!          call mpi_comm_size(mpi_comm_rowsMPI, np_rowsMPI, mpierr)
+!          np_rows_tmp = int(np_rowsMPI)
+!          if (np_rows_tmp .eq. 1) then
+!            write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process row "
+!            error = ELPA_ERROR_SETUP
+!            return
+!          endif
+!#endif
+          call self%set("mpi_comm_rows", mpi_comm_rows, error)
+          if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        
+          call self%set("mpi_comm_cols", mpi_comm_cols, error)
+          if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+          call self%set("mpi_comm_created", 1, error)
+          if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+          ! remember that we created those communicators and we need to free them later
+          self%mpi_setup%communicators_owned_setup = 1
+          self%mpi_setup%communicators_owned_runtime = 1
+
+          ! Externally supplied communicators
+        else if ( self%is_set("mpi_comm_rows") == 1 .and.  self%is_set("mpi_comm_cols") == 1) then
+
+          if (self%is_set("process_row") == 1 .or. self%is_set("process_col") == 1) then
+            write(error_unit,*) MPI_CONSISTENCY_MSG
+            error = ELPA_ERROR
+            return
+          endif
+
+          call self%get("mpi_comm_rows", mpi_comm_rows, error)
+          if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+          self%mpi_setup%mpi_comm_rows = mpi_comm_rows
+
+          call self%get("mpi_comm_cols", mpi_comm_cols, error)
+          if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+          self%mpi_setup%mpi_comm_cols = mpi_comm_cols
+
+!          ! get the sizes and return maybe an error
+!#ifdef WITH_MPI
+!          call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
+!          np_cols_tmp = int(np_colsMPI)
+!          if (np_cols_tmp .eq. 1) then
+!            write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process col "
+!            error = ELPA_ERROR_SETUP
+!            return
+!          endif
+!
+!          call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
+!          np_rows_tmp = int(np_rowsMPI)
+!          if (np_rows_tmp .eq. 1) then
+!            write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process row "
+!            error = ELPA_ERROR_SETUP
+!            return
+!          endif
+!#endif
+          call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND), process_rowMPI, mpierr)
+          process_row = int(process_rowMPI,kind=c_int)
+          call self%set("process_row", process_row, error)
+          if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+          self%mpi_setup%mpi_comm_rows_rank = process_row
+
+          call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND), process_colMPI, mpierr)
+          process_col = int(process_colMPI,kind=c_int)
+          call self%set("process_col", process_col, error)
+          if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+          self%mpi_setup%mpi_comm_cols_rank = process_col
+
+          ! remember that we DID NOT created those communicators and we WILL NOT free them later
+          self%mpi_setup%communicators_owned_setup = 0
+          self%mpi_setup%communicators_owned_runtime = 0
+        else ! (self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1) then
+          ! Otherwise parameters are missing
+          write(error_unit,*) MPI_CONSISTENCY_MSG
+          error = ELPA_ERROR
+          return
+        endif ! (self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1) then
+
+        ! set num_process_rows (and cols), if they are not supplied. Check them
+        ! for consistency if they are. Maybe we could instead require, that they
+        ! are never supplied?
+        call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
+        np_rows = int(np_rowsMPI, kind=c_int)
+        if (self%is_set("num_process_rows") == 1) then
+          call self%get("num_process_rows", present_np_rows, error)
+          if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+          if (np_rows .ne. present_np_rows) then
+            write(error_unit, '(a)') "ELPA_SETUP: MPI row communicator not set correctly. Aborting..."
+            error = ELPA_ERROR_SETUP
+            return
+          endif
+
+          self%mpi_setup%mpi_comm_rows_size = present_np_rows
+
+!#ifdef WITH_MPI
+!          if (np_rows .eq. 1) then
+!            write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process row "
+!            error = ELPA_ERROR_SETUP
+!            return
+!          endif
+!#endif
+        else ! self%is_set("num_process_rows") == 1
+          call self%set("num_process_rows", np_rows, error)
+          if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+          self%mpi_setup%mpi_comm_rows_size = present_np_rows
+        endif ! self%is_set("num_process_rows") == 1
+
+        call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
+        np_cols = int(np_colsMPI, kind=c_int)
+        if (self%is_set("num_process_cols") == 1) then
+          call self%get("num_process_cols", present_np_cols, error)
+          if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+          if (np_cols .ne. present_np_cols) then
+            write(error_unit, '(a)') "ELPA_SETUP: MPI row communicator not set correctly. Aborting..."
+            error = ELPA_ERROR_SETUP
+            return
+          endif
+
+          self%mpi_setup%mpi_comm_cols_size = present_np_cols
+!#ifdef WITH_MPI
+!          if (np_cols .eq. 1) then
+!            write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process row "
+!            error = ELPA_ERROR_SETUP
+!            return
+!          endif
+!#endif
+        else ! self%is_set("num_process_cols") == 1
+          call self%set("num_process_cols", np_cols, error)
+          if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+          self%mpi_setup%mpi_comm_cols_size = present_np_cols
+        endif
+
+        if (self%from_legacy_api .ne. 1) then
+          if (np_total .ne. np_rows * np_cols) then
+            write(error_unit, '(a)') "ELPA_SETUP: MPI parent communicator and row/col communicators do not match. Aborting..."
+            error = ELPA_ERROR_SETUP
+            return
+          endif
+        endif
+        ! check first whether BLACS-GRID, which was setup by the user is reasonable. Too often this is _not_ done by the
+        ! user and then there are complaints about "errors" in ELPA but the problem is in a misconfigured setup
+        call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND) ,my_prowMPI ,mpierr)
+        call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI ,mpierr)
+
+        my_prow = int(my_prowMPI, kind=c_int)
+        my_pcol = int(my_pcolMPI, kind=c_int)
+
+        call self%get("na", na, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+        call self%get("nblk", nblk, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+        call self%get("local_nrows", na_rows, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+        numroc_resultBLAS = numroc(int(na, kind=BLAS_KIND), int(nblk, kind=BLAS_KIND), int(my_prow, kind=BLAS_KIND), &
+                                   0_BLAS_KIND, int(np_rows, kind=BLAS_KIND))
+        numroc_result=int(numroc_resultBLAS, kind=c_int)
+        info = 0
+        if ( na < 0 ) then
+          info = -2
+        else if ( nblk < 1 ) then
+          info = -4
+        else if ( np_rows .eq. -1 ) then
+          info = -8
+        else if ( na_rows < max( 1, numroc_result ) ) then
+          info = -9
+        endif
+
+        if (info .ne. 0) then
+          write(error_unit, '(a)') "ELPA_SETUP ERROR: your provided blacsgrid is not ok!"
+          write(error_unit, '(a)') "BLACS_GRIDINFO returned an error! Aborting..."
+          error = ELPA_ERROR_SETUP
+          return
+        endif
+#else /* WITH_MPI */
+        call self%set("process_row", 0, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        call self%set("process_col", 0, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        call self%set("process_id", 0, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        call self%set("num_process_rows", 1, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        call self%set("num_process_cols", 1, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        call self%set("num_processes", 1, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+        call self%set("mpi_comm_parent", 1, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        call self%set("mpi_comm_cols", 1, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        call self%set("mpi_comm_rows", 1, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+#endif /* WITH_MPI */
+
+      else ! self%setup_done = 1
+
+        ! this procedure is called after setup again, to check whether
+        ! some MPI setup changed by the user
+
+        ! did the mpi_comm_parent change ?
+        call self%get("mpi_comm_parent", mpi_comm_parent, error)
+        if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+        if (mpi_comm_parent .ne. self%mpi_setup%mpi_comm_parent) then
+                
+          call mpi_comm_rank(int(mpi_comm_parent,kind=MPI_KIND), my_idMPI, mpierr)
+          my_id = int(my_idMPI, kind=c_int)
+          call self%set("process_id", my_id, error)
+          if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+          if (my_id .eq. 0) then
+            write(error_unit,*) "The mpi communicator 'mpi_comm_parent' was changed by you after calling elpa_setup."
+            write(error_unit,*) "Re-initializing the size and ranks of this communicator and also the row/col communicators."
+          endif
+
+          call mpi_comm_size(int(mpi_comm_parent,kind=MPI_KIND), np_totalMPI, mpierr)
+          np_total = int(np_totalMPI,kind=c_int)
+
+          call self%set("num_processes", np_total, error)
+          if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+          ! we clearly also have to reset the row/col MPI setup now
+
+          !first free row/col communicators if they were allocated in ELPA
+          if (self%mpi_setup%communicators_owned_runtime .eq. 1) then
+
+            mpi_comm_rowsMPI = int(mpi_comm_rows,kind=MPI_KIND)
+            call mpi_comm_free(mpi_comm_rowsMPI, mpierr)
+
+            mpi_comm_rows = int(mpi_comm_rowsMPI,kind=c_int)
+            if (mpierr .ne. MPI_SUCCESS) then
+              call MPI_ERROR_STRING(mpierr, mpierr_string, mpi_string_lengthMPI, mpierr2)
+              mpi_string_length = int(mpi_string_lengthMPI,kind=c_int)
+              write(error_unit,*) "MPI ERROR occured during mpi_comm_free for row communicator: ", trim(mpierr_string)
+              error = ELPA_ERROR_CRITICAL
+              return
+            endif ! mpierr happend
+
+            mpi_comm_colsMPI = int(mpi_comm_cols,kind=MPI_KIND)
+            call mpi_comm_free(mpi_comm_colsMPI, mpierr)
+            mpi_comm_cols = int(mpi_comm_colsMPI, kind=c_int)
+            if (mpierr .ne. MPI_SUCCESS) then
+              call MPI_ERROR_STRING(mpierr, mpierr_string, mpi_string_lengthMPI, mpierr2)
+              mpi_string_length = int(mpi_string_lengthMPI,kind=c_int)
+              write(error_unit,*) "MPI ERROR occured during mpi_comm_free for col communicator: ", trim(mpierr_string)
+              error = ELPA_ERROR_CRITICAL
+              return
+            endif ! mpierr happend
+            self%mpi_setup%communicators_owned_runtime = 0
+          endif ! (self%mpi_setup%communicators_owned_runtime .eq. 1)
+
+          ! finally create and set the mpi settings for row/col communicators
+
+          ! if in the setup ELPA created the row/col communicators then we also have to do this here
+          ! if not, then the user had to provide the changed communicators 
+          if (self%mpi_setup%communicators_owned_setup .eq. 1) then
+            ! we create the communicators as in setup
+            ! -> the user has to provide the new process_row and process_col (or they must at least be consistent with
+            !    the size of mpi_comm_parent
+
+            call self%get("process_row", process_row, error)
+            if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+            if (process_row .ne. self%mpi_setup%mpi_comm_rows_rank) then
+              if (my_id .eq. 0) then
+                write(error_unit,*) "The process_row setting changed, compared to the time at setup. Re-initializing..."
+              endif
+            endif
+            self%mpi_setup%mpi_comm_rows_rank = process_row
+
+            call self%get("process_col", process_col, error)
+            if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+            if (process_col .ne. self%mpi_setup%mpi_comm_cols_rank) then
+              if (my_id .eq. 0) then
+                write(error_unit,*) "The process_col setting changed, compared to the time at setup. Re-initializing..."
+              endif
+            endif
+            self%mpi_setup%mpi_comm_cols_rank = process_col
+
+            ! mpi_comm_rows is used for communicating WITHIN rows, i.e. all processes
+            ! having the same column coordinate share one mpi_comm_rows.
+            ! So the "color" for splitting is process_col and the "key" is my row coordinate.
+            ! Analogous for mpi_comm_cols
+            call mpi_comm_split(int(mpi_comm_parent,kind=MPI_KIND), int(process_col,kind=MPI_KIND), &
+                                int(process_row,kind=MPI_KIND), mpi_comm_rowsMPI, mpierr)
+            mpi_comm_rows = int(mpi_comm_rowsMPI,kind=c_int)
+            if (mpierr .ne. MPI_SUCCESS) then
+              call MPI_ERROR_STRING(mpierr, mpierr_string, mpi_string_lengthMPI, mpierr2)
+              mpi_string_length = int(mpi_string_lengthMPI, kind=c_int)
+              write(error_unit,*) "MPI ERROR occured during mpi_comm_split for row communicator: ", trim(mpierr_string)
+              error = ELPA_ERROR_SETUP
+              return
+            endif
+
+            call mpi_comm_split(int(mpi_comm_parent,kind=MPI_KIND), int(process_row,kind=MPI_KIND), &
+                                int(process_col,kind=MPI_KIND), mpi_comm_colsMPI, mpierr)
+            mpi_comm_cols = int(mpi_comm_colsMPI,kind=c_int)
+            if (mpierr .ne. MPI_SUCCESS) then
+              call MPI_ERROR_STRING(mpierr, mpierr_string, mpi_string_lengthMPI, mpierr2)
+              mpi_string_length = int(mpi_string_lengthMPI, kind=c_int)
+              write(error_unit,*) "MPI ERROR occured during mpi_comm_split for col communicator: ", trim(mpierr_string)
+              error = ELPA_ERROR_SETUP
+              return
+            endif
+
+            call self%set("mpi_comm_rows", mpi_comm_rows, error)
+            if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+            self%mpi_setup%mpi_comm_rows = mpi_comm_rows
+
+            call self%set("mpi_comm_cols", mpi_comm_cols, error)
+            if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+            self%mpi_setup%mpi_comm_cols = mpi_comm_cols
+
+            call self%set("mpi_comm_created", 1, error)
+            if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+            ! remember that we created those communicators and we need to free them later
+            self%mpi_setup%communicators_owned_runtime = 1
+  
+            ! set num_process_rows (and cols), if they are not supplied. Check them
+            ! for consistency if they are. Maybe we could instead require, that they
+            ! are never supplied?
+            call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
+            np_rows = int(np_rowsMPI, kind=c_int)
+
+            if (self%mpi_setup%mpi_comm_rows_size .ne. np_rows) then
+              if (my_id .eq. 0) then
+                write(error_unit,*) "The size of mpi_comm_rows setting changed, compared to the time at setup. Re-initializing..."
+              endif
+            endif
+
+            call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
+            np_cols = int(np_colsMPI, kind=c_int)
+
+            if (self%mpi_setup%mpi_comm_cols_size .ne. np_cols) then
+              if (my_id .eq. 0) then
+                write(error_unit,*) "The size of mpi_comm_cols setting changed, compared to the time at setup. Re-initializing..."
+              endif
+            endif
+
+            call self%set("num_process_rows", present_np_rows, error)
+            if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+            self%mpi_setup%mpi_comm_rows_size = np_rows
+
+            call self%set("num_process_cols", present_np_cols, error)
+            if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+            self%mpi_setup%mpi_comm_cols_size = np_cols
+          else ! self%mpi_setup%communicators_owned_setup .eq. 1
+            ! the user provided at time of ELPA setup the row/col communicators. 
+            ! -> must also now be provided
+            ! -> do not free the row/col comms
+
+            self%mpi_setup%communicators_owned_runtime = 0
+
+            ! did they change?
+            call self%get("mpi_comm_rows", mpi_comm_rows, error)
+            if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+            if (mpi_comm_rows .ne. self%mpi_setup%mpi_comm_rows) then
+              if (my_id .eq. 0) then
+                write(error_unit,*) "The mpi_comm_rows comunicator changed, compared to the time at setup. Re-initializing..."
+              endif
+              call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND), process_rowMPI, mpierr)
+              process_row = int(process_rowMPI,kind=c_int)
+              call self%set("process_row", process_row, error)
+              if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+              self%mpi_setup%mpi_comm_rows_rank = process_row
+
+              call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
+              np_rows = int(np_rowsMPI, kind=c_int)
+
+              call self%set("num_process_rows", np_rows, error)
+              if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+              self%mpi_setup%mpi_comm_rows_size = np_rows
+            endif ! (mpi_comm_rows .ne. self%mpi_setup%mpi_comm_rows)
+
+            ! did they change?
+            call self%get("mpi_comm_cols", mpi_comm_cols, error)
+            if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+            if (mpi_comm_cols .ne. self%mpi_setup%mpi_comm_cols) then
+              if (my_id .eq. 0) then
+                write(error_unit,*) "The mpi_comm_cols comunicator changed, compared to the time at setup. Re-initializing..."
+              endif
+              call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND), process_colMPI, mpierr)
+              process_col = int(process_colMPI,kind=c_int)
+              call self%set("process_col", process_col, error)
+              if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+              self%mpi_setup%mpi_comm_cols_rank = process_col
+
+              call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
+              np_cols = int(np_colsMPI, kind=c_int)
+
+              call self%set("num_process_cols", np_cols, error)
+              if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
+
+              self%mpi_setup%mpi_comm_cols_size = np_cols
+            endif ! (mpi_comm_rows .ne. self%mpi_setup%mpi_comm_rows)
+          endif ! self%mpi_setup%communicators_owned_setup .eq. 1
+        endif ! mpi_comm_parent .ne. ...
+
+      endif ! self%setup_done = 1
+    end
+
+
+
+
     !> \brief function to setup an ELPA object and to store the MPI communicators internally
     !> Parameters
     !> \param   self       class(elpa_impl_t), the allocated ELPA object
@@ -612,15 +1169,15 @@ module elpa_impl
       integer                             :: error, timings, performance, build_config
 
 #ifdef WITH_MPI
-      integer                             :: mpi_comm_parent, mpi_comm_rows, mpi_comm_cols, np_rows, np_cols, my_id, &
-                                             process_row, process_col, mpi_string_length, &
-                                             present_np_rows, present_np_cols, np_total, np_rows_tmp, np_cols_tmp
-      integer(kind=MPI_KIND)              :: mpierr, mpierr2, my_idMPI, np_totalMPI, process_rowMPI, process_colMPI
-      integer(kind=MPI_KIND)              :: mpi_comm_rowsMPI, mpi_comm_colsMPI, np_rowsMPI, np_colsMPI, &
-                                             mpi_string_lengthMPI, my_pcolMPI, my_prowMPI, providedMPI
-      character(len=MPI_MAX_ERROR_STRING) :: mpierr_string
-      integer(kind=BLAS_KIND)             :: numroc_resultBLAS
-      integer(kind=c_int)                 :: info, na, nblk, na_rows, my_pcol, my_prow, numroc_result
+      !integer                             :: mpi_comm_parent, mpi_comm_rows, mpi_comm_cols, np_rows, np_cols, my_id, &
+      !                                       process_row, process_col, mpi_string_length, &
+      !                                       present_np_rows, present_np_cols, np_total, np_rows_tmp, np_cols_tmp
+      !integer(kind=MPI_KIND)              :: mpierr, mpierr2, my_idMPI, np_totalMPI, process_rowMPI, process_colMPI
+      !integer(kind=MPI_KIND)              :: mpi_comm_rowsMPI, mpi_comm_colsMPI, np_rowsMPI, np_colsMPI, &
+      !                                       mpi_string_lengthMPI, my_pcolMPI, my_prowMPI, providedMPI
+      !character(len=MPI_MAX_ERROR_STRING) :: mpierr_string
+      !integer(kind=BLAS_KIND)             :: numroc_resultBLAS
+      integer(kind=c_int)                 :: na, nblk, na_rows, my_pcol, my_prow, numroc_result
       character(*), parameter             :: MPI_CONSISTENCY_MSG = &
         "Provide mpi_comm_parent and EITHER process_row and process_col OR mpi_comm_rows and mpi_comm_cols. Aborting..."
 
@@ -635,18 +1192,17 @@ module elpa_impl
       ! - "mpi_comm_rows" if self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1 or NOT MPI ! rank in row comm
       ! - "mpi_comm_cols" if self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1 or NOT MPI ! rank in col_comm
 
-      ! - self%communicators_owned = 1 self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1
+      ! - self%mpi_setup%communicators_owned_setup = 1 self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1
 
       ! - "process_row" if ( self%is_set("mpi_comm_rows") == 1 .and.  self%is_set("mpi_comm_cols") == 1) or NOT MPI ! used in elpa_setup
       ! - "process_col" if ( self%is_set("mpi_comm_rows") == 1 .and.  self%is_set("mpi_comm_cols") == 1) or not MPI ! used in
       ! elpa_setup
-      ! - self%communicators_owned = 0
+      ! - self%mpi_setup%communicators_owned_setup = 0
 
       ! - "num_process_rows" if self%is_set("num_process_rows") /= 1) or NO MPI ! size of row_comm ! used in elpa_setup
       ! - "num_process_cols" if self%is_set("num_process_cols") /= 1) or NO MPI ! size of col_comm ! used in elpa_setup
 
       !!- self%myGlobalId  ! used in autotuning to print on rank 0 ! should be the same as process_id
-
 #ifdef HAVE_LIKWID
       !initialize likwid
       call likwid_markerInit()
@@ -677,28 +1233,16 @@ module elpa_impl
       ! This assumption will significanlty simplify the logic, avoid possible
       ! inconsistencies and is rather natural from the user point of view
 
+
+      error = self%setup_mpi_comm()
+      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+      self%setup_done = 1
+      ! at this point it is guaranteed that in the elpa_index is stored
+      ! - mpi_comm_parent, nr of total tasks, rank id of every task
+      ! - mpi_comm_col, nr of tasks per col, rank id 
+      ! - mpi_comm_row, nr of tasks per row, rank id 
+
 #ifdef WITH_MPI
-      if (self%is_set("mpi_comm_parent") == 1) then
-        call self%get("mpi_comm_parent", mpi_comm_parent, error)
-        if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
-
-        call mpi_comm_rank(int(mpi_comm_parent,kind=MPI_KIND), my_idMPI, mpierr)
-        my_id = int(my_idMPI, kind=c_int)
-        call self%set("process_id", my_id, error)
-        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-
-        call mpi_comm_size(int(mpi_comm_parent,kind=MPI_KIND), np_totalMPI, mpierr)
-        np_total = int(np_totalMPI,kind=c_int)
-        call self%set("num_processes", np_total, error)
-        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-      else ! mpi_comm_parent == 1
-        if (self%from_legacy_api .ne. 1) then
-          write(error_unit,*) MPI_CONSISTENCY_MSG
-          error = ELPA_ERROR
-          return
-        endif
-      endif ! mpi_comm_parent == 1
-
 #if defined(WITH_OPENMP_TRADITIONAL) && defined(THREADING_SUPPORT_CHECK) && !defined(HAVE_SUFFICIENT_MPI_THREADING_SUPPORT)
       ! check the threading level supported by the MPI library
       call mpi_query_thread(providedMPI, mpierr)
@@ -709,256 +1253,15 @@ module elpa_impl
                             &limited to 1"
         call self%set("limit_openmp_threads", 1, error)
         if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-#else
+#else /* ALLOW_THREAD_LIMITING */
         write(error_unit,*) "WARNING elpa_setup: MPI threading level MPI_THREAD_SERALIZED or MPI_THREAD_MULTIPLE required but &
                             &your implementation does not support this! Since you did not build ELPA with &
                             &--enable-allow-thread-limiting, this is severe warning. ELPA will _not_ try to cure this problem and&
                             &the results might be wrong. USE AT YOUR OWN RISK !"
-#endif
+#endif /* ALLOW_THREAD_LIMITING */
       endif
 
-#endif
-
-      ! Create communicators ourselves
-      if (self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1) then
-
-        if (self%is_set("mpi_comm_rows") == 1 .or. self%is_set("mpi_comm_cols") == 1) then
-          write(error_unit,*) MPI_CONSISTENCY_MSG
-          error = ELPA_ERROR
-          return
-        endif
-
-        call self%get("process_row", process_row, error)
-        if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
-
-        call self%get("process_col", process_col, error)
-        if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
-
-        ! mpi_comm_rows is used for communicating WITHIN rows, i.e. all processes
-        ! having the same column coordinate share one mpi_comm_rows.
-        ! So the "color" for splitting is process_col and the "key" is my row coordinate.
-        ! Analogous for mpi_comm_cols
-
-        call mpi_comm_split(int(mpi_comm_parent,kind=MPI_KIND), int(process_col,kind=MPI_KIND), &
-                            int(process_row,kind=MPI_KIND), mpi_comm_rowsMPI, mpierr)
-        mpi_comm_rows = int(mpi_comm_rowsMPI,kind=c_int)
-        if (mpierr .ne. MPI_SUCCESS) then
-          call MPI_ERROR_STRING(mpierr, mpierr_string, mpi_string_lengthMPI, mpierr2)
-          mpi_string_length = int(mpi_string_lengthMPI, kind=c_int)
-          write(error_unit,*) "MPI ERROR occured during mpi_comm_split for row communicator: ", trim(mpierr_string)
-          error = ELPA_ERROR_SETUP
-          return
-        endif
-
-        call mpi_comm_split(int(mpi_comm_parent,kind=MPI_KIND), int(process_row,kind=MPI_KIND), &
-                            int(process_col,kind=MPI_KIND), mpi_comm_colsMPI, mpierr)
-        mpi_comm_cols = int(mpi_comm_colsMPI,kind=c_int)
-        if (mpierr .ne. MPI_SUCCESS) then
-          call MPI_ERROR_STRING(mpierr, mpierr_string, mpi_string_lengthMPI, mpierr2)
-          mpi_string_length = int(mpi_string_lengthMPI, kind=c_int)
-          write(error_unit,*) "MPI ERROR occured during mpi_comm_split for col communicator: ", trim(mpierr_string)
-          error = ELPA_ERROR_SETUP
-          return
-        endif
-
-!        ! get the sizes and return maybe an error
-!#ifdef WITH_MPI
-!        call mpi_comm_size(mpi_comm_colsMPI, np_colsMPI, mpierr)
-!        np_cols_tmp = int(np_colsMPI)
-!        if (np_cols_tmp .eq. 1) then
-!          write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process col "
-!          error = ELPA_ERROR_SETUP
-!          return
-!        endif
-!
-!        call mpi_comm_size(mpi_comm_rowsMPI, np_rowsMPI, mpierr)
-!        np_rows_tmp = int(np_rowsMPI)
-!        if (np_rows_tmp .eq. 1) then
-!          write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process row "
-!          error = ELPA_ERROR_SETUP
-!          return
-!        endif
-!#endif
-
-        call self%set("mpi_comm_rows", mpi_comm_rows, error)
-        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-
-        call self%set("mpi_comm_cols", mpi_comm_cols, error)
-        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-
-        ! remember that we created those communicators and we need to free them later
-        self%communicators_owned = 1
-
-      ! Externally supplied communicators
-      else if ( self%is_set("mpi_comm_rows") == 1 .and.  self%is_set("mpi_comm_cols") == 1) then
-
-        if (self%is_set("process_row") == 1 .or. self%is_set("process_col") == 1) then
-          write(error_unit,*) MPI_CONSISTENCY_MSG
-          error = ELPA_ERROR
-          return
-        endif
-
-        call self%get("mpi_comm_rows", mpi_comm_rows, error)
-        if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
-
-        call self%get("mpi_comm_cols", mpi_comm_cols, error)
-        if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
-
-!        ! get the sizes and return maybe an error
-!#ifdef WITH_MPI
-!        call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
-!        np_cols_tmp = int(np_colsMPI)
-!        if (np_cols_tmp .eq. 1) then
-!          write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process col "
-!          error = ELPA_ERROR_SETUP
-!          return
-!        endif
-!
-!        call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
-!        np_rows_tmp = int(np_rowsMPI)
-!        if (np_rows_tmp .eq. 1) then
-!          write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process row "
-!          error = ELPA_ERROR_SETUP
-!          return
-!        endif
-!#endif
-        call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND), process_rowMPI, mpierr)
-        process_row = int(process_rowMPI,kind=c_int)
-        call self%set("process_row", process_row, error)
-        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-
-        call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND), process_colMPI, mpierr)
-        process_col = int(process_colMPI,kind=c_int)
-        call self%set("process_col", process_col, error)
-        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-
-
-        ! remember that we DID NOT created those communicators and we WILL NOT free them later
-        self%communicators_owned = 0
-      else ! (self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1) then
-        ! Otherwise parameters are missing
-        write(error_unit,*) MPI_CONSISTENCY_MSG
-        error = ELPA_ERROR
-        return
-      endif ! (self%is_set("process_row") == 1 .and. self%is_set("process_col") == 1) then
-
-      ! set num_process_rows (and cols), if they are not supplied. Check them
-      ! for consistency if they are. Maybe we could instead require, that they
-      ! are never supplied?
-      call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
-      np_rows = int(np_rowsMPI, kind=c_int)
-      if (self%is_set("num_process_rows") == 1) then
-        call self%get("num_process_rows", present_np_rows, error)
-        if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
-
-        if (np_rows .ne. present_np_rows) then
-          write(error_unit, '(a)') "ELPA_SETUP: MPI row communicator not set correctly. Aborting..."
-          error = ELPA_ERROR_SETUP
-          return   
-        endif
-
-!#ifdef WITH_MPI
-!        if (np_rows .eq. 1) then
-!          write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process row "
-!          error = ELPA_ERROR_SETUP
-!          return
-!        endif
-!#endif       
-      else ! self%is_set("num_process_rows") == 1
-        call self%set("num_process_rows", np_rows, error)
-        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-      endif ! self%is_set("num_process_rows") == 1
-
-      call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
-      np_cols = int(np_colsMPI, kind=c_int)
-      if (self%is_set("num_process_cols") == 1) then
-        call self%get("num_process_cols", present_np_cols, error)
-        if (check_elpa_get(error, ELPA_ERROR_SETUP)) return
-
-        if (np_cols .ne. present_np_cols) then
-          write(error_unit, '(a)') "ELPA_SETUP: MPI row communicator not set correctly. Aborting..."
-          error = ELPA_ERROR_SETUP
-          return   
-        endif
-!#ifdef WITH_MPI
-!        if (np_cols .eq. 1) then
-!          write(error_unit,*) "ELPA_SETUP: ERROR you cannot use ELPA with 1 process row "
-!          error = ELPA_ERROR_SETUP
-!          return
-!        endif
-!#endif       
-      else
-        call self%set("num_process_cols", np_cols, error)
-        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-      endif
-
-      if (self%from_legacy_api .ne. 1) then
-        if (np_total .ne. np_rows * np_cols) then
-          write(error_unit, '(a)') "ELPA_SETUP: MPI parent communicator and row/col communicators do not match. Aborting..."
-          error = ELPA_ERROR_SETUP
-          return   
-        endif
-      endif
-
-      ! check first whether BLACS-GRID, which was setup by the user is reasonable. Too often this is _not_ done by the
-      ! user and then there are complaints about "errors" in ELPA but the problem is in a misconfigured setup
-      call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND) ,my_prowMPI ,mpierr)
-      call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI ,mpierr)
-
-      my_prow = int(my_prowMPI, kind=c_int)
-      my_pcol = int(my_pcolMPI, kind=c_int)
-
-      call self%get("na", na, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-
-      call self%get("nblk", nblk, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-
-      call self%get("local_nrows", na_rows, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-
-      numroc_resultBLAS = numroc(int(na, kind=BLAS_KIND), int(nblk, kind=BLAS_KIND), int(my_prow, kind=BLAS_KIND), &
-                                 0_BLAS_KIND, int(np_rows, kind=BLAS_KIND))
-      numroc_result=int(numroc_resultBLAS, kind=c_int)
-      info = 0
-      if ( na < 0 ) then
-        info = -2
-      else if ( nblk < 1 ) then
-        info = -4
-      else if ( np_rows .eq. -1 ) then
-        info = -8
-      else if ( na_rows < max( 1, numroc_result ) ) then
-        info = -9
-      endif
-
-      if (info .ne. 0) then
-        print *,"ELPA_SETUP ERROR: your provided blacsgrid is not ok!"
-        print *,"BLACS_GRIDINFO returned an error! Aborting..."
-        error = ELPA_ERROR_SETUP
-        return
-      endif
-
-
-#else /* WITH_MPI */
-      call self%set("process_row", 0, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-      call self%set("process_col", 0, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-      call self%set("process_id", 0, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-      call self%set("num_process_rows", 1, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-      call self%set("num_process_cols", 1, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-      call self%set("num_processes", 1, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-
-      call self%set("mpi_comm_parent", 1, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-      call self%set("mpi_comm_cols", 1, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
-      call self%set("mpi_comm_rows", 1, error)
-      if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+#endif /* defined(WITH_OPENMP_TRADITIONAL) && defined(THREADING_SUPPORT_CHECK) && !defined(HAVE_SUFFICIENT_MPI_THREADING_SUPPORT) */
 #endif /* WITH_MPI */
 
 !#ifdef WITH_MPI
@@ -1369,7 +1672,7 @@ module elpa_impl
 #endif
 
 #ifdef WITH_MPI
-      if (self%communicators_owned == 1) then
+      if (self%mpi_setup%communicators_owned_setup == 1) then
         call self%get("mpi_comm_rows", mpi_comm_rows, error2)
         if (error2 .ne. ELPA_OK) then
 #ifdef USE_FORTRAN2008
@@ -1384,7 +1687,7 @@ module elpa_impl
           return
         endif ! error happend
 
-        call self%get("mpi_comm_cols", mpi_comm_cols,error2)
+        call self%get("mpi_comm_cols", mpi_comm_cols, error2)
         if (error2 .ne. ELPA_OK) then
 #ifdef USE_FORTRAN2008
           if (present(error)) then
@@ -1416,6 +1719,11 @@ module elpa_impl
 #endif
           return
         endif ! mpierr happend
+        
+        ! otherwise, we could not set it to negative value
+        call self%set("mpi_comm_created", 1, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
         call self%set("mpi_comm_cols", -12345, error2)
         if (error2 .ne. ELPA_OK) then
 #ifdef USE_FORTRAN2008
@@ -1445,7 +1753,11 @@ module elpa_impl
 #endif
           return
         endif ! mpierr happend
-        call self%set("mpi_comm_rows", -12345,error2)
+
+        ! otherwise, we could not set it to negative value
+        call self%set("mpi_comm_created", 1, error)
+        if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        call self%set("mpi_comm_rows", -12345, error2)
         if (error2 .ne. ELPA_OK) then
 #ifdef USE_FORTRAN2008
           if (present(error)) then

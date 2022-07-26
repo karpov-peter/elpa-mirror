@@ -67,6 +67,9 @@ static int enumerate_identity(elpa_index_t index, int i);
 static int cardinality_bool(elpa_index_t index);
 static int valid_bool(elpa_index_t index, int n, int new_value);
 
+static int comm_row_is_valid(elpa_index_t index, int n, int new_value);
+static int comm_col_is_valid(elpa_index_t index, int n, int new_value);
+
 static int number_of_matrix_layouts(elpa_index_t index);
 static int matrix_layout_enumerate(elpa_index_t index, int i);
 static int matrix_layout_is_valid(elpa_index_t index, int n, int new_value);
@@ -214,6 +217,12 @@ static int elpa_double_value_to_string(char *name, double value, const char **st
                 BASE_ENTRY(option_name, option_description, 0, 0, print_flag), \
         }
 
+#define INT_COMMUNICATOR_ENTRY(option_name, option_description, valid_func, print_flag) \
+        { \
+                BASE_ENTRY(option_name, option_description, 0, 0, print_flag), \
+                .valid = valid_func, \
+        }
+
 /* The order here is important! Tunable options that are dependent on other
  * tunable options must appear later in the list than their prerequisites */
 static const elpa_index_int_entry_t int_entries[] = {
@@ -229,9 +238,10 @@ static const elpa_index_int_entry_t int_entries[] = {
         INT_PARAMETER_ENTRY("num_process_cols", "Number of process column number in the 2D domain decomposition", NULL, PRINT_STRUCTURE),
         INT_PARAMETER_ENTRY("num_processes", "Total number of processes", NULL, PRINT_STRUCTURE),
         INT_PARAMETER_ENTRY("bandwidth", "If specified, a band matrix with this bandwidth is expected as input; bandwidth must be multiply of nblk and at least 2", bw_is_valid, PRINT_YES),
-        INT_ANY_ENTRY("mpi_comm_rows", "Communicator for inter-row communication", PRINT_NO),
-        INT_ANY_ENTRY("mpi_comm_cols", "Communicator for inter-column communication", PRINT_NO),
-        INT_ANY_ENTRY("mpi_comm_parent", "Parent communicator", PRINT_NO),
+        INT_COMMUNICATOR_ENTRY("mpi_comm_rows", "Communicator for inter-row communication", comm_row_is_valid, PRINT_NO),
+        INT_COMMUNICATOR_ENTRY("mpi_comm_cols", "Communicator for inter-column communication", comm_col_is_valid, PRINT_NO),
+        INT_COMMUNICATOR_ENTRY("mpi_comm_parent", "Parent communicator", NULL, PRINT_NO),
+        BOOL_ENTRY("mpi_comm_created", "Did ELPA create the row/col communicators",0, ELPA_AUTOTUNE_NOT_TUNABLE, ELPA_AUTOTUNE_NOT_TUNABLE, 0,  ELPA_AUTOTUNE_PART_NONE, PRINT_NO),
         INT_ANY_ENTRY("blacs_context", "BLACS context", PRINT_NO),
         INT_ENTRY("verbose", "ELPA API prints verbose messages", 0, ELPA_AUTOTUNE_NOT_TUNABLE, ELPA_AUTOTUNE_NOT_TUNABLE, ELPA_AUTOTUNE_DOMAIN_ANY, ELPA_AUTOTUNE_PART_NONE, \
                         cardinality_bool, enumerate_identity, verbose_is_valid, NULL, PRINT_YES),
@@ -1008,6 +1018,34 @@ static int bw_is_valid(elpa_index_t index, int n, int new_value) {
 
         na = elpa_index_get_int_value(index, "na", NULL);
         return (2 <= new_value) && (new_value < na);
+}
+
+
+static int comm_row_is_valid(elpa_index_t index, int n, int new_value) {
+        if (elpa_index_int_value_is_set(index, "mpi_comm_created") != 1) {
+	  return 1;
+	} else {
+	  int created = elpa_index_get_int_value(index, "mpi_comm_created", NULL);
+	  if (created == 1) {
+            return 1;
+	  } else {
+            return 0;
+	  }
+	}
+}
+
+
+static int comm_col_is_valid(elpa_index_t index, int n, int new_value) {
+        if (elpa_index_int_value_is_set(index, "mpi_comm_created") != 1) {
+	  return 1;
+	} else {
+	  int created = elpa_index_get_int_value(index, "mpi_comm_created", NULL);
+	  if (created == 1) {
+            return 1;
+	  } else {
+	    return 0;
+	  }
+	}
 }
 
 static int output_build_config_is_valid(elpa_index_t index, int n, int new_value) {

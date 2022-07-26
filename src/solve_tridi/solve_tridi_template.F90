@@ -98,6 +98,15 @@ subroutine solve_tridi_&
       else
         gpuString = ""
       endif
+   !check whether MPI setup changed
+   error = obj%setup_mpi_comm()
+   if (error .ne. ELPA_OK) then
+     write(error_unit,*) "ELPA_solve_tridi: Problem checking MPI setup. Aborting..."
+     success = .false.
+     return
+   endif
+
+
 
       call obj%timer%start("solve_tridi" // PRECISION_SUFFIX // gpuString)
 

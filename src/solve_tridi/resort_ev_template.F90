@@ -34,6 +34,7 @@ subroutine resort_ev_&
     real(kind=REAL_DATATYPE), allocatable      :: qtmp(:,:)
     integer(kind=ik)                           :: istat
     character(200)                             :: errorMessage
+    integer(kind=ik)                           :: error
 
     if (l_rows==0) return ! My processor column has no work to do
 
