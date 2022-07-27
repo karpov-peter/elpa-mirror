@@ -34,20 +34,19 @@ subroutine transform_columns_&
 
 #ifdef WITH_MPI
   call obj%timer%start("mpi_communication")
-  !call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
+  ! needed since MPI_COMM_COLS might be MPI_COMM_SELF
+  call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND) ,my_pcolMPI, mpierr)
   !call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND) ,np_colsMPI, mpierr)
 
-  !my_pcol = int(my_pcolMPI,kind=c_int)
+  my_pcol = int(my_pcolMPI,kind=c_int)
   !np_cols = int(np_colsMPI,kind=c_int)
 
-  call obj%get("process_col", my_pcol, error)
-  if (error .ne. ELPA_OK) then
-    write(error_unit,*) "Problem getting rank of mpi_comm_cols in transform_columns. Aborting..."
-    stop
-    return
-  endif
-
-
+  !call obj%get("process_col", my_pcol, error)
+  !if (error .ne. ELPA_OK) then
+  !  write(error_unit,*) "Problem getting rank of mpi_comm_cols in transform_columns. Aborting..."
+  !  stop
+  !  return
+  !endif
 
   call obj%timer%stop("mpi_communication")
 #else

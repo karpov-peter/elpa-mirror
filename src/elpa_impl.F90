@@ -939,10 +939,45 @@ module elpa_impl
         if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
         call self%set("mpi_comm_rows", 1, error)
         if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+        self%mpi_setup%communicators_owned_setup   = 0
+        self%mpi_setup%communicators_owned_runtime = 0
+        self%mpi_setup%mpi_comm_parent = 1
+        self%mpi_setup%mpi_comm_cols   = 1
+        self%mpi_setup%mpi_comm_rows   = 1
+        self%mpi_setup%mpi_comm_parent_size   = 1
+        self%mpi_setup%mpi_comm_rows_size     = 1
+        self%mpi_setup%mpi_comm_cols_size     = 1
+        self%mpi_setup%mpi_comm_parent_rank   = 0
+        self%mpi_setup%mpi_comm_rows_rank     = 0
+        self%mpi_setup%mpi_comm_cols_rank     = 0
+
 #endif /* WITH_MPI */
 
       else ! self%setup_done = 1
 
+#ifndef WITH_MPI
+        !! no mpi so nothing to do
+        !call self%set("process_row", 0, error)
+        !if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        !call self%set("process_col", 0, error)
+        !if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        !call self%set("process_id", 0, error)
+        !if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        !call self%set("num_process_rows", 1, error)
+        !if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        !call self%set("num_process_cols", 1, error)
+        !if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        !call self%set("num_processes", 1, error)
+        !if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+
+        !call self%set("mpi_comm_parent", 1, error)
+        !if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        !call self%set("mpi_comm_cols", 1, error)
+        !if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+        !call self%set("mpi_comm_rows", 1, error)
+        !if (check_elpa_set(error, ELPA_ERROR_SETUP)) return
+#else
         ! this procedure is called after setup again, to check whether
         ! some MPI setup changed by the user
 
@@ -1152,7 +1187,7 @@ module elpa_impl
             endif ! (mpi_comm_rows .ne. self%mpi_setup%mpi_comm_rows)
           endif ! self%mpi_setup%communicators_owned_setup .eq. 1
         endif ! mpi_comm_parent .ne. ...
-
+#endif /* WITH_MPI */
       endif ! self%setup_done = 1
     end
 

@@ -299,7 +299,7 @@
     stop
   endif
 
-  call obj%get("num_processes", myid, error)
+  call obj%get("process_id", myid, error)
   if (error .ne. ELPA_OK) then
     write(error_unit,*) "Problem getting rank of mpi_comm_parent in cholesky. Aborting..."
     stop
