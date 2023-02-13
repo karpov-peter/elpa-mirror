@@ -69,6 +69,102 @@
 #include <cusolverDn.h>
 #endif
 
+#undef BLAS_status
+#undef BLAS_handle
+//#undef BLAS_float_complex
+#undef BLAS_set_stream
+#undef BLAS_status_success
+#undef BLAS_status_invalid_handle
+#undef BLAS_create_handle
+#undef BLAS_destroy_handle
+#undef BLAS_double_complex
+#undef BLAS_float_complex
+#undef BLAS_strsm
+#undef BLAS_dtrsm
+#undef BLAS_ctrsm
+#undef BLAS_ztrsm
+#undef BLAS_dtrmm
+#undef BLAS_strmm
+#undef BLAS_ztrmm
+#undef BLAS_ctrmm
+#undef BLAS_dcopy
+#undef BLAS_scopy
+#undef BLAS_zcopy
+#undef BLAS_ccopy
+#undef BLAS_dgemm
+#undef BLAS_sgemm
+#undef BLAS_zgemm
+#undef BLAS_cgemm
+#undef BLAS_dgemv
+#undef BLAS_sgemv
+#undef BLAS_zgemv
+#undef BLAS_cgemv
+#undef BLAS_operation
+#undef BLAS_operation_none
+#undef BLAS_operation_transpose
+#undef BLAS_operation_conjugate_transpose
+#undef BLAS_operation_none
+#undef BLAS_fill
+#undef BLAS_fill_lower
+#undef BLAS_fill_upper
+#undef BLAS_side
+#undef BLAS_side_left
+#undef BLAS_side_right
+#undef BLAS_diagonal
+#undef BLAS_diagonal_non_unit
+#undef BLAS_diagonal_unit
+#undef SOLVER_HANLDE
+#undef BLAS_status_not_initialized
+
+#define BLAS cublas
+#define BLAS_status cublasStatus_t
+#define BLAS_handle cublasHandle_t
+#define SOLVER_handle cusolverDnHandle_t
+#define BLAS_set_stream cublasSetStream
+#define BLAS_status_success CUBLAS_STATUS_SUCCESS
+#define BLAS_status_not_initialized CUBLAS_STATUS_NOT_INITIALIZED
+#define BLAS_status_invalid_handle CUBLAS_STATUS_INVALID_VALUE
+#define BLAS_create_handle cublasCreate
+#define BLAS_destroy_handle cublasDestroy
+#define BLAS_double_complex cuDoubleComplex
+#define BLAS_float_complex cuFloatComplex
+#define BLAS_ctrsm cublasCtrsm
+#define BLAS_ztrsm cublasZtrsm
+#define BLAS_dtrsm cublasDtrsm
+#define BLAS_strsm cublasStrsm
+#define BLAS_ctrmm cublasCtrmm
+#define BLAS_ztrmm cublasZtrmm
+#define BLAS_dtrmm cublasDtrmm
+#define BLAS_strmm cublasStrmm
+#define BLAS_ccopy cublasCcopy
+#define BLAS_zcopy cublasZcopy
+#define BLAS_dcopy cublasDcopy
+#define BLAS_scopy cublasScopy
+#define BLAS_cgemm cublasCgemm
+#define BLAS_zgemm cublasZgemm
+#define BLAS_dgemm cublasDgemm
+#define BLAS_sgemm cublasSgemm
+#define BLAS_cgemv cublasCgemv
+#define BLAS_zgemv cublasZgemv
+#define BLAS_dgemv cublasDgemv
+#define BLAS_sgemv cublasSgemv
+#define BLAS_operation cublasOperation_t
+#define BLAS_operation_none CUBLAS_OP_N
+#define BLAS_operation_transpose CUBLAS_OP_T
+#define BLAS_operation_conjugate_transpose CUBLAS_OP_C
+#define BLAS_fill cublasFillMode_t
+#define BLAS_fill_lower CUBLAS_FILL_MODE_LOWER
+#define BLAS_fill_upper CUBLAS_FILL_MODE_UPPER
+#define BLAS_side cublasSideMode_t
+#define BLAS_side_left CUBLAS_SIDE_LEFT
+#define BLAS_side_right CUBLAS_SIDE_RIGHT
+#define BLAS_diagonal cublasDiagType_t
+#define BLAS_diagonal_non_unit CUBLAS_DIAG_NON_UNIT
+#define BLAS_diagonal_unit CUBLAS_DIAG_UNIT
+
+
+
+
 
 #define errormessage(x, ...) do { fprintf(stderr, "%s:%d " x, __FILE__, __LINE__, __VA_ARGS__ ); } while (0)
 
@@ -136,18 +232,18 @@ extern "C" {
     }
   }
 
-  int cublasSetStreamFromC(cublasHandle_t cudaHandle, cudaStream_t cudaStream) {
-    //cublasStatus_t status = cublasSetStream(*((cublasHandle_t*)handle), *((cudaStream_t*)stream));
-    cublasStatus_t status = cublasSetStream(cudaHandle, cudaStream);
-    if (status == CUBLAS_STATUS_SUCCESS) {
+  int BLAS_set_streamFromC(BLAS_handle cudaHandle, cudaStream_t cudaStream) {
+    //BLAS_status status = BLAS_set_stream(*((BLAS_handle*)handle), *((cudaStream_t*)stream));
+    BLAS_status status = BLAS_set_stream(cudaHandle, cudaStream);
+    if (status == BLAS_status_success) {
       return 1;
     }
-    else if (status == CUBLAS_STATUS_NOT_INITIALIZED) {
-      errormessage("Error in cublasSetStream: %s\n", "the CUDA Runtime initialization failed");
+    else if (status == BLAS_status_not_initialized) {
+      errormessage("Error in BLAS_set_stream: %s\n", "the CUDA Runtime initialization failed");
       return 0;
     }
     else{
-      errormessage("Error in cublasSetStream: %s\n", "unknown error");
+      errormessage("Error in BLAS_set_stream: %s\n", "unknown error");
       return 0;
     }
   }
@@ -181,45 +277,45 @@ extern "C" {
     return 1;
   }
 
-  int cublasCreateFromC(cublasHandle_t *cublas_handle) {
-    //*cublas_handle = (intptr_t) malloc(sizeof(cublasHandle_t));
-    if (sizeof(intptr_t) != sizeof(cublasHandle_t)) {
-      //errormessage("Error in cublasCreate: sizes not the same");
+  int BLAS_create_handleFromC(BLAS_handle *cublas_handle) {
+    //*cublas_handle = (intptr_t) malloc(sizeof(BLAS_handle));
+    if (sizeof(intptr_t) != sizeof(BLAS_handle)) {
+      //errormessage("Error in BLAS_create_handle: sizes not the same");
 	printf("ERROR on sizes\n");
       return 0;
     }
-    cublasStatus_t status = cublasCreate(cublas_handle);
-    if (status == CUBLAS_STATUS_SUCCESS) {
+    BLAS_status status = BLAS_create_handle(cublas_handle);
+    if (status == BLAS_status_success) {
 //       printf("all OK\n");
       return 1;
     }
-    else if (status == CUBLAS_STATUS_NOT_INITIALIZED) {
-      errormessage("Error in cublasCreate: %s\n", "the CUDA Runtime initialization failed");
+    else if (status == BLAS_status_not_initialized) {
+      errormessage("Error in BLAS_create_handle: %s\n", "the CUDA Runtime initialization failed");
       return 0;
     }
     else if (status == CUBLAS_STATUS_ALLOC_FAILED) {
-      errormessage("Error in cublasCreate: %s\n", "the resources could not be allocated");
+      errormessage("Error in BLAS_create_handle: %s\n", "the resources could not be allocated");
       return 0;
     }
     else{
-      errormessage("Error in cublasCreate: %s\n", "unknown error");
+      errormessage("Error in BLAS_create_handle: %s\n", "unknown error");
       return 0;
     }
   }
 
-  int cublasDestroyFromC(cublasHandle_t cublas_handle) {
-    cublasStatus_t status = cublasDestroy(cublas_handle);
-    if (status == CUBLAS_STATUS_SUCCESS) {
+  int BLAS_destroy_handleFromC(BLAS_handle cublas_handle) {
+    BLAS_status status = BLAS_destroy_handle(cublas_handle);
+    if (status == BLAS_status_success) {
 //	 free((void*) *cublas_handle);
 //       printf("all OK\n");
       return 1;
     }
-    else if (status == CUBLAS_STATUS_NOT_INITIALIZED) {
-      errormessage("Error in cublasDestroy: %s\n", "the library has not been initialized");
+    else if (status == BLAS_status_not_initialized) {
+      errormessage("Error in BLAS_destroy_handle: %s\n", "the library has not been initialized");
       return 0;
     }
     else{
-      errormessage("Error in cublasDestroy: %s\n", "unknown error");
+      errormessage("Error in BLAS_destroy_handle: %s\n", "unknown error");
       return 0;
     }
   }
@@ -447,63 +543,63 @@ extern "C" {
       return val;
   }
 
-  cublasOperation_t operation_new_api(char trans) {
+  BLAS_operation operation_new_api(char trans) {
     if (trans == 'N' || trans == 'n') {
-      return CUBLAS_OP_N;
+      return BLAS_operation_none;
     }
     else if (trans == 'T' || trans == 't') {
-      return CUBLAS_OP_T;
+      return BLAS_operation_transpose;
     }
     else if (trans == 'C' || trans == 'c') {
-      return CUBLAS_OP_C;
+      return BLAS_operation_conjugate_transpose;
     }
     else {
-      errormessage("Error when transfering %c to cublasOperation_t\n",trans);
+      errormessage("Error when transfering %c to BLAS_operation\n",trans);
       // or abort?
-      return CUBLAS_OP_N;
+      return BLAS_operation_none;
     }
   }
 
 
-  cublasFillMode_t fill_mode_new_api(char uplo) {
+  BLAS_fill fill_mode_new_api(char uplo) {
     if (uplo == 'L' || uplo == 'l') {
-      return CUBLAS_FILL_MODE_LOWER;
+      return BLAS_fill_lower;
     }
     else if(uplo == 'U' || uplo == 'u') {
-      return CUBLAS_FILL_MODE_UPPER;
+      return BLAS_fill_upper;
     }
     else {
-      errormessage("Error when transfering %c to cublasFillMode_t\n", uplo);
+      errormessage("Error when transfering %c to BLAS_fill\n", uplo);
       // or abort?
-      return CUBLAS_FILL_MODE_LOWER;
+      return BLAS_fill_lower;
     }
   }
 
-  cublasSideMode_t side_mode_new_api(char side) {
+  BLAS_side side_mode_new_api(char side) {
     if (side == 'L' || side == 'l') {
-      return CUBLAS_SIDE_LEFT;
+      return BLAS_side_left;
     }
     else if (side == 'R' || side == 'r') {
-      return CUBLAS_SIDE_RIGHT;
+      return BLAS_side_right;
     }
     else{
-      errormessage("Error when transfering %c to cublasSideMode_t\n", side);
+      errormessage("Error when transfering %c to BLAS_side\n", side);
       // or abort?
-      return CUBLAS_SIDE_LEFT;
+      return BLAS_side_left;
     }
   }
 
-  cublasDiagType_t diag_type_new_api(char diag) {
+  BLAS_diagonal diag_type_new_api(char diag) {
     if (diag == 'N' || diag == 'n') {
-      return CUBLAS_DIAG_NON_UNIT;
+      return BLAS_diagonal_non_unit;
     }
     else if (diag == 'U' || diag == 'u') {
-      return CUBLAS_DIAG_UNIT;
+      return BLAS_diagonal_unit;
     }
     else {
       errormessage("Error when transfering %c to cublasDiagMode_t\n", diag);
       // or abort?
-      return CUBLAS_DIAG_NON_UNIT;
+      return BLAS_diagonal_non_unit;
     }
   }
 
@@ -671,7 +767,7 @@ extern "C" {
       errormessage("Error in cusolver_Ztrtri devInfo: %s\n",cudaGetErrorString(cuerr));
     }
 
-    //cuDoubleComplex A_casted = *((cuDoubleComplex*)(A));
+    //BLAS_double_complex A_casted = *((BLAS_double_complex*)(A));
     double _Complex *d_work = NULL, *h_work=NULL;
     size_t d_lwork = 0;
     size_t h_lwork = 0;
@@ -747,7 +843,7 @@ extern "C" {
       errormessage("Error in cusolver_Ctrtri devInfo: %s\n",cudaGetErrorString(cuerr));
     }
 
-    //cuFloatComplex A_casted = *((cuFloatComplex*)(A));
+    //BLAS_float_complex A_casted = *((BLAS_float_complex*)(A));
     float _Complex *d_work = NULL, *h_work=NULL;
     size_t d_lwork = 0;
     size_t h_lwork = 0;
@@ -963,9 +1059,9 @@ extern "C" {
     printf("CUDA Malloc,  pointer address: %p, size: %d \n", &devInfo);
 #endif
 
-    cuDoubleComplex *d_work = NULL;
+    BLAS_double_complex *d_work = NULL;
     int d_lwork = 0;
-    cuDoubleComplex* A_casted = (cuDoubleComplex*) A;
+    BLAS_double_complex* A_casted = (BLAS_double_complex*) A;
 
     //status = cusolverDnZpotrf_bufferSize(*((cusolverDnHandle_t*)handle), fill_mode_new_api(uplo),  n, A_casted, lda, &d_lwork);
     status = cusolverDnZpotrf_bufferSize(cudaHandle, fill_mode_new_api(uplo),  n, A_casted, lda, &d_lwork);
@@ -973,7 +1069,7 @@ extern "C" {
       errormessage("Error in cusolverDnZpotrf_buffer_size %s \n","aborting");
     }
 
-    cuerr = cudaMalloc((void**) &d_work, sizeof(cuDoubleComplex) * d_lwork);
+    cuerr = cudaMalloc((void**) &d_work, sizeof(BLAS_double_complex) * d_lwork);
     if (cuerr != cudaSuccess) {
       errormessage("Error in cusolver_Zpotrf d_work: %s\n",cudaGetErrorString(cuerr));
     }
@@ -1033,9 +1129,9 @@ extern "C" {
     printf("CUDA Malloc,  pointer address: %p, size: %d \n", &devInfo);
 #endif
 
-    cuFloatComplex *d_work = NULL;
+    BLAS_float_complex *d_work = NULL;
     int d_lwork = 0;
-    cuFloatComplex* A_casted = (cuFloatComplex*) A;
+    BLAS_float_complex* A_casted = (BLAS_float_complex*) A;
 
     //status = cusolverDnCpotrf_bufferSize(*((cusolverDnHandle_t*)handle), fill_mode_new_api(uplo),  n, A_casted, lda, &d_lwork);
     status = cusolverDnCpotrf_bufferSize(cudaHandle, fill_mode_new_api(uplo),  n, A_casted, lda, &d_lwork);
@@ -1043,7 +1139,7 @@ extern "C" {
       errormessage("Error in cusolverDnCpotrf_buffer_size %s \n","aborting");
     }
 
-    cuerr = cudaMalloc((void**) &d_work, sizeof(cuFloatComplex) * d_lwork);
+    cuerr = cudaMalloc((void**) &d_work, sizeof(BLAS_float_complex) * d_lwork);
     //cuerr = cudaMalloc((void**) &d_work, d_lwork); // d_lwork is already in bytes
     if (cuerr != cudaSuccess) {
       errormessage("Error in cusolver_Cpotrf d_work: %s\n",cudaGetErrorString(cuerr));
@@ -1092,133 +1188,133 @@ extern "C" {
 #endif /* WITH_NVIDIA_CUSOLVER */
 
 
-  void cublasDgemv_elpa_wrapper (cublasHandle_t cudaHandle, char trans, int m, int n, double alpha,
+  void BLAS_dgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, double alpha,
                                const double *A, int lda,  const double *x, int incx,
                                double beta, double *y, int incy) {
 
-    //cublasStatus_t status = cublasDgemv(*((cublasHandle_t*)handle), operation_new_api(trans),
-    cublasStatus_t status = cublasDgemv(cudaHandle, operation_new_api(trans),
+    //BLAS_status status = BLAS_dgemv(*((BLAS_handle*)handle), operation_new_api(trans),
+    BLAS_status status = BLAS_dgemv(cudaHandle, operation_new_api(trans),
                                         m, n, &alpha, A, lda, x, incx, &beta, y, incy);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasDgemv\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_dgemv\n");
     }
 
   }
 
-  void cublasSgemv_elpa_wrapper (cublasHandle_t cudaHandle, char trans, int m, int n, float alpha,
+  void BLAS_sgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, float alpha,
                                const float *A, int lda,  const float *x, int incx,
                                float beta, float *y, int incy) {
 
-    //cublasStatus_t status = cublasSgemv(*((cublasHandle_t*)handle), operation_new_api(trans),
-    cublasStatus_t status = cublasSgemv(cudaHandle, operation_new_api(trans),
+    //BLAS_status status = BLAS_sgemv(*((BLAS_handle*)handle), operation_new_api(trans),
+    BLAS_status status = BLAS_sgemv(cudaHandle, operation_new_api(trans),
                 m, n, &alpha, A, lda, x, incx, &beta, y, incy);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasSgemv\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_sgemv\n");
     }
   }
 
-  void cublasZgemv_elpa_wrapper (cublasHandle_t cudaHandle, char trans, int m, int n, double _Complex alpha,
+  void BLAS_zgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, double _Complex alpha,
                                const double _Complex *A, int lda,  const double _Complex *x, int incx,
                                double _Complex beta, double _Complex *y, int incy) {
 
-    cuDoubleComplex alpha_casted = *((cuDoubleComplex*)(&alpha));
-    cuDoubleComplex beta_casted = *((cuDoubleComplex*)(&beta));
+    BLAS_double_complex alpha_casted = *((BLAS_double_complex*)(&alpha));
+    BLAS_double_complex beta_casted = *((BLAS_double_complex*)(&beta));
 
-    const cuDoubleComplex* A_casted = (const cuDoubleComplex*) A;
-    const cuDoubleComplex* x_casted = (const cuDoubleComplex*) x;
-    cuDoubleComplex* y_casted = (cuDoubleComplex*) y;
+    const BLAS_double_complex* A_casted = (const BLAS_double_complex*) A;
+    const BLAS_double_complex* x_casted = (const BLAS_double_complex*) x;
+    BLAS_double_complex* y_casted = (BLAS_double_complex*) y;
 
-    //cublasStatus_t status = cublasZgemv(*((cublasHandle_t*)handle), operation_new_api(trans),
-    cublasStatus_t status = cublasZgemv(cudaHandle, operation_new_api(trans),
+    //BLAS_status status = BLAS_zgemv(*((BLAS_handle*)handle), operation_new_api(trans),
+    BLAS_status status = BLAS_zgemv(cudaHandle, operation_new_api(trans),
                 m, n, &alpha_casted, A_casted, lda, x_casted, incx, &beta_casted, y_casted, incy);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasZgemv\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_zgemv\n");
     }
   }
 
-  void cublasCgemv_elpa_wrapper (cublasHandle_t cudaHandle, char trans, int m, int n, float _Complex alpha,
+  void BLAS_cgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, float _Complex alpha,
                                const float _Complex *A, int lda,  const float _Complex *x, int incx,
                                float _Complex beta, float _Complex *y, int incy) {
 
-    cuFloatComplex alpha_casted = *((cuFloatComplex*)(&alpha));
-    cuFloatComplex beta_casted = *((cuFloatComplex*)(&beta));
+    BLAS_float_complex alpha_casted = *((BLAS_float_complex*)(&alpha));
+    BLAS_float_complex beta_casted = *((BLAS_float_complex*)(&beta));
 
-    const cuFloatComplex* A_casted = (const cuFloatComplex*) A;
-    const cuFloatComplex* x_casted = (const cuFloatComplex*) x;
-    cuFloatComplex* y_casted = (cuFloatComplex*) y;
+    const BLAS_float_complex* A_casted = (const BLAS_float_complex*) A;
+    const BLAS_float_complex* x_casted = (const BLAS_float_complex*) x;
+    BLAS_float_complex* y_casted = (BLAS_float_complex*) y;
 
-    //cublasStatus_t status = cublasCgemv(*((cublasHandle_t*)handle), operation_new_api(trans),
-    cublasStatus_t status = cublasCgemv(cudaHandle, operation_new_api(trans),
+    //BLAS_status status = BLAS_cgemv(*((BLAS_handle*)handle), operation_new_api(trans),
+    BLAS_status status = BLAS_cgemv(cudaHandle, operation_new_api(trans),
                 m, n, &alpha_casted, A_casted, lda, x_casted, incx, &beta_casted, y_casted, incy);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasCgemv\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_cgemv\n");
     }
   }
 
 
-  void cublasDgemm_elpa_wrapper (cublasHandle_t cudaHandle, char transa, char transb, int m, int n, int k,
+  void BLAS_dgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
                                double alpha, const double *A, int lda,
                                const double *B, int ldb, double beta,
                                double *C, int ldc) {
 
-    //cublasStatus_t status = cublasDgemm(*((cublasHandle_t*)handle), operation_new_api(transa), operation_new_api(transb),
-    cublasStatus_t status = cublasDgemm(cudaHandle, operation_new_api(transa), operation_new_api(transb),
+    //BLAS_status status = BLAS_dgemm(*((BLAS_handle*)handle), operation_new_api(transa), operation_new_api(transb),
+    BLAS_status status = BLAS_dgemm(cudaHandle, operation_new_api(transa), operation_new_api(transb),
                 m, n, k, &alpha, A, lda, B, ldb, &beta, C, ldc);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasDgemm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_dgemm\n");
     }
   }
 
-  void cublasSgemm_elpa_wrapper (cublasHandle_t cudaHandle, char transa, char transb, int m, int n, int k,
+  void BLAS_sgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
                                float alpha, const float *A, int lda,
                                const float *B, int ldb, float beta,
                                float *C, int ldc) {
 
-    //cublasStatus_t status = cublasSgemm(((cublasHandle_t*)handle), operation_new_api(transa), operation_new_api(transb),
-    cublasStatus_t status = cublasSgemm(cudaHandle, operation_new_api(transa), operation_new_api(transb),
+    //BLAS_status status = BLAS_sgemm(((BLAS_handle*)handle), operation_new_api(transa), operation_new_api(transb),
+    BLAS_status status = BLAS_sgemm(cudaHandle, operation_new_api(transa), operation_new_api(transb),
                 m, n, k, &alpha, A, lda, B, ldb, &beta, C, ldc);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasSgemm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_sgemm\n");
     }
   }
 
-  void cublasZgemm_elpa_wrapper (cublasHandle_t cudaHandle, char transa, char transb, int m, int n, int k,
+  void BLAS_zgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
                                double _Complex alpha, const double _Complex *A, int lda,
                                const double _Complex *B, int ldb, double _Complex beta,
                                double _Complex *C, int ldc) {
 
-    cuDoubleComplex alpha_casted = *((cuDoubleComplex*)(&alpha));
-    cuDoubleComplex beta_casted = *((cuDoubleComplex*)(&beta));
+    BLAS_double_complex alpha_casted = *((BLAS_double_complex*)(&alpha));
+    BLAS_double_complex beta_casted = *((BLAS_double_complex*)(&beta));
 
-    const cuDoubleComplex* A_casted = (const cuDoubleComplex*) A;
-    const cuDoubleComplex* B_casted = (const cuDoubleComplex*) B;
-    cuDoubleComplex* C_casted = (cuDoubleComplex*) C;
+    const BLAS_double_complex* A_casted = (const BLAS_double_complex*) A;
+    const BLAS_double_complex* B_casted = (const BLAS_double_complex*) B;
+    BLAS_double_complex* C_casted = (BLAS_double_complex*) C;
 
-    //cublasStatus_t status = cublasZgemm(*((cublasHandle_t*)handle), operation_new_api(transa), operation_new_api(transb),
-    cublasStatus_t status = cublasZgemm(cudaHandle, operation_new_api(transa), operation_new_api(transb),
+    //BLAS_status status = BLAS_zgemm(*((BLAS_handle*)handle), operation_new_api(transa), operation_new_api(transb),
+    BLAS_status status = BLAS_zgemm(cudaHandle, operation_new_api(transa), operation_new_api(transb),
                 m, n, k, &alpha_casted, A_casted, lda, B_casted, ldb, &beta_casted, C_casted, ldc);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasZgemm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_zgemm\n");
     }
   }
 
-  void cublasCgemm_elpa_wrapper (cublasHandle_t cudaHandle, char transa, char transb, int m, int n, int k,
+  void BLAS_cgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
                                float _Complex alpha, const float _Complex *A, int lda,
                                const float _Complex *B, int ldb, float _Complex beta,
                                float _Complex *C, int ldc) {
 
-    cuFloatComplex alpha_casted = *((cuFloatComplex*)(&alpha));
-    cuFloatComplex beta_casted = *((cuFloatComplex*)(&beta));
+    BLAS_float_complex alpha_casted = *((BLAS_float_complex*)(&alpha));
+    BLAS_float_complex beta_casted = *((BLAS_float_complex*)(&beta));
 
-    const cuFloatComplex* A_casted = (const cuFloatComplex*) A;
-    const cuFloatComplex* B_casted = (const cuFloatComplex*) B;
-    cuFloatComplex* C_casted = (cuFloatComplex*) C;
+    const BLAS_float_complex* A_casted = (const BLAS_float_complex*) A;
+    const BLAS_float_complex* B_casted = (const BLAS_float_complex*) B;
+    BLAS_float_complex* C_casted = (BLAS_float_complex*) C;
 
-    //cublasStatus_t status =  cublasCgemm(*((cublasHandle_t*)handle), operation_new_api(transa), operation_new_api(transb),
-    cublasStatus_t status =  cublasCgemm(cudaHandle, operation_new_api(transa), operation_new_api(transb),
+    //BLAS_status status =  BLAS_cgemm(*((BLAS_handle*)handle), operation_new_api(transa), operation_new_api(transb),
+    BLAS_status status =  BLAS_cgemm(cudaHandle, operation_new_api(transa), operation_new_api(transb),
                 m, n, k, &alpha_casted, A_casted, lda, B_casted, ldb, &beta_casted, C_casted, ldc);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasCgemm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_cgemm\n");
     }
   }
 
@@ -1228,160 +1324,160 @@ extern "C" {
   // todo: by passing B twice (in place of C as well), we should fall back to in-place algorithm
 
 
-  void cublasDcopy_elpa_wrapper (cublasHandle_t cudaHandle, int n, double *x, int incx, double *y, int incy){
+  void BLAS_dcopy_elpa_wrapper (BLAS_handle cudaHandle, int n, double *x, int incx, double *y, int incy){
 
-    //cublasStatus_t status = cublasDcopy(*((cublasHandle_t*)handle), n, x, incx, y, incy);
-    cublasStatus_t status = cublasDcopy(cudaHandle, n, x, incx, y, incy);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasDcopy\n");
+    //BLAS_status status = BLAS_dcopy(*((BLAS_handle*)handle), n, x, incx, y, incy);
+    BLAS_status status = BLAS_dcopy(cudaHandle, n, x, incx, y, incy);
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_dcopy\n");
     }
   }
 
-  void cublasScopy_elpa_wrapper (cublasHandle_t cudaHandle, int n, float *x, int incx, float *y, int incy){
+  void BLAS_scopy_elpa_wrapper (BLAS_handle cudaHandle, int n, float *x, int incx, float *y, int incy){
 
-    //cublasStatus_t status = cublasScopy(*((cublasHandle_t*)handle), n, x, incx, y, incy);
-    cublasStatus_t status = cublasScopy(cudaHandle, n, x, incx, y, incy);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasScopy\n");
+    //BLAS_status status = BLAS_scopy(*((BLAS_handle*)handle), n, x, incx, y, incy);
+    BLAS_status status = BLAS_scopy(cudaHandle, n, x, incx, y, incy);
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_scopy\n");
     }
   }
 
-  void cublasZcopy_elpa_wrapper (cublasHandle_t cudaHandle, int n, double _Complex *x, int incx, double _Complex *y, int incy){
-    const cuDoubleComplex* X_casted = (const cuDoubleComplex*) x;
-          cuDoubleComplex* Y_casted = (      cuDoubleComplex*) y;
+  void cublasZcopy_elpa_wrapper (BLAS_handle cudaHandle, int n, double _Complex *x, int incx, double _Complex *y, int incy){
+    const BLAS_double_complex* X_casted = (const BLAS_double_complex*) x;
+          BLAS_double_complex* Y_casted = (      BLAS_double_complex*) y;
 
-    //cublasStatus_t status = cublasZcopy(*((cublasHandle_t*)handle), n, X_casted, incx, Y_casted, incy);
-    cublasStatus_t status = cublasZcopy(cudaHandle, n, X_casted, incx, Y_casted, incy);
-    if (status != CUBLAS_STATUS_SUCCESS) {
+    //BLAS_status status = cublasZcopy(*((BLAS_handle*)handle), n, X_casted, incx, Y_casted, incy);
+    BLAS_status status = cublasZcopy(cudaHandle, n, X_casted, incx, Y_casted, incy);
+    if (status != BLAS_status_success) {
        printf("error when calling cublasZcopy\n");
     }
   }
 
-  void cublasCcopy_elpa_wrapper (cublasHandle_t cudaHandle, int n, float _Complex *x, int incx, float _Complex *y, int incy){
-    const cuFloatComplex* X_casted = (const cuFloatComplex*) x;
-          cuFloatComplex* Y_casted = (      cuFloatComplex*) y;
+  void BLAS_ccopy_elpa_wrapper (BLAS_handle cudaHandle, int n, float _Complex *x, int incx, float _Complex *y, int incy){
+    const BLAS_float_complex* X_casted = (const BLAS_float_complex*) x;
+          BLAS_float_complex* Y_casted = (      BLAS_float_complex*) y;
 
-    //cublasStatus_t status = cublasCcopy(handle, n, X_casted, incx, Y_casted, incy);
-    cublasStatus_t status = cublasCcopy(cudaHandle, n, X_casted, incx, Y_casted, incy);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasCcopy\n");
+    //BLAS_status status = BLAS_ccopy(handle, n, X_casted, incx, Y_casted, incy);
+    BLAS_status status = BLAS_ccopy(cudaHandle, n, X_casted, incx, Y_casted, incy);
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_ccopy\n");
     }
   }
 
-  void cublasDtrsm_elpa_wrapper (cublasHandle_t cudaHandle, char side, char uplo, char transa, char diag,
+  void BLAS_dtrsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, double alpha, const double *A,
                                int lda, double *B, int ldb){
 
-    //cublasStatus_t status = cublasDtrsm(*((cublasHandle_t*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
-    cublasStatus_t status = cublasDtrsm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    //BLAS_status status = BLAS_dtrsm(*((BLAS_handle*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    BLAS_status status = BLAS_dtrsm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
                                         diag_type_new_api(diag), m, n, &alpha, A, lda, B, ldb);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasDtrsm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_dtrsm\n");
     }
   }
 
-  void cublasStrsm_elpa_wrapper (cublasHandle_t cudaHandle, char side, char uplo, char transa, char diag,
+  void BLAS_strsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, float alpha, const float *A,
                                int lda, float *B, int ldb){
 
-    //cublasStatus_t status = cublasStrsm(*((cublasHandle_t*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
-    cublasStatus_t status = cublasStrsm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    //BLAS_status status = BLAS_strsm(*((BLAS_handle*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    BLAS_status status = BLAS_strsm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
                                         diag_type_new_api(diag), m, n, &alpha, A, lda, B, ldb);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasStrsm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_strsm\n");
     }
   }
 
-  void cublasZtrsm_elpa_wrapper (cublasHandle_t cudaHandle, char side, char uplo, char transa, char diag,
+  void BLAS_ztrsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, double _Complex alpha, const double _Complex *A,
                                int lda, double _Complex *B, int ldb){
 
-    cuDoubleComplex alpha_casted = *((cuDoubleComplex*)(&alpha));
+    BLAS_double_complex alpha_casted = *((BLAS_double_complex*)(&alpha));
 
-    const cuDoubleComplex* A_casted = (const cuDoubleComplex*) A;
-    cuDoubleComplex* B_casted = (cuDoubleComplex*) B;
+    const BLAS_double_complex* A_casted = (const BLAS_double_complex*) A;
+    BLAS_double_complex* B_casted = (BLAS_double_complex*) B;
 
-    //cublasStatus_t status = cublasZtrsm(*((cublasHandle_t*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
-    cublasStatus_t status = cublasZtrsm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    //BLAS_status status = BLAS_ztrsm(*((BLAS_handle*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    BLAS_status status = BLAS_ztrsm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
                 diag_type_new_api(diag), m, n, &alpha_casted, A_casted, lda, B_casted, ldb);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasZtrsm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_ztrsm\n");
     }
   }
 
-  void cublasCtrsm_elpa_wrapper (cublasHandle_t cudaHandle, char side, char uplo, char transa, char diag,
+  void BLAS_ctrsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, float _Complex alpha, const float _Complex *A,
                                int lda, float _Complex *B, int ldb){
 
-    cuFloatComplex alpha_casted = *((cuFloatComplex*)(&alpha));
+    BLAS_float_complex alpha_casted = *((BLAS_float_complex*)(&alpha));
 
-    const cuFloatComplex* A_casted = (const cuFloatComplex*) A;
-    cuFloatComplex* B_casted = (cuFloatComplex*) B;
+    const BLAS_float_complex* A_casted = (const BLAS_float_complex*) A;
+    BLAS_float_complex* B_casted = (BLAS_float_complex*) B;
 
-    //cublasStatus_t status = cublasCtrsm(*((cublasHandle_t*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
-    cublasStatus_t status = cublasCtrsm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    //BLAS_status status = BLAS_ctrsm(*((BLAS_handle*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    BLAS_status status = BLAS_ctrsm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
                 diag_type_new_api(diag), m, n, &alpha_casted, A_casted, lda, B_casted, ldb);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasCtrsm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_ctrsm\n");
     }
   }
 
 
-  void cublasDtrmm_elpa_wrapper (cublasHandle_t cudaHandle, char side, char uplo, char transa, char diag,
+  void BLAS_dtrmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, double alpha, const double *A,
                                int lda, double *B, int ldb){
 
-    //cublasStatus_t status = cublasDtrmm(*((cublasHandle_t*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
-    cublasStatus_t status = cublasDtrmm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    //BLAS_status status = BLAS_dtrmm(*((BLAS_handle*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    BLAS_status status = BLAS_dtrmm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
                 diag_type_new_api(diag), m, n, &alpha, A, lda, B, ldb, B, ldb);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasDtrmm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_dtrmm\n");
     }
   }
 
-  void cublasStrmm_elpa_wrapper (cublasHandle_t cudaHandle, char side, char uplo, char transa, char diag,
+  void BLAS_strmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, float alpha, const float *A,
                                int lda, float *B, int ldb){
 
-    //cublasStatus_t status = cublasStrmm(*((cublasHandle_t*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
-    cublasStatus_t status = cublasStrmm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    //BLAS_status status = BLAS_strmm(*((BLAS_handle*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    BLAS_status status = BLAS_strmm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
                 diag_type_new_api(diag), m, n, &alpha, A, lda, B, ldb, B, ldb);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasStrmm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_strmm\n");
     }
   }
 
-  void cublasZtrmm_elpa_wrapper (cublasHandle_t cudaHandle, char side, char uplo, char transa, char diag,
+  void BLAS_ztrmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, double _Complex alpha, const double _Complex *A,
                                int lda, double _Complex *B, int ldb){
 
-    cuDoubleComplex alpha_casted = *((cuDoubleComplex*)(&alpha));
+    BLAS_double_complex alpha_casted = *((BLAS_double_complex*)(&alpha));
 
-    const cuDoubleComplex* A_casted = (const cuDoubleComplex*) A;
-    cuDoubleComplex* B_casted = (cuDoubleComplex*) B;
+    const BLAS_double_complex* A_casted = (const BLAS_double_complex*) A;
+    BLAS_double_complex* B_casted = (BLAS_double_complex*) B;
 
-    //cublasStatus_t status = cublasZtrmm(*((cublasHandle_t*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
-    cublasStatus_t status = cublasZtrmm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    //BLAS_status status = BLAS_ztrmm(*((BLAS_handle*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    BLAS_status status = BLAS_ztrmm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
                 diag_type_new_api(diag), m, n, &alpha_casted, A_casted, lda, B_casted, ldb, B_casted, ldb);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasZtrmm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_ztrmm\n");
     }
   }
 
-  void cublasCtrmm_elpa_wrapper (cublasHandle_t cudaHandle, char side, char uplo, char transa, char diag,
+  void BLAS_ctrmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, float _Complex alpha, const float _Complex *A,
                                int lda, float _Complex *B, int ldb){
 
-    cuFloatComplex alpha_casted = *((cuFloatComplex*)(&alpha));
+    BLAS_float_complex alpha_casted = *((BLAS_float_complex*)(&alpha));
 
-    const cuFloatComplex* A_casted = (const cuFloatComplex*) A;
-    cuFloatComplex* B_casted = (cuFloatComplex*) B;
+    const BLAS_float_complex* A_casted = (const BLAS_float_complex*) A;
+    BLAS_float_complex* B_casted = (BLAS_float_complex*) B;
 
-    //cublasStatus_t status = cublasCtrmm(*((cublasHandle_t*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
-    cublasStatus_t status = cublasCtrmm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    //BLAS_status status = BLAS_ctrmm(*((BLAS_handle*)handle), side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
+    BLAS_status status = BLAS_ctrmm(cudaHandle, side_mode_new_api(side), fill_mode_new_api(uplo), operation_new_api(transa),
                 diag_type_new_api(diag), m, n, &alpha_casted, A_casted, lda, B_casted, ldb, B_casted, ldb);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-       printf("error when calling cublasCtrmm\n");
+    if (status != BLAS_status_success) {
+       printf("error when calling BLAS_ctrmm\n");
     }
   }
 
