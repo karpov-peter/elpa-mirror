@@ -232,7 +232,7 @@ extern "C" {
     }
   }
 
-  int BLAS_set_streamFromC(BLAS_handle cudaHandle, cudaStream_t cudaStream) {
+  int cublasSetStreamFromC(BLAS_handle cudaHandle, cudaStream_t cudaStream) {
     //BLAS_status status = BLAS_set_stream(*((BLAS_handle*)handle), *((cudaStream_t*)stream));
     BLAS_status status = BLAS_set_stream(cudaHandle, cudaStream);
     if (status == BLAS_status_success) {
@@ -277,7 +277,7 @@ extern "C" {
     return 1;
   }
 
-  int BLAS_create_handleFromC(BLAS_handle *cublas_handle) {
+  int cublasCreateFromC(BLAS_handle *cublas_handle) {
     //*cublas_handle = (intptr_t) malloc(sizeof(BLAS_handle));
     if (sizeof(intptr_t) != sizeof(BLAS_handle)) {
       //errormessage("Error in BLAS_create_handle: sizes not the same");
@@ -303,7 +303,7 @@ extern "C" {
     }
   }
 
-  int BLAS_destroy_handleFromC(BLAS_handle cublas_handle) {
+  int cublasDestroyFromC(BLAS_handle cublas_handle) {
     BLAS_status status = BLAS_destroy_handle(cublas_handle);
     if (status == BLAS_status_success) {
 //	 free((void*) *cublas_handle);
@@ -1188,7 +1188,7 @@ extern "C" {
 #endif /* WITH_NVIDIA_CUSOLVER */
 
 
-  void BLAS_dgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, double alpha,
+  void cublasDgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, double alpha,
                                const double *A, int lda,  const double *x, int incx,
                                double beta, double *y, int incy) {
 
@@ -1201,7 +1201,7 @@ extern "C" {
 
   }
 
-  void BLAS_sgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, float alpha,
+  void cublasSgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, float alpha,
                                const float *A, int lda,  const float *x, int incx,
                                float beta, float *y, int incy) {
 
@@ -1213,7 +1213,7 @@ extern "C" {
     }
   }
 
-  void BLAS_zgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, double _Complex alpha,
+  void cublasZgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, double _Complex alpha,
                                const double _Complex *A, int lda,  const double _Complex *x, int incx,
                                double _Complex beta, double _Complex *y, int incy) {
 
@@ -1232,7 +1232,7 @@ extern "C" {
     }
   }
 
-  void BLAS_cgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, float _Complex alpha,
+  void cublasCgemv_elpa_wrapper (BLAS_handle cudaHandle, char trans, int m, int n, float _Complex alpha,
                                const float _Complex *A, int lda,  const float _Complex *x, int incx,
                                float _Complex beta, float _Complex *y, int incy) {
 
@@ -1252,7 +1252,7 @@ extern "C" {
   }
 
 
-  void BLAS_dgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
+  void cublasDgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
                                double alpha, const double *A, int lda,
                                const double *B, int ldb, double beta,
                                double *C, int ldc) {
@@ -1265,7 +1265,7 @@ extern "C" {
     }
   }
 
-  void BLAS_sgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
+  void cublasSgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
                                float alpha, const float *A, int lda,
                                const float *B, int ldb, float beta,
                                float *C, int ldc) {
@@ -1278,7 +1278,7 @@ extern "C" {
     }
   }
 
-  void BLAS_zgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
+  void cublasZgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
                                double _Complex alpha, const double _Complex *A, int lda,
                                const double _Complex *B, int ldb, double _Complex beta,
                                double _Complex *C, int ldc) {
@@ -1298,7 +1298,7 @@ extern "C" {
     }
   }
 
-  void BLAS_cgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
+  void cublasCgemm_elpa_wrapper (BLAS_handle cudaHandle, char transa, char transb, int m, int n, int k,
                                float _Complex alpha, const float _Complex *A, int lda,
                                const float _Complex *B, int ldb, float _Complex beta,
                                float _Complex *C, int ldc) {
@@ -1324,7 +1324,7 @@ extern "C" {
   // todo: by passing B twice (in place of C as well), we should fall back to in-place algorithm
 
 
-  void BLAS_dcopy_elpa_wrapper (BLAS_handle cudaHandle, int n, double *x, int incx, double *y, int incy){
+  void cublasDcopy_elpa_wrapper (BLAS_handle cudaHandle, int n, double *x, int incx, double *y, int incy){
 
     //BLAS_status status = BLAS_dcopy(*((BLAS_handle*)handle), n, x, incx, y, incy);
     BLAS_status status = BLAS_dcopy(cudaHandle, n, x, incx, y, incy);
@@ -1333,7 +1333,7 @@ extern "C" {
     }
   }
 
-  void BLAS_scopy_elpa_wrapper (BLAS_handle cudaHandle, int n, float *x, int incx, float *y, int incy){
+  void cublasScopy_elpa_wrapper (BLAS_handle cudaHandle, int n, float *x, int incx, float *y, int incy){
 
     //BLAS_status status = BLAS_scopy(*((BLAS_handle*)handle), n, x, incx, y, incy);
     BLAS_status status = BLAS_scopy(cudaHandle, n, x, incx, y, incy);
@@ -1353,7 +1353,7 @@ extern "C" {
     }
   }
 
-  void BLAS_ccopy_elpa_wrapper (BLAS_handle cudaHandle, int n, float _Complex *x, int incx, float _Complex *y, int incy){
+  void cublasCcopy_elpa_wrapper (BLAS_handle cudaHandle, int n, float _Complex *x, int incx, float _Complex *y, int incy){
     const BLAS_float_complex* X_casted = (const BLAS_float_complex*) x;
           BLAS_float_complex* Y_casted = (      BLAS_float_complex*) y;
 
@@ -1364,7 +1364,7 @@ extern "C" {
     }
   }
 
-  void BLAS_dtrsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
+  void cublasDtrsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, double alpha, const double *A,
                                int lda, double *B, int ldb){
 
@@ -1376,7 +1376,7 @@ extern "C" {
     }
   }
 
-  void BLAS_strsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
+  void cublasStrsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, float alpha, const float *A,
                                int lda, float *B, int ldb){
 
@@ -1388,7 +1388,7 @@ extern "C" {
     }
   }
 
-  void BLAS_ztrsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
+  void cublasZtrsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, double _Complex alpha, const double _Complex *A,
                                int lda, double _Complex *B, int ldb){
 
@@ -1405,7 +1405,7 @@ extern "C" {
     }
   }
 
-  void BLAS_ctrsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
+  void cublasCtrsm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, float _Complex alpha, const float _Complex *A,
                                int lda, float _Complex *B, int ldb){
 
@@ -1423,7 +1423,7 @@ extern "C" {
   }
 
 
-  void BLAS_dtrmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
+  void cublasDtrmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, double alpha, const double *A,
                                int lda, double *B, int ldb){
 
@@ -1435,7 +1435,7 @@ extern "C" {
     }
   }
 
-  void BLAS_strmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
+  void cublasStrmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, float alpha, const float *A,
                                int lda, float *B, int ldb){
 
@@ -1447,7 +1447,7 @@ extern "C" {
     }
   }
 
-  void BLAS_ztrmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
+  void cublasZtrmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, double _Complex alpha, const double _Complex *A,
                                int lda, double _Complex *B, int ldb){
 
@@ -1464,7 +1464,7 @@ extern "C" {
     }
   }
 
-  void BLAS_ctrmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
+  void cublasCtrmm_elpa_wrapper (BLAS_handle cudaHandle, char side, char uplo, char transa, char diag,
                                int m, int n, float _Complex alpha, const float _Complex *A,
                                int lda, float _Complex *B, int ldb){
 
