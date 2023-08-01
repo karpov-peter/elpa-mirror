@@ -3628,7 +3628,7 @@ if test x"${enable_python_wheel}" = x"yes"; then
     fi
     AC_DEFINE([WITH_PYTHON_WHEEL], [1], [prepare python wheel build])
     AC_MSG_CHECKING([setuptools module])
-    AS_IF([$PYTHON -c "import setuptools"], [AC_MSG_RESULT([found.])], [AC_MSG_ERROR([cannot find setuptools.])])
+    AS_IF([$PYTHON -c "import setuptools; import setuptools.command.install"], [AC_MSG_RESULT([found.])], [AC_MSG_ERROR([cannot find setuptools.])])
 fi
 AC_MSG_CHECKING(whether --enable-python-tests is specified)
 AC_ARG_ENABLE([python-tests],

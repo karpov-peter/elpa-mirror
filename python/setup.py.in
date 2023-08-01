@@ -1,10 +1,25 @@
-from setuptools import setup
+from setuptools import dist, setup
+from setuptools.command.install import install
 import os
 
 os.system("cp -r @prefix@/lib/python3*/site-packages/pyelpa .")
 os.system("cp @prefix@/lib*/libelpa.so.* pyelpa")
 
+class BinaryDistribution(dist.Distribution):
+    def is_pure(self):
+        return False
+    def has_ext_modules(self):
+        return True
+
+class InstallPlatlib(install):
+    def finalize_options(self):
+        install.finalize_options(self)
+        if self.distribution.has_ext_modules():
+            self.install_lib = self.install_platlib
+
 setup(
+    distclass=BinaryDistribution,
+    cmdclass={'install': InstallPlatlib},
     name="elpa",
     version="@PACKAGE_VERSION@",
     description="ELPA library",
@@ -20,7 +35,6 @@ setup(
         "Operating System :: POSIX :: Linux",
         "Operating System :: Unix",
     ],
-    platforms="x86-64",
     py_modules=[],
     python_requires=">=3.6, <4",
     install_requires=["numpy >= 1.18.0", "intel-fortran-rt", "impi-rt", "mkl"],
