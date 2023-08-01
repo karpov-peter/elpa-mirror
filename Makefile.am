@@ -833,6 +833,9 @@ pyelpa_LTLIBRARIES =
 endif
 nodist_wrapper_la_SOURCES = python/pyelpa/wrapper.c
 wrapper_la_LDFLAGS = -module -avoid-version -shared $(AM_LDFLAGS)
+if WITH_PYTHON_WHEEL
+wrapper_la_LDFLAGS += -Wl,-rpath,\$$ORIGIN
+endif
 wrapper_la_LIBADD = libelpa@SUFFIX@.la
 wrapper_la_CFLAGS = $(PYTHON_INCLUDE) $(NUMPY_INCLUDE) $(AM_CFLAGS)
 

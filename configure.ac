@@ -3505,6 +3505,7 @@ AC_CONFIG_FILES([
   elpa/elpa_version.h
   elpa/elpa_build_config.h
   elpa/elpa_configured_options.h
+  python/setup.py
 ])
 
 m4_include([m4/ax_fc_check_define.m4])
@@ -3606,6 +3607,28 @@ if test x"${enable_python}" = x"yes"; then
         NUMPY_INCLUDE=-I`$PYTHON -c "import numpy; print(numpy.get_include())"`
         AS_IF([test "$NUMPY_INCLUDE" = "-I"], [AC_MSG_ERROR([cannot get numpy include path.])])
         AC_MSG_RESULT([$NUMPY_INCLUDE])
+fi
+AC_MSG_CHECKING(whether --enable-python-wheel is specified)
+AC_ARG_ENABLE([python-wheel],
+              AS_HELP_STRING([--enable-python-wheel],
+                             [prepare python wheel build, default no.]),
+              [
+              if test x"$enableval" = x"yes"; then
+                  enable_python_wheel=yes
+              else
+                  enable_python_wheel=no
+              fi
+              ],
+              [enable_python_wheel=no])
+AC_MSG_RESULT([${enable_python_wheel}])
+AM_CONDITIONAL([WITH_PYTHON_WHEEL],[test x"$enable_python_wheel" = x"yes"])
+if test x"${enable_python_wheel}" = x"yes"; then
+    if test x"${enable_python}" = x"no"; then
+        AC_MSG_ERROR([Cannot prepare python wheel build if python is disabled.])
+    fi
+    AC_DEFINE([WITH_PYTHON_WHEEL], [1], [prepare python wheel build])
+    AC_MSG_CHECKING([setuptools module])
+    AS_IF([$PYTHON -c "import setuptools"], [AC_MSG_RESULT([found.])], [AC_MSG_ERROR([cannot find setuptools.])])
 fi
 AC_MSG_CHECKING(whether --enable-python-tests is specified)
 AC_ARG_ENABLE([python-tests],

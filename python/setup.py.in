@@ -1,0 +1,29 @@
+from setuptools import setup
+import os
+
+os.system("cp -r @prefix@/lib/python3*/site-packages/pyelpa .")
+os.system("cp @prefix@/lib*/libelpa.so.* pyelpa")
+
+setup(
+    name="elpa",
+    version="@PACKAGE_VERSION@",
+    description="ELPA library",
+    url="https://elpa.mpcdf.mpg.de/",
+    maintainer_email="elpa-library@mpcdf.mpg.de",
+    classifiers=[
+        "Development Status :: 5 - Production/Stable",
+        "Intended Audience :: Developers",
+        "Intended Audience :: Science/Research",
+        "Topic :: Scientific/Engineering :: Mathematics",
+        "License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+) ",
+        "Programming Language :: Python :: 3",
+        "Operating System :: POSIX :: Linux",
+        "Operating System :: Unix",
+    ],
+    platforms="x86-64",
+    py_modules=[],
+    python_requires=">=3.6, <4",
+    install_requires=["numpy >= 1.18.0", "intel-fortran-rt", "impi-rt", "mkl"],
+    packages=["pyelpa"],
+    package_data={"pyelpa": ["*.so*"]},
+)
