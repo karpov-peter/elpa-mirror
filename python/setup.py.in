@@ -20,7 +20,7 @@ class InstallPlatlib(install):
 setup(
     distclass=BinaryDistribution,
     cmdclass={'install': InstallPlatlib},
-    name="elpa",
+    name="pyelpa",
     version="@PACKAGE_VERSION@",
     description="ELPA library",
     url="https://elpa.mpcdf.mpg.de/",
