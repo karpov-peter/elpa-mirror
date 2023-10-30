@@ -60,8 +60,10 @@ module elpa1_compute
   PRIVATE ! set default to private
 
   public :: tridiag_real_double               ! Transform real symmetric matrix to tridiagonal form
+  public :: tridiag_dptr_real_double               ! Transform real symmetric matrix to tridiagonal form
   public :: tridiag_real
   public :: trans_ev_real_double              ! Transform real eigenvectors of a tridiagonal matrix back
+  public :: trans_ev_dptr_real_double              ! Transform real eigenvectors of a tridiagonal matrix back
   public :: trans_ev_real
 
   !public :: solve_tridi_double
@@ -77,14 +79,18 @@ module elpa1_compute
 
 #ifdef WANT_SINGLE_PRECISION_REAL
   public :: tridiag_real_single        ! Transform real single-precision symmetric matrix to tridiagonal form
+  public :: tridiag_dptr_real_single        ! Transform real single-precision symmetric matrix to tridiagonal form
   public :: trans_ev_real_single       ! Transform real  single-precision eigenvectors of a tridiagonal matrix back
+  public :: trans_ev_dptr_real_single       ! Transform real  single-precision eigenvectors of a tridiagonal matrix back
   !public :: solve_tridi_single
   public :: solve_tridi_single_impl
 #endif
 
   public :: tridiag_complex_double            ! Transform complex hermitian matrix to tridiagonal form
+  public :: tridiag_dptr_complex_double            ! Transform complex hermitian matrix to tridiagonal form
   public :: tridiag_complex
   public :: trans_ev_complex_double           ! Transform eigenvectors of a tridiagonal matrix back
+  public :: trans_ev_dptr_complex_double           ! Transform eigenvectors of a tridiagonal matrix back
   public :: trans_ev_complex
 
   interface tridiag_complex
@@ -97,7 +103,9 @@ module elpa1_compute
 
 #ifdef WANT_SINGLE_PRECISION_COMPLEX
   public :: tridiag_complex_single     ! Transform complex single-precision hermitian matrix to tridiagonal form
+  public :: tridiag_dptr_complex_single     ! Transform complex single-precision hermitian matrix to tridiagonal form
   public :: trans_ev_complex_single    ! Transform complex single-precision eigenvectors of a tridiagonal matrix back
+  public :: trans_ev_dptr_complex_single    ! Transform complex single-precision eigenvectors of a tridiagonal matrix back
 #endif
 
   public :: hh_transform_real_double

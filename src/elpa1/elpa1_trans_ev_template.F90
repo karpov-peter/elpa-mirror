@@ -88,11 +88,20 @@
 !> \param useGPU      If true,  GPU version of the subroutine will be used
 !>
 
+#ifndef DEVICE_POINTER
 subroutine trans_ev_&
 &MATH_DATATYPE&
 &_&
 &PRECISION &
 (obj, na, nqc, a_mat, lda, tau, q_mat, ldq, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, useGPU, success)
+#else
+subroutine trans_ev_dptr_&
+&MATH_DATATYPE&
+&_&
+&PRECISION &
+(obj, na, nqc, a_dev, lda, tau, q_dev, ldq, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, useGPU, success)
+
+#endif /* DEVICE_POINTER */
   use, intrinsic :: iso_c_binding
   use precision
   use elpa_abstract_impl
@@ -108,13 +117,19 @@ subroutine trans_ev_&
   integer(kind=ik), intent(in)                  :: na, nqc, lda, ldq, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols
   MATH_DATATYPE(kind=rck), intent(in)           :: tau(na)
 
+#ifndef DEVICE_POINTER
 #ifdef USE_ASSUMED_SIZE
-  MATH_DATATYPE(kind=rck), intent(inout)        :: a_mat(lda,*)
+  MATH_DATATYPE(kind=rck), intent(in)           :: a_mat(lda,*)
   MATH_DATATYPE(kind=rck), intent(inout)        :: q_mat(ldq,*)
 #else
-  MATH_DATATYPE(kind=rck), intent(inout)        :: a_mat(lda,matrixCols)
+  MATH_DATATYPE(kind=rck), intent(in)           :: a_mat(lda,matrixCols)
   MATH_DATATYPE(kind=rck), intent(inout)        :: q_mat(ldq,matrixCols)
 #endif
+#else /* DEVICE_POINTER */
+  integer(kind=c_intptr_t)                      :: a_dev
+  MATH_DATATYPE(kind=rck)                       :: a_mat(lda,matrixCols)
+  MATH_DATATYPE(kind=rck)                       :: q_mat(ldq,matrixCols)
+#endif /* DEVICE_POINTER */
   logical, intent(in)                           :: useGPU
   integer(kind=ik)                              :: max_stored_rows, max_stored_rows_fac
 
@@ -174,6 +189,22 @@ subroutine trans_ev_&
   &" // &
   &PRECISION_SUFFIX //&
   gpuString)
+
+
+#ifdef DEVICE_POINTER
+    ! can hopefully removed after the next round of GPU optimizations
+    num = lda*matrixCols*size_of_datatype
+    successGPU = gpu_memcpy(int(loc(a_mat(1,1)),kind=c_intptr_t), a_dev, &
+                  num, gpuMemcpyDeviceToHost)
+    check_memcpy_gpu("trans_ev a_dev -> a_mat", successGPU)
+
+    ! we have to copy q_dev -> q_mat
+
+    num = ldq*matrixCols*size_of_datatype
+    successGPU = gpu_memcpy(int(loc(q_mat(1,1)),kind=c_intptr_t), q_dev, &
+                  num, gpuMemcpyDeviceToHost)
+    check_memcpy_gpu("trans_ev q_dev -> q_mat", successGPU)
+#endif /* DEVICE_POINTER */
 
   call obj%get("nbc_row_elpa1_tridi_to_full", non_blocking_collectives_rows, error)
   if (error .ne. ELPA_OK) then
@@ -341,19 +372,25 @@ subroutine trans_ev_&
     successGPU = gpu_malloc(tmp_dev, max_local_cols * max_stored_rows * size_of_datatype)
     check_alloc_gpu("trans_ev", successGPU)
 
+#ifndef DEVICE_POINTER
+    ! allready allocated
     num = ldq * matrixCols * size_of_datatype
     successGPU = gpu_malloc(q_dev, num)
     check_alloc_gpu("trans_ev", successGPU)
-  
-#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
 
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
     if (gpu_vendor() /= OPENMP_OFFLOAD_GPU .and. gpu_vendor() /= SYCL_GPU) then
       successGPU = gpu_host_register(int(loc(q_mat),kind=c_intptr_t),num,&
                   gpuHostRegisterDefault)
       check_host_register_gpu("trans_ev: q_mat", successGPU)
     endif
 #endif
+#endif
 
+#if (COMPLEXCASE == 1 && defined(DEVICE_POINTER)) || !defined(DEVICE_POINTER)
+! we have to copy q_mat -> q_dev
+
+    num = ldq * matrixCols * size_of_datatype
 #ifdef WITH_GPU_STREAMS
 ! at least in the real case this memory copy could be done before calling this step
     my_stream = obj%gpu_setup%my_stream
@@ -375,6 +412,9 @@ subroutine trans_ev_&
                   num, gpuMemcpyHostToDevice)
     check_memcpy_gpu("trans_ev", successGPU)
 #endif
+
+#endif /* (COMPLEXCASE == 1 && defined(DEVICE_POINTER)) || !defined(DEVICE_POINTER) */
+
   endif  ! useGPU
 
   do istep = 1, na, blockStep
@@ -839,7 +879,8 @@ subroutine trans_ev_&
 
   if (useGPU) then
 
-    !q_mat = q_dev
+#ifndef DEVICE_POINTER
+
 #ifdef WITH_GPU_STREAMS
 ! most likely this memory could be avoided if device ptr given
 
@@ -862,12 +903,16 @@ subroutine trans_ev_&
                   q_dev, ldq * matrixCols * size_of_datatype, gpuMemcpyDeviceToHost)
     check_memcpy_gpu("trans_ev", successGPU)
 #endif
+#endif /* DEVICE_POINTER */
 
 #if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
+
+#ifndef DEVICE_POINTER
     if (gpu_vendor() /= OPENMP_OFFLOAD_GPU .and. gpu_vendor() /= SYCL_GPU) then
       successGPU = gpu_host_unregister(int(loc(q_mat),kind=c_intptr_t))
       check_host_unregister_gpu("trans_ev: q_mat", successGPU)
     endif
+#endif
 
     if (gpu_vendor() /= OPENMP_OFFLOAD_GPU .and. gpu_vendor() /= SYCL_GPU) then
       successGPU = gpu_free_host(hvm1_host)
@@ -900,9 +945,11 @@ subroutine trans_ev_&
     !  stop 1
     !endif
 
+#ifndef DEVICE_POINTER
     !deallocate(q_dev, tmp_dev, hvm_dev, tmat_dev)
     successGPU = gpu_free(q_dev)
     check_dealloc_gpu("trans_ev", successGPU)
+#endif
 
     successGPU = gpu_free(tmp_dev)
     check_dealloc_gpu("trans_ev", successGPU)
@@ -919,15 +966,20 @@ subroutine trans_ev_&
     &: tmat, tmp1, tmp2", istat, errorMessage)
   endif ! useGPU
 
-
   call obj%timer%stop("trans_ev_&
   &MATH_DATATYPE&
   &" // &
   &PRECISION_SUFFIX // &
   gpuString )
 
+#ifndef DEVICE_POINTER
 end subroutine trans_ev_&
 &MATH_DATATYPE&
 &_&
 &PRECISION
-
+#else
+end subroutine trans_ev_dptr_&
+&MATH_DATATYPE&
+&_&
+&PRECISION
+#endif

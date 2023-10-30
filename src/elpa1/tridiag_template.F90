@@ -94,12 +94,21 @@ call prmat(na, useGpu, a_mat, a_dev, matrixRows, matrixCols, nblk, my_prow, my_p
 !> \param useGPU      If true,  GPU version of the subroutine will be used
 !> \param wantDebug   if true more debug information
 !>
+#ifndef DEVICE_POINTER
 subroutine tridiag_&
   &MATH_DATATYPE&
   &_&
   &PRECISION &
   (obj, na, a_mat, matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, d_vec, e_vec, tau, useGPU, wantDebug, &
    max_threads_in, isSkewsymmetric, success)
+#else /* DEVICE_POINTER */
+subroutine tridiag_dptr_&
+  &MATH_DATATYPE&
+  &_&
+  &PRECISION &
+  (obj, na, a_dev, matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, d_vec_dev, e_vec_dev, tau, useGPU, wantDebug, &
+   max_threads_in, isSkewsymmetric, success)
+#endif /* DEVICE_POINTER */
   use, intrinsic :: iso_c_binding
   use precision
   use elpa_abstract_impl
@@ -120,6 +129,7 @@ subroutine tridiag_&
   logical, intent(in)                           :: isSkewsymmetric
 
   MATH_DATATYPE(kind=rck), intent(out)          :: tau(na)
+#ifndef DEVICE_POINTER
 #ifdef USE_ASSUMED_SIZE
   MATH_DATATYPE(kind=rck), intent(inout)        :: a_mat(matrixRows,*)
 #else
@@ -127,6 +137,12 @@ subroutine tridiag_&
 #endif
   real(kind=rk), intent(out)                    :: d_vec(na)
   real(kind=rk), intent(out)                    :: e_vec(na)
+#else /* DEVICE_POINTER */
+  real(kind=rk)                                 :: d_vec(na)
+  real(kind=rk)                                 :: e_vec(na)
+  integer(kind=c_intptr_t)                      :: d_vec_dev, e_vec_dev
+  MATH_DATATYPE(kind=rck)                       :: a_mat(matrixRows,matrixCols)
+#endif /* DEVICE_POINTER */
   integer(kind=ik), parameter                   :: max_stored_uv = 32
   logical,          parameter                   :: mat_vec_as_one_block = .true.
 
@@ -200,6 +216,11 @@ subroutine tridiag_&
                                                                       &PRECISION&
                                                                       &_&
                                                                       &MATH_DATATYPE
+ integer(kind=c_intptr_t), parameter            :: size_of_real_datatype = size_of_&
+                                                                      &PRECISION&
+                                                                      &_real
+
+
   integer(kind=MPI_KIND)                        :: bcast_request1, bcast_request2, bcast_request3
   integer(kind=MPI_KIND)                        :: allreduce_request1, allreduce_request2, allreduce_request3
   integer(kind=MPI_KIND)                        :: allreduce_request4, allreduce_request5, allreduce_request6, &
@@ -217,18 +238,9 @@ subroutine tridiag_&
 
 #ifdef MORE_GPU_COMPUTE
   if (useGPU) then
-    !print *,"DEFAULT PointerMode: ", gpublasDefaultPointerMode
-    !
     gpuHandle = obj%gpu_setup%gpublasHandleArray(0)
     call gpublas_getPointerMode(gpuHandle, pointerMode)
-
-    !print *,"Fortran PointerMode: ", pointerMode, gpublasPointerModeHost, gpublasPointerModeDevice
- 
-    !print *,"setting device"
-    !call gpublas_setPointerMode(gpuHandle, gpublasPointerModeDevice)
     call gpublas_getPointerMode(gpuHandle, pointerMode)
-
-    !print *,"PointerMode after setting: ", pointerMode, gpublasPointerModeHost, gpublasPointerModeDevice
   endif
 #endif
 
@@ -251,6 +263,24 @@ subroutine tridiag_&
   &" // &
   PRECISION_SUFFIX // &
   gpuString )
+
+#ifdef DEVICE_POINTER
+  num = na * size_of_real_datatype
+  successGPU = gpu_memcpy(int(loc(e_vec),kind=c_intptr_t), e_vec_dev, num, &
+                              gpuMemcpyDeviceToHost)
+  check_memcpy_gpu("tridiag: e_vec_dev -> e_vec", successGPU)
+
+  num = na * size_of_real_datatype
+  successGPU = gpu_memcpy(int(loc(d_vec),kind=c_intptr_t), d_vec_dev, num, &
+                              gpuMemcpyDeviceToHost)
+  check_memcpy_gpu("tridiag: d_vec_dev -> d_vec", successGPU)
+
+  num = matrixRows * matrixCols * size_of_datatype
+  successGPU = gpu_memcpy(int(loc(a_mat(1,1)),kind=c_intptr_t), a_dev, &
+                              num, gpuMemcpyDeviceToHost)
+  check_memcpy_gpu("tridiag: a_mat -> a_dev", successGPU)
+#endif
+
 
   call obj%get("nbc_row_elpa1_full_to_tridi", non_blocking_collectives_rows, error)
   if (error .ne. ELPA_OK) then
@@ -545,8 +575,10 @@ subroutine tridiag_&
 
     num = matrixRows * matrixCols * size_of_datatype
 
+#ifndef DEVICE_POINTER
     successGPU = gpu_malloc(a_dev, num)
     check_alloc_gpu("tridiag: a_dev", successGPU)
+#endif
 
 #if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
     if (gpu_vendor() /= OPENMP_OFFLOAD_GPU .and. gpu_vendor() /= SYCL_GPU) then
@@ -566,7 +598,7 @@ subroutine tridiag_&
     successGPU = gpu_memcpy(a_dev, int(loc(a_mat(1,1)),kind=c_intptr_t), &
                               num, gpuMemcpyHostToDevice)
 #endif
-    check_memcpy_gpu("tridiag: a_dev", successGPU)
+    check_memcpy_gpu("tridiag: a_mat -> a_dev", successGPU)
 
   endif ! useGPU
 
@@ -1728,9 +1760,11 @@ subroutine tridiag_&
     check_dealloc_gpu("tridiag: aux2_dev", successgpu)
 #endif
 
+#ifndef DEVICE_POINTER
     ! todo: should we leave a_mat on the device for further use?
     successGPU = gpu_free(a_dev)
     check_dealloc_gpu("tridiag: a_dev 9", successGPU)
+#endif
 
     successGPU = gpu_free(v_row_dev)
     check_dealloc_gpu("tridiag: v_row_dev", successGPU)
@@ -1864,13 +1898,38 @@ subroutine tridiag_&
   deallocate(vu_stored_rows, uv_stored_cols, stat=istat, errmsg=errorMessage)
   check_deallocate("tridiag: vu_stored_rows, uv_stored_cols", istat, errorMessage)
 
+#ifdef DEVICE_POINTER
+  num = na * size_of_real_datatype
+  successGPU = gpu_memcpy(e_vec_dev, int(loc(e_vec),kind=c_intptr_t), num, &
+                              gpuMemcpyHostToDevice)
+  check_memcpy_gpu("tridiag: e_vec -> e_vec_dev", successGPU)
+
+  num = na * size_of_real_datatype
+  successGPU = gpu_memcpy(d_vec_dev, int(loc(d_vec),kind=c_intptr_t), num, &
+                              gpuMemcpyHostToDevice)
+  check_memcpy_gpu("tridiag: d_vec -> d_vec_dev", successGPU)
+
+  num = matrixRows * matrixCols * size_of_datatype
+  successGPU = gpu_memcpy(a_dev, int(loc(a_mat(1,1)),kind=c_intptr_t), &
+                              num, gpuMemcpyHostToDevice)
+  check_memcpy_gpu("tridiag: a_dev -> a_mat", successGPU)
+
+#endif
+
   call obj%timer%stop("tridiag_&
   &MATH_DATATYPE&
   &" // &
   PRECISION_SUFFIX // &
   gpuString )
 
+#ifndef DEVICE_POINTER
 end subroutine tridiag_&
 &MATH_DATATYPE&
 &_&
 &PRECISION
+#else
+end subroutine tridiag_dptr_&
+&MATH_DATATYPE&
+&_&
+&PRECISION
+#endif

@@ -55,10 +55,18 @@
 #include "../general/sanity.F90"
 #include "../general/error_checking.inc"
 
+#ifndef DEVICE_POINTER
 subroutine solve_tridi_&
 &PRECISION_AND_SUFFIX &
-    ( obj, na, nev, d, e, q, ldq, nblk, matrixCols, mpi_comm_all, mpi_comm_rows, &
+    ( obj, na, nev, d, e, q,             ldq, nblk, matrixCols, mpi_comm_all, mpi_comm_rows, &
                                            mpi_comm_cols, useGPU, wantDebug, success, max_threads )
+#else
+subroutine solve_tridi_dptr_&
+&PRECISION_AND_SUFFIX &
+    ( obj, na, nev, d_dev, e_dev, q_dev, ldq, nblk, matrixCols, mpi_comm_all, mpi_comm_rows, &
+                                           mpi_comm_cols, useGPU, wantDebug, success, max_threads )
+#endif
+
 
       use precision
       use elpa_abstract_impl
@@ -68,17 +76,29 @@ subroutine solve_tridi_&
       use ELPA_utilities
       use distribute_global_column
       use elpa_mpi
+      use elpa_gpu
       implicit none
 #include "../../src/general/precision_kinds.F90"
       class(elpa_abstract_impl_t), intent(inout) :: obj
       integer(kind=ik), intent(in)               :: na, nev, ldq, nblk, matrixCols, &
                                                     mpi_comm_all, mpi_comm_rows, mpi_comm_cols
+#ifndef DEVICE_POINTER
       real(kind=REAL_DATATYPE), intent(inout)    :: d(na), e(na)
 #ifdef USE_ASSUMED_SIZE
       real(kind=REAL_DATATYPE), intent(inout)    :: q(ldq,*)
 #else
       real(kind=REAL_DATATYPE), intent(inout)    :: q(ldq,matrixCols)
 #endif
+#else /* DEVICE_POINTER */
+      real(kind=REAL_DATATYPE)                   :: d(na), e(na)
+      real(kind=REAL_DATATYPE)                   :: q(ldq,matrixCols)
+#endif /* DEVICE_POINTER */
+
+#ifdef DEVICE_POINTER
+      integer(kind=c_intptr_t), intent(inout)    :: d_dev, e_dev, q_dev
+      integer(kind=c_intptr_t)                   :: num
+#endif
+
       logical, intent(in)                        :: useGPU, wantDebug
       logical, intent(out)                       :: success
 
@@ -91,12 +111,45 @@ subroutine solve_tridi_&
       character(200)                             :: errorMessage
       character(20)                              :: gpuString
       integer(kind=ik), intent(in)               :: max_threads
+#ifdef DEVICE_POINTER
+      logical                                    :: successGPU
+      integer(kind=c_intptr_t), parameter        :: size_of_datatype = size_of_&
+                                                                      &PRECISION&
+                                                                      &_&
+                                                                      &MATH_DATATYPE
+      integer(kind=c_intptr_t), parameter        :: size_of_real_datatype = size_of_&
+                                                                      &PRECISION&
+                                                                      &_real
+#endif
+
+
 
       if(useGPU) then
         gpuString = "_gpu"
       else
         gpuString = ""
       endif
+
+#ifdef DEVICE_POINTER
+      ! copy device pointer to host
+      ! TODO: remove this
+      num = na*size_of_datatype
+      successGPU = gpu_memcpy(int(loc(d),kind=c_intptr_t), d_dev, num,&
+                              gpuMemcpyDeviceToHost)
+      check_memcpy_gpu("solve_tridi: d_dev -> d", successGPU)
+
+      num = na*size_of_datatype
+      successGPU = gpu_memcpy(int(loc(e),kind=c_intptr_t), e_dev, num,&
+                              gpuMemcpyDeviceToHost)
+      check_memcpy_gpu("solve_tridi: e_dev -> e", successGPU)
+
+      num = ldq*matrixCols*size_of_datatype
+      successGPU = gpu_memcpy(int(loc(q),kind=c_intptr_t), q_dev, num,&
+                              gpuMemcpyDeviceToHost)
+      check_memcpy_gpu("solve_tridi: q_dev -> q", successGPU)
+
+#endif
+
 
       call obj%timer%start("solve_tridi" // PRECISION_SUFFIX // gpuString)
 
@@ -238,124 +291,41 @@ subroutine solve_tridi_&
       deallocate(limits,l_col,p_col,l_col_bc,p_col_bc, stat=istat, errmsg=errorMessage)
       check_deallocate("solve_tridi: limits, l_col, p_col, l_col_bc, p_col_bc", istat, errorMessage)
 
+#ifdef DEVICE_POINTER
+      ! copy device pointer to host
+      ! TODO: remove this
+      num = na*size_of_datatype
+      successGPU = gpu_memcpy(d_dev, int(loc(d),kind=c_intptr_t), num,&
+                              gpuMemcpyHostToDevice)
+      check_memcpy_gpu("solve_tridi: d -> d_dev ", successGPU)
+
+      num = na*size_of_datatype
+      successGPU = gpu_memcpy(e_dev, int(loc(e),kind=c_intptr_t), num,&
+                              gpuMemcpyHostToDevice)
+      check_memcpy_gpu("solve_tridi: e -> e_dev ", successGPU)
+
+      num = ldq*matrixCols*size_of_datatype
+      successGPU = gpu_memcpy(q_dev, int(loc(q),kind=c_intptr_t), num,&
+                              gpuMemcpyHostToDevice)
+      check_memcpy_gpu("solve_tridi: q-> q_dev ", successGPU)
+
+#endif
+
+
       call obj%timer%stop("solve_tridi" // PRECISION_SUFFIX // gpuString)
       return
-
-#if 0
-      contains
-        recursive subroutine merge_recursive_&
-                  &PRECISION_AND_SUFFIX &
-           (obj, np_off, nprocs, useGPU, wantDebug, success)
-           use precision
-           use elpa_abstract_impl
-           use merge_systems
-           implicit none
-
-           ! noff is always a multiple of nblk_ev
-           ! nlen-noff is always > nblk_ev
-
-           class(elpa_abstract_impl_t), intent(inout) :: obj
-           integer(kind=ik)     :: np_off, nprocs
-           integer(kind=ik)     :: np1, np2, noff, nlen, nmid, n
-           logical, intent(in)  :: useGPU, wantDebug
-           logical, intent(out) :: success
-
-           success = .true.
-
-           if (nprocs<=1) then
-             ! Safety check only
-             if (wantDebug) write(error_unit,*) "ELPA1_merge_recursive: INTERNAL error merge_recursive: nprocs=",nprocs
-             success = .false.
-             return
-           endif
-           ! Split problem into 2 subproblems of size np1 / np2
-
-           np1 = nprocs/2
-           np2 = nprocs-np1
-
-           if (np1 > 1) call merge_recursive_&
-                        &PRECISION_AND_SUFFIX &
-           (obj, np_off, np1, useGPU, wantDebug, success)
-           if (.not.(success)) return
-           if (np2 > 1) call merge_recursive_&
-                        &PRECISION_AND_SUFFIX &
-           (obj, np_off+np1, np2, useGPU, wantDebug, success)
-           if (.not.(success)) return
-
-           noff = limits(np_off)
-           nmid = limits(np_off+np1) - noff
-           nlen = limits(np_off+nprocs) - noff
-
-#ifdef WITH_MPI
-           call obj%timer%start("mpi_communication")
-           if (my_pcol==np_off) then
-             do n=np_off+np1,np_off+nprocs-1
-               call mpi_send(d(noff+1), int(nmid,kind=MPI_KIND), MPI_REAL_PRECISION, int(n,kind=MPI_KIND), 1_MPI_KIND, &
-                             int(mpi_comm_cols,kind=MPI_KIND), mpierr)
-             enddo
-           endif
-           call obj%timer%stop("mpi_communication")
-#endif /* WITH_MPI */
-
-           if (my_pcol>=np_off+np1 .and. my_pcol<np_off+nprocs) then
-#ifdef WITH_MPI
-             call obj%timer%start("mpi_communication")
-             call mpi_recv(d(noff+1), int(nmid,kind=MPI_KIND), MPI_REAL_PRECISION, int(np_off,kind=MPI_KIND), 1_MPI_KIND, &
-                           int(mpi_comm_cols,kind=MPI_KIND), MPI_STATUS_IGNORE, mpierr)
-             call obj%timer%stop("mpi_communication")
-#else /* WITH_MPI */
-!             d(noff+1:noff+1+nmid-1) = d(noff+1:noff+1+nmid-1)
-#endif /* WITH_MPI */
-           endif
-
-           if (my_pcol==np_off+np1) then
-             do n=np_off,np_off+np1-1
-#ifdef WITH_MPI
-               call obj%timer%start("mpi_communication")
-               call mpi_send(d(noff+nmid+1), int(nlen-nmid,kind=MPI_KIND), MPI_REAL_PRECISION, int(n,kind=MPI_KIND), &
-                             1_MPI_KIND, int(mpi_comm_cols,kind=MPI_KIND), mpierr)
-               call obj%timer%stop("mpi_communication")
-#endif /* WITH_MPI */
-
-             enddo
-           endif
-           if (my_pcol>=np_off .and. my_pcol<np_off+np1) then
-#ifdef WITH_MPI
-             call obj%timer%start("mpi_communication")
-             call mpi_recv(d(noff+nmid+1), int(nlen-nmid,kind=MPI_KIND), MPI_REAL_PRECISION, int(np_off+np1,kind=MPI_KIND), &
-                           1_MPI_KIND, int(mpi_comm_cols,kind=MPI_KIND), MPI_STATUS_IGNORE, mpierr)
-             call obj%timer%stop("mpi_communication")
-#else /* WITH_MPI */
-!             d(noff+nmid+1:noff+nmid+1+nlen-nmid-1) = d(noff+nmid+1:noff+nmid+1+nlen-nmid-1)
-#endif /* WITH_MPI */
-           endif
-           if (nprocs == np_cols) then
-
-             ! Last merge, result distribution must be block cyclic, noff==0,
-             ! p_col_bc is set so that only nev eigenvalues are calculated
-             call merge_systems_&
-                  &PRECISION &
-                                 (obj, nlen, nmid, d(noff+1), e(noff+nmid), q, ldq, noff, &
-                                 nblk, matrixCols, int(mpi_comm_rows,kind=ik), int(mpi_comm_cols,kind=ik), &
-                                 l_col, p_col, &
-                                 l_col_bc, p_col_bc, np_off, nprocs, useGPU, wantDebug, success, max_threads )
-             if (.not.(success)) return
-           else
-             ! Not last merge, leave dense column distribution
-             call merge_systems_&
-                  &PRECISION &
-                                (obj, nlen, nmid, d(noff+1), e(noff+nmid), q, ldq, noff, &
-                                 nblk, matrixCols, int(mpi_comm_rows,kind=ik), int(mpi_comm_cols,kind=ik), &
-                                 l_col(noff+1), p_col(noff+1), &
-                                 l_col(noff+1), p_col(noff+1), np_off, nprocs, useGPU, wantDebug, success, max_threads )
-             if (.not.(success)) return
-           endif
-       end subroutine merge_recursive_&
-           &PRECISION_AND_SUFFIX
-#endif
+#ifndef DEVICE_POINTER
     end subroutine solve_tridi_&
         &PRECISION_AND_SUFFIX
+#else
+    end subroutine solve_tridi_dptr_&
+        &PRECISION_AND_SUFFIX
+#endif
 
+
+! only compile once
+
+#ifndef DEVICE_POINTER
     subroutine solve_tridi_col_&
     &PRECISION_AND_SUFFIX &
       ( obj, na, nev, nqoff, d, e, q, ldq, nblk, matrixCols, mpi_comm_rows, useGPU, wantDebug, success, max_threads )
@@ -729,4 +699,4 @@ subroutine solve_tridi_&
 
     end subroutine solve_tridi_single_problem_&
     &PRECISION_AND_SUFFIX
-
+#endif /* DEVICE_POINTER */
