@@ -133,17 +133,24 @@ function elpa_solve_evp_&
    real(kind=REAL_DATATYPE), pointer                                  :: ev(:)
 
 #ifdef DEVICE_POINTER
+   type(c_ptr)                                                        :: aDev_extern
+   type(c_ptr), optional                                              :: qDev_Extern
 
-!#ifdef REDISTRIBUTE_MATRIX
-   type(c_ptr)                                                         :: aDev_extern
-   type(c_ptr), optional                                               :: qDev_Extern
-!#else /* REDISTRIBUTE_MATRIX */
-!   type(c_ptr)                                                        :: a, q
-!#endif /* REDISTRIBUTE_MATRIX */
+#ifdef REDISTRIBUTE_MATRIX
+   real(kind=REAL_DATATYPE), target                                   :: evExtern(obj%na)
+   MATH_DATATYPE(kind=rck), target                                    :: aExtern(1:obj%local_nrows,1:obj%local_ncols)
+#ifdef ACTIVATE_SKEW
+   MATH_DATATYPE(kind=C_DATATYPE_KIND), target                        :: qExtern(1:obj%local_nrows,1:2*obj%local_ncols)
+#else
+   MATH_DATATYPE(kind=C_DATATYPE_KIND), target                        :: qExtern(1:obj%local_nrows,1:obj%local_ncols)
+#endif
+#else /* REDISTRIBUTE_MATRIX */
+#if COMPLEXCASE == 1
+   MATH_DATATYPE(kind=C_DATATYPE_KIND), target                        :: qExtern(1:obj%local_nrows,1:obj%local_ncols)
+#endif
+#endif /* REDISTRIBUTE_MATRIX */
 
 #else /* DEVICE_POINTER */
-
-!#ifdef REDISTRIBUTE_MATRIX
 
 #ifdef USE_ASSUMED_SIZE
    MATH_DATATYPE(kind=rck), intent(inout), target                     :: aExtern(obj%local_nrows,*)
@@ -157,34 +164,20 @@ function elpa_solve_evp_&
 #endif
 #endif /* USE_ASSUMED_SIZE */
 
-!#else /* REDISTRIBUTE_MATRIX */
-!
-!#ifdef USE_ASSUMED_SIZE
-!   MATH_DATATYPE(kind=rck), intent(inout), target                     :: a(obj%local_nrows,*)
-!   MATH_DATATYPE(kind=rck), optional,target,intent(out)               :: q(obj%local_nrows,*)
-!#else
-!   MATH_DATATYPE(kind=rck), intent(inout), target                     :: a(obj%local_nrows,obj%local_ncols)
-!#ifdef ACTIVATE_SKEW
-!   MATH_DATATYPE(kind=C_DATATYPE_KIND), optional, target, intent(out) :: q(obj%local_nrows,2*obj%local_ncols)
-!#else
-!   MATH_DATATYPE(kind=C_DATATYPE_KIND), optional, target, intent(out) :: q(obj%local_nrows,obj%local_ncols)
-!#endif
-!#endif /* USE_ASSUMED_SIZE */
-
-!#endif /* REDISTRIBUTE_MATRIX */
-
 #endif /* DEVICE_POINTER */
 
   MATH_DATATYPE(kind=rck), pointer                                   :: a(:,:)
   MATH_DATATYPE(kind=rck), pointer                                   :: q(:,:)
 
 #ifdef DEVICE_POINTER
-  integer(kind=c_intptr_t)                                           :: ev_dev, ev_intern_dev
+  integer(kind=c_intptr_t)                                           :: ev_dev
   integer(kind=c_intptr_t)                                           :: q_real_dev, q_dev
   integer(kind=c_intptr_t)                                           :: e_dev
   integer(kind=c_intptr_t)                                           :: num
   integer(kind=c_intptr_t)                                           :: q_skew_real_dev, q_skew_imag_dev
-  integer(kind=c_intptr_t)                                           :: a_dev
+  integer(kind=c_intptr_t)                                           :: a_dev, q_actual_dev, q_dummy_dev
+
+  integer(kind=c_intptr_t)                                           :: aIntern_dev, qIntern_dev, evIntern_dev
 
 #ifdef ACTIVATE_SKEW
    MATH_DATATYPE(kind=C_DATATYPE_KIND)                               :: q_skew_real(1:obj%local_nrows,1:obj%local_ncols)
@@ -274,7 +267,44 @@ function elpa_solve_evp_&
 #ifdef WITH_GPU_STREAMS
    !integer(kind=c_intptr_t)                        ::`` num
 #endif
- 
+
+
+       ! ev is needed also when DEVICE_POINTER
+! q_real is needed when device pointer and complex case
+! q is needed when device pointer and complex case, hence also qExtern
+
+! q_skew_real is needed when DEVICE_POINTER
+! q_skew_imag is needed when DEVICE_POINTER
+
+
+
+
+  ! if NOT REDISTRIBUTE and NOT DEVICE_POINTER                         |   if REDISTRIBUTE and NOT DEVICE Pointer
+  !                                                                    |
+  ! input: aExtern, qExtern, evExtern                                  | input: aExtern, qExtern, evExtern
+  ! a => aExtern, q => qExtern, ev => evExtern                         | redistribute to aInter, qIntern, evIntern
+  ! aIntern => aExtern, qIntern => qExtern, evIntern => evExtern       | a => aInter, q => qIntern, ev => evIntern
+  ! real case:                                                         | real case:
+  ! q_actual => q  || q_actual => q_dummy                              | q_actual => q || q_actual => q_dummy
+  ! complex case:                                                      | complex case
+  ! q_real allocated                                                   | q_real allocated
+  !
+  ! if NOT REDISTRIBUTE and DEVICE_POINTER                             | REDISTRIBUTE and DEVICE pointer
+  !                                                                    |
+  ! input: aDev_extern, qDev_extern, evDev_extern                      | input: aDev_extern qDev_extern, ev_extern
+  ! a_dev => aDev_exterm, q_dev => qDev_extern, ev_dev => evDev_extern | copy aDev_extern -> aExtern, qDev_extern -> qExtern
+  !                                                                    | evDev_extern -> evExtern
+  ! check the CPU arrays                                               | allocate aIntern, qIntern, evIntern -> redistribute
+  ! real case:                                                         | copy aIntern -> aIntern_dev, qIntern -> qIntern_dev
+  ! q_actual_dev => q_dev || q_actual_dev => q_dummy_dev               | evIntern => evIntern_dev
+  ! complex case:                                                      | a => aIntern_dev, q => qIntern_dev, ev_dev =>
+  ! q_real_dev q_imag_dev allocated                                    | evIntern_dev
+  !                                                                    | real case:
+  !                                                                    | q_actual_dev => q_dev || q_actual_dev => q_dummy_dev
+  !                                                                    | complex case:
+  !                                                                    | q_real_dev q_imag_dev allocated
+
+
   ! ELPA works with the variables, a, q_actual, q_real, and ev, or a_dev, q_dev_actual, and q_dev_real, and ev_dev, respectively
   ! ELPA gets as INPUT always aExtern, qExtern, and evExtern, or aDev_extern, qDev_Extern, and evDev_Extern
   ! if MATRIX_REDISITRIBUTION is NOT configured then
@@ -294,10 +324,10 @@ function elpa_solve_evp_&
   ! To make life more complicated ELPA uses either q_actual/q_dev_actual or q_real/q_dev_real
   ! CPU:
   ! NO MATRIX_REDISTRIBUTION
-  ! q_actual  => q => q_extern (real or complex)
+  ! q_actual  => q => q_Etern (real or complex)
   ! q_real = real-part of q (copied) onlu complex case
   ! MATRIX_REDISTRIBUYION
-  ! q_actual => q => q_intern
+  ! q_actual => q => qIntern
   ! q_real = real-part of q (copied) onlu complex case
 
 #ifdef ACTIVATE_SKEW
@@ -309,18 +339,6 @@ function elpa_solve_evp_&
    &_1stage_&
    &PRECISION&
    &")
-
-
-#ifdef DEVICE_POINTER
-   a_dev  = transfer(aDev_extern, a_dev)
-
-   ev_dev = transfer(evDev_extern, ev_dev)
-
-   if (present(qDev_extern)) then
-     q_dev  = transfer(qDev_extern, q_dev)
-   endif
-#endif
-
 
    call obj%get("debug",debug, error)
    if (error .ne. ELPA_OK) then
@@ -437,7 +455,7 @@ function elpa_solve_evp_&
    endif
 
 #ifdef REDISTRIBUTE_MATRIX
-#ifndef DEVICE_POINTER
+
    ! if a matrix redistribution is done then
    ! - aIntern, qIntern are getting allocated for the new distribution
    ! - nblk, matrixCols, matrixRows, mpi_comm_cols, mpi_comm_rows are getting updated
@@ -446,57 +464,16 @@ function elpa_solve_evp_&
    ! - a points then to aIntern, q points to qIntern
 #include "../helpers/elpa_redistribute_template.F90"
    ! ev still has to be assigned
-#else
-! TODO
-print *,"Device pointer + REDIST"
-#endif 
-#endif /* REDISTRIBUTE_MATRIX */
 
-#ifdef DEVICE_POINTER
-
-#ifdef REDISTRIBUTE_MATRIX
-  ! this case is not yet implemeted
-  !TODO
-#else
-   allocate(aIntern(1:matrixRows,1:matrixCols), stat=istat, errmsg=errorMessage)
-   check_allocate("elpa1_template: aIntern", istat, errorMessage)
-
-   a       => aIntern(1:matrixRows,1:matrixCols)
-
-   allocate(evIntern(1:obj%na), stat=istat, errmsg=errorMessage)
-   check_allocate("elpa1_template: evIntern", istat, errorMessage)
-   ev      => evIntern(1:obj%na)
-
-   if (present(qDev_extern)) then
-#ifdef ACTIVATE_SKEW
-     allocate(qIntern(1:matrixRows,1:2*matrixCols), stat=istat, errmsg=errorMessage)
-     check_allocate("elpa1_template: qIntern", istat, errorMessage)
-#else
-     allocate(qIntern(1:matrixRows,1:matrixCols), stat=istat, errmsg=errorMessage)
-     check_allocate("elpa1_template: qIntern", istat, errorMessage)
-#endif
-   endif
-#endif /* REDISTRIBUTE_MATRIX */
-
-
-#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
-   !!TODO: intel gpu
-   !! in case of devcice pointer _AND_ redistribute
-   !! 1. copy aExtern to aIntern_dummy
-   !! 2. redistribute aIntern_dummy to aIntern
-
-   !successGPU = gpu_memcpy(c_loc(aIntern(1,1)), aDev_extern, matrixRows*matrixCols*size_of_datatype, &
-   !                          gpuMemcpyDeviceToHost)
-   !check_memcpy_gpu("elpa1: aExtern -> aIntern", successGPU)
-#endif
-
-
-#else /* DEVICE_POINTER */
-
-#ifdef REDISTRIBUTE_MATRIX
   ! a and q point already to the allocated arrays aIntern, qIntern
   if (.not.(doRedistributeMatrix)) then
     ! no redistribution happend
+#ifdef DEVICE_POINTER
+    a_dev = transfer(aDev_extern, a_dev)
+    if (present(qDev_extern)) then
+      q_dev = transfer(qDev_extern, q_dev)
+    endif
+#else /* DEVICE_POINTER */
     a => aExtern(1:matrixRows,1:matrixCols)
     if (present(qExtern)) then
 #ifdef ACTIVATE_SKEW
@@ -505,66 +482,85 @@ print *,"Device pointer + REDIST"
       q => qExtern(1:matrixRows,1:matrixCols)
 #endif
     endif
-  endif
+#endif /* !DEVICE_POINTER */
+  endif ! .not.(doRedistributeMatrix)
+
 #else /* REDISTRIBUTE_MATRIX */
+
+#ifdef DEVICE_POINTER
+   a_dev  = transfer(aDev_extern, a_dev)
+   !allocate(aIntern(1:matrixRows,1:matrixCols), stat=istat, errmsg=errorMessage)
+   !check_allocate("elpa1_template: aIntern", istat, errorMessage)
+   !a       => aIntern(1:matrixRows,1:matrixCols)
+
+   ev_dev = transfer(evDev_extern, ev_dev)
+   !allocate(evIntern(1:obj%na), stat=istat, errmsg=errorMessage)
+   !check_allocate("elpa1_template: evIntern", istat, errorMessage)
+   !ev      => evIntern(1:obj%na)
+
+   if (present(qDev_extern)) then
+     q_dev  = transfer(qDev_extern, q_dev)
+!#ifdef ACTIVATE_SKEW
+!     !allocate(qIntern(1:matrixRows,1:2*matrixCols), stat=istat, errmsg=errorMessage)
+!     !check_allocate("elpa1_template: qIntern", istat, errorMessage)
+!     q       => qIntern(1:matrixRows,1:2*matrixCols)
+!#else
+!     !allocate(qIntern(1:matrixRows,1:matrixCols), stat=istat, errmsg=errorMessage)
+!     !check_allocate("elpa1_template: qIntern", istat, errorMessage)
+!     q       => qIntern(1:matrixRows,1:matrixCols)
+!#endif
+#if COMPLEXCASE == 1
+     q => qExtern(1:matrixRows,1:matrixCols)
+#endif
+
+   endif
+#else /* DEVICE_POINTER */
    ! aIntern, qIntern, are normally pointers since no matrix redistribution is used
    ! point them to  the external arrays
    aIntern => aExtern(1:matrixRows,1:matrixCols)
+   a       => aIntern(1:matrixRows,1:matrixCols)
+
    if (present(qExtern)) then
 #ifdef ACTIVATE_SKEW
      qIntern => qExtern(1:matrixRows,1:2*matrixCols)
+     q       => qIntern(1:matrixRows,1:2*matrixCols)
 #else
      qIntern => qExtern(1:matrixRows,1:matrixCols)
+     q       => qIntern(1:matrixRows,1:matrixCols)
 #endif
    endif
+#endif /* DEVICE_POINTER */
+
 #endif /* REDISTRIBUTE_MATRIX */
 
   ! whether a matrix redistribution or not is happening we still
   ! have to point ev
+
+#ifndef DEVICE_POINTER
    evIntern => evExtern(1:obj%na)
-
-#endif /* DEVICE_POINTER */
-
-#ifdef REDISTRIBUTE_MATRIX
-   if (doRedistributeMatrix) then
 #endif
-     a       => aIntern(1:matrixRows,1:matrixCols)
-#ifdef DEVICE_POINTER
-     if (present(qDev_extern)) then
-#else
-     if (present(qExtern)) then
-#endif
-
-#ifdef ACTIVATE_SKEW
-       q       => qIntern(1:matrixRows,1:2*matrixCols)
-#else
-       q       => qIntern(1:matrixRows,1:matrixCols)
-#endif
-     endif
-#ifdef REDISTRIBUTE_MATRIX
-   endif
-#endif
-
+#if !defined(DEVICE_POINTER) || (defined(DEVICE_POINTER) && defined(REDISTRIBUTE_MATRIX))
    ev      => evIntern(1:obj%na)
+#endif
+#ifdef DEVICE_POINTER
+   evIntern_dev = transfer(evDev_extern, evIntern_dev)
+   ev_dev = transfer(evDev_extern, ev_dev)
+#endif
 
-#ifdef WITH_GPU_STREAMS
-   !page lock ev (or evIntern, or evExtern)
-   !num = (obj%na) * size_of_&
-   !                 &PRECISION&
-   !                 &_real
-   !successGPU = gpu_host_register(int(loc(ev),kind=c_intptr_t), num,&
-   !             gpuHostRegisterDefault)
-   !check_host_register_gpu("elpa1_template: ev", successGPU)
 
-   !!page lock a (or aInter, or aExtern)
-   !num = (matrixRows*matrixCols) * size_of_datatype
-
-   !successGPU = gpu_host_register(int(loc(a),kind=c_intptr_t), num,&
-   !             gpuHostRegisterDefault)
-   !check_host_register_gpu("elpa1_template: a", successGPU)
-
-#endif /* WITH_GPU_STREAMS */
-
+!#ifdef REDISTRIBUTE_MATRIX
+!   if (doRedistributeMatrix) then
+!#endif
+!#ifdef DEVICE_POINTER
+!     a_dev  = transfer(aIntern_dev, a_dev)
+!#endif
+!#ifdef DEVICE_POINTER
+!     if (present(qDev_extern)) then
+!       q_dev  = transfer(qIntern_dev, q_dev)
+!#else
+!#ifdef REDISTRIBUTE_MATRIX
+!   endif
+!#endif
 
 #ifdef WITH_NVTX
    call nvtxRangePush("elpa1")
@@ -655,13 +651,26 @@ print *,"Device pointer + REDIST"
 
    call obj%timer%stop("mpi_communication")
 
-   ! allocate a dummy q_intern, if eigenvectors should not be commputed and thus q is NOT present
+   ! allocate a dummy qIntern, if eigenvectors should not be commputed and thus q is NOT present
    if (.not.(obj%eigenvalues_only)) then
+#ifndef DEVICE_POINTER
      q_actual => q(1:matrixRows,1:matrixCols)
+#else
+     q_actual_dev = transfer(q_dev, q_actual_dev)
+#endif /* DEVICE_POINTER */
    else
+#ifndef DEVICE_POINTER
      allocate(q_dummy(1:matrixRows,1:matrixCols), stat=istat, errmsg=errorMessage)
      check_allocate("elpa1_template: q_dummy", istat, errorMessage)
      q_actual => q_dummy
+#else /* DEVICE_POINTER */
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
+     num = matrixRows*matrixCols*size_of_datatype
+     successGPU = gpu_malloc(q_dummy_dev, num)
+     check_alloc_gpu("elpa1_template: q_dummy_dev", successGPU)
+     q_actual_dev = transfer(q_dummy_dev, q_actual_dev)
+#endif
+#endif /* DEVICE_POINTER */
    endif
 
 #if COMPLEXCASE == 1
@@ -674,35 +683,24 @@ print *,"Device pointer + REDIST"
    check_allocate("elpa1_template: q_real", istat, errorMessage)
 
 #ifdef DEVICE_POINTER
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
    num = l_rows*l_cols*size_of_real_datatype
    successGPU = gpu_malloc(q_real_dev, num)
    check_alloc_gpu("elpa1_template: q_real_dev", successGPU)
 #endif
-
 #endif
+
+#endif /* COMPLEXCASE == 1 */
    allocate(e(na), tau(na), stat=istat, errmsg=errorMessage)
    check_allocate("elpa1_template: e, tau", istat, errorMessage)
 
 #ifdef DEVICE_POINTER
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
    num = na*size_of_real_datatype
    successGPU = gpu_malloc(e_dev, num)
    check_alloc_gpu("elpa1_template: e_dev", successGPU)
 #endif
-
-
-#ifdef WITH_GPU_STREAMS
-! currenly only needed in tridiag and done there
-
-!   !page lock ev (or evIntern, or evExtern)
-!   num = (obj%na) * size_of_&
-!                    &PRECISION&
-!                    &_real
-!   successGPU = gpu_host_register(int(loc(e),kind=c_intptr_t), num,&
-!                gpuHostRegisterDefault)
-!   check_host_register_gpu("elpa1_template: e", successGPU)
 #endif
-
-
 
    ! start the computations
    ! as default do all three steps (this might change at some point)
@@ -724,6 +722,7 @@ print *,"Device pointer + REDIST"
      call nvtxRangePush("tridi")
 #endif
 
+print *,"calling tridiag"
 #ifndef DEVICE_POINTER
      call tridiag_&
      &MATH_DATATYPE&
@@ -738,13 +737,14 @@ print *,"Device pointer + REDIST"
      &PRECISION&
      & (obj, na, a_dev, matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, ev_dev, e_dev, tau, &
         do_useGPU_tridiag, wantDebug, nrThreads, isSkewsymmetric, success)
-
 #endif /* DEVICE_POINTER */
+
      if (.not.(success)) then
        write(error_unit,*) "Error in tridiag. Aborting..."
        return
      endif
 
+     print *,"done calling tridiag"
 #ifdef WITH_NVTX
      call nvtxRangePop()
 #endif
@@ -769,6 +769,7 @@ print *,"Device pointer + REDIST"
      call nvtxRangePush("solve")
 #endif
 
+print *,"calling solve"
 #ifndef DEVICE_POINTER
      call solve_tridi_&
      &PRECISION&
@@ -782,32 +783,17 @@ print *,"Device pointer + REDIST"
         nblk, matrixCols, mpi_comm_all, mpi_comm_rows, mpi_comm_cols, do_useGPU_solve_tridi, wantDebug, &
                 success, nrThreads)
 #else /* DEVICE_POINTER */
-
-#ifndef REDISTRIBUTE_MATRIX
-
-#if REALCASE == 1
-     q_dev = transfer(qDev_extern, q_dev)
-#endif
-
-#else /* REDISTRIBUTE_MATRIX */
-     !ev_dev = transfer(ev_intern_dev, ev_dev)
-#if REALCASE == 1
-     q_dev = transfer(q_intern_dev, q_dev)
-#endif
-#endif /* REDISTRIBUTE_MATRIX */
-
      call solve_tridi_dptr_&
      &PRECISION&
      ( obj, na, nev, ev_dev, e_dev, &
 #if REALCASE == 1
-        q_dev, matrixRows,          &
+        q_actual_dev, matrixRows,          &
 #endif
 #if COMPLEXCASE == 1
         q_real_dev, l_rows,  &
 #endif
         nblk, matrixCols, mpi_comm_all, mpi_comm_rows, mpi_comm_cols, do_useGPU_solve_tridi, wantDebug, &
                 success, nrThreads )
-
 #endif /* DEVICE_POINTER */
 
 #ifdef WITH_NVTX
@@ -824,9 +810,11 @@ print *,"Device pointer + REDIST"
      endif
    endif !do_solve
 
+   print *,"done calling solve"
    if (obj%eigenvalues_only) then
      do_trans_ev = .false.
-   else
+   else 
+
      call obj%get("check_pd",check_pd,error)
      if (error .ne. ELPA_OK) then
 #include "./elpa1_aborting_template.F90"
@@ -844,10 +832,12 @@ print *,"Device pointer + REDIST"
 
        ! TODO : GPU kernel for this
 #ifdef DEVICE_POINTER
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
        num = na*size_of_real_datatype
        successGPU = gpu_memcpy(int(loc(ev), kind=c_intptr_t), ev_dev, num, &
                                gpuMemcpyDeviceToHost)
        check_memcpy_gpu("elpa1: ev_dev -> ev", successGPU)
+#endif
 #endif
        check_pd = 0
        do i = 1, na
@@ -871,31 +861,32 @@ print *,"Device pointer + REDIST"
 
 #if COMPLEXCASE == 1
 #ifdef DEVICE_POINTER
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
      ! TODO: write kernel for this and remove memcpys
      num = l_rows * l_cols_nev * size_of_real_datatype
      successGPU = gpu_memcpy(int(loc(q_real(1,1)),kind=c_intptr_t), q_real_dev, num, &
                              gpuMemcpyDeviceToHost)
      check_memcpy_gpu("elpa1: q_real_dev -> q_real", successGPU)
 #endif
+#endif
      ! q must be given thats why from here on we can use q and not q_actual
      q(1:l_rows,1:l_cols_nev) = q_real(1:l_rows,1:l_cols_nev)
 
 #ifdef DEVICE_POINTER
-     ! TODO: write kernel and remove memcpy
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
      ! TODO: write kernel for this and remove memcpys
      num = l_rows * l_cols_nev * size_of_datatype
      successGPU = gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t), num, &
                              gpuMemcpyHostToDevice)
      check_memcpy_gpu("elpa1: q_dev -> q", successGPU)
 #endif
+#endif
 #endif /* COMPLEXCASE == 1 */
+
      if (isSkewsymmetric) then
 #ifdef DEVICE_POINTER
-       ! TODO: write GPU version and remove memcpys
-       num = matrixRows * 2*matrixCols * size_of_datatype
-       successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t), q_dev, num, &
-                             gpuMemcpyDeviceToHost)
-       check_memcpy_gpu("elpa1: q_dev -> q", successGPU)
+
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
 
 #ifdef ACTIVATE_SKEW
        num = matrixRows*matrixCols*size_of_datatype
@@ -905,6 +896,7 @@ print *,"Device pointer + REDIST"
        num = matrixRows*matrixCols*size_of_datatype
        successGPU = gpu_malloc(q_skew_imag_dev, num)
        check_alloc_gpu("elpa1_template: q_imag_real_dev", successGPU)
+#endif
 #endif
 #endif /* DEVICE_POINTER */
 
@@ -932,7 +924,7 @@ print *,"Device pointer + REDIST"
          end if
        end do
 #else /* DEVICE_POINTER */
-
+ 
 #ifdef ACTIVATE_SKEW
        q_skew_real(1:matrixRows, 1:matrixCols) = 0.0
        q_skew_imag(1:matrixRows, 1:matrixCols) = 0.0
@@ -955,6 +947,7 @@ print *,"Device pointer + REDIST"
          end if
        end do
 
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
        !TODO: gpu version of this and remove memcpy
        num = matrixRows * matrixCols * size_of_datatype
        successGPU = gpu_memcpy(q_skew_real_dev, int(loc(q_skew_real(1,1)),kind=c_intptr_t), num, &
@@ -965,6 +958,7 @@ print *,"Device pointer + REDIST"
        successGPU = gpu_memcpy(q_skew_imag_dev, int(loc(q_skew_imag(1,1)),kind=c_intptr_t), num, &
                              gpuMemcpyHostToDevice)
        check_memcpy_gpu("elpa1: q_skew_imag -> q_skew_imag_dev", successGPU)
+#endif
 #endif /* ACTIVATE_SKEW */
 
 #endif /* DEVICE_POINTER */
@@ -979,6 +973,7 @@ print *,"Device pointer + REDIST"
      call nvtxRangePush("trans_ev")
 #endif
 
+print *,"calling trans_ev"
 #ifndef DEVICE_POINTER
      ! In the skew-symmetric case this transforms the real part
      call trans_ev_&
@@ -1013,6 +1008,7 @@ print *,"Device pointer + REDIST"
      endif ! isSkewsymmetric
 #endif /* DEVICE_POINTER */
 
+print *,"done calling trans_ev"
      if (.not.(success)) then
        write(error_unit,*) "Error in trans_ev. Aborting..."
        return
@@ -1046,6 +1042,7 @@ print *,"Device pointer + REDIST"
 #ifdef DEVICE_POINTER
      if (isSkewsymmetric) then
 #ifdef ACTIVATE_SKEW
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
        !TODO: copy everything to gpu write kernel!
        num = matrixRows * matrixCols * size_of_datatype
        successGPU = gpu_memcpy(int(loc(q_skew_real(1,1)),kind=c_intptr_t), q_skew_real_dev, num, &
@@ -1064,6 +1061,7 @@ print *,"Device pointer + REDIST"
        successGPU = gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t), num, &
                              gpuMemcpyHostToDevice)
        check_memcpy_gpu("elpa1: q -> q_dev", successGPU)
+#endif
 #endif /* ACTIVATE_SKEW */
      endif
 #endif /* DEVICE_POINTER */
@@ -1083,8 +1081,10 @@ print *,"Device pointer + REDIST"
     check_deallocate("elpa1_template: q_real", istat, errorMessage)
 
 #ifdef DEVICE_POINTER
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
     successGPU = gpu_free(q_real_dev)
     check_dealloc_gpu("elpa1_template: q_real_dev", successGPU)
+#endif
 #endif
 #endif /* COMPLEXCASE == 1 */
 
@@ -1094,6 +1094,12 @@ print *,"Device pointer + REDIST"
    if (obj%eigenvalues_only) then
      deallocate(q_dummy, stat=istat, errmsg=errorMessage)
      check_deallocate("elpa1_template: q_dummy", istat, errorMessage)
+#ifdef DEVICE_POINTER
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
+     successGPU = gpu_free(q_dummy_dev)
+     check_dealloc_gpu("elpa1_template: q_dummy_dev", successGPU)
+#endif
+#endif
    endif
 
 #ifdef WITH_NVTX
@@ -1107,44 +1113,76 @@ print *,"Device pointer + REDIST"
 #ifdef REDISTRIBUTE_MATRIX
    ! redistribute back if necessary
    if (doRedistributeMatrix) then
+#ifdef DEVICE_POINTER
+      if (present(qDev_Extern)) then
+#else
+      if (present(qExtern)) then
+#endif
 
-     !if (layoutInternal /= layoutExternal) then
-     !  ! maybe this can be skiped I now the process grid
-     !  ! and np_rows and np_cols
+       !if (layoutInternal /= layoutExternal) then
+       !  ! maybe this can be skiped I now the process grid
+       !  ! and np_rows and np_cols
 
-     !  call obj%get("mpi_comm_rows",mpi_comm_rows,error)
-     !  call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
-     !  call obj%get("mpi_comm_cols",mpi_comm_cols,error)
-     !  call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
+       !  call obj%get("mpi_comm_rows",mpi_comm_rows,error)
+       !  call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
+       !  call obj%get("mpi_comm_cols",mpi_comm_cols,error)
+       !  call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
 
-     !  np_rows = int(np_rowsMPI,kind=c_int)
-     !  np_cols = int(np_colsMPI,kind=c_int)
+       !  np_rows = int(np_rowsMPI,kind=c_int)
+       !  np_cols = int(np_colsMPI,kind=c_int)
 
-     !  ! we get new blacs context and the local process grid coordinates
-     !  call BLACS_Gridinit(external_blacs_ctxt, layoutInternal, int(np_rows,kind=BLAS_KIND), int(np_cols,kind=BLAS_KIND))
-     !  call BLACS_Gridinfo(int(external_blacs_ctxt,KIND=BLAS_KIND), np_rows__, &
-     !                      np_cols__, my_prow__, my_pcol__)
+       !  ! we get new blacs context and the local process grid coordinates
+       !  call BLACS_Gridinit(external_blacs_ctxt, layoutInternal, int(np_rows,kind=BLAS_KIND), int(np_cols,kind=BLAS_KIND))
+       !  call BLACS_Gridinfo(int(external_blacs_ctxt,KIND=BLAS_KIND), np_rows__, &
+       !                      np_cols__, my_prow__, my_pcol__)
 
-     !endif
+       !endif
 
-     !call scal_PRECISION_GEMR2D &
-     !(int(na,kind=BLAS_KIND), int(na,kind=BLAS_KIND), aIntern, 1_BLAS_KIND, 1_BLAS_KIND, sc_desc_, aExtern, &
-     !1_BLAS_KIND, 1_BLAS_KIND, sc_desc, external_blacs_ctxt)
+       !call scal_PRECISION_GEMR2D &
+       !(int(na,kind=BLAS_KIND), int(na,kind=BLAS_KIND), aIntern, 1_BLAS_KIND, 1_BLAS_KIND, sc_desc_, aExtern, &
+       !1_BLAS_KIND, 1_BLAS_KIND, sc_desc, external_blacs_ctxt)
 
-     call scal_PRECISION_GEMR2D &
-     (int(na,kind=BLAS_KIND), int(na,kind=BLAS_KIND), qIntern, 1_BLAS_KIND, 1_BLAS_KIND, sc_desc_, qExtern, &
-     1_BLAS_KIND, 1_BLAS_KIND, sc_desc, int(external_blacs_ctxt,kind=BLAS_KIND))
+       ! qIntern neded when DEVICE_POINTER and REDISTRIBUTE also aIntern, evIntern
+#ifdef DEVICE_POINTER
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
+       ! copy qIntern_dev to qIntern
+#ifdef ACTIVATE_SKEW
+       num = matrixRows*2*matrixCols*size_of_datatype
+#else
+       num = matrixRows*matrixCols*size_of_datatype
+#endif
+       successGPU = gpu_memcpy(int(loc(qIntern), kind=c_intptr_t), qIntern_dev, num, &
+                               gpuMemcpyDeviceToHost)
+       check_memcpy_gpu("elpa1: qIntern_dev -> qIntern", successGPU)
+#endif
+#endif
+       call scal_PRECISION_GEMR2D &
+       (int(na,kind=BLAS_KIND), int(na,kind=BLAS_KIND), qIntern, 1_BLAS_KIND, 1_BLAS_KIND, sc_desc_, qExtern, &
+       1_BLAS_KIND, 1_BLAS_KIND, sc_desc, int(external_blacs_ctxt,kind=BLAS_KIND))
+#ifdef DEVICE_POINTER
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
+       ! copy qIntern_dev to qIntern
+#ifdef ACTIVATE_SKEW
+       num = obj%local_nrows*2*obj%local_ncols*size_of_datatype
+#else
+       num = obj%local_nrows*obj%local_ncols*size_of_datatype
+#endif
+       successGPU = gpu_memcpy(qDev_extern, int(loc(qExtern), kind=c_intptr_t), num, &
+                               gpuMemcpyHostToDevice)
+       check_memcpy_gpu("elpa1: qExtern -> qDev_extern", successGPU)
 
-
-     !clean MPI communicators and blacs grid
-     !of the internal re-distributed matrix
-     call mpi_comm_free(mpi_comm_rowsMPI_, mpierr)
-     call mpi_comm_free(mpi_comm_colsMPI_, mpierr)
-     call blacs_gridexit(blacs_ctxt_)
+#endif
+#endif
+       !clean MPI communicators and blacs grid
+       !of the internal re-distributed matrix
+       call mpi_comm_free(mpi_comm_rowsMPI_, mpierr)
+       call mpi_comm_free(mpi_comm_colsMPI_, mpierr)
+       call blacs_gridexit(blacs_ctxt_)
+     endif ! present(qExtern)
    endif
 #endif /* REDISTRIBUTE_MATRIX */
 
-#if defined(DEVICE_POINTER) || defined(REDISTRIBUTE_MATRIX)
+#if (defined(DEVICE_POINTER) && defined(REDISTRIBUTE_MATRIX)) || defined(REDISTRIBUTE_MATRIX)
 
 #if defined(REDISTRIBUTE_MATRIX)
    if (doRedistributeMatrix) then
@@ -1164,8 +1202,22 @@ print *,"Device pointer + REDIST"
        check_deallocate("elpa1_template: qIntern", istat, errorMessage)
      endif
 #if defined(REDISTRIBUTE_MATRIX)
+   endif ! doRedistributeMatrix
+#endif
+
+#if defined(REDISTRIBUTE_MATRIX) && defined(DEVICE_POINTER)
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
+   if (doRedistributeMatrix) then
+     successGPU = gpu_free(aIntern_dev)
+     check_dealloc_gpu("elpa1_template: aIntern_dev", successGPU)
+
+     if (present(qDev_extern)) then
+       successGPU = gpu_free(qIntern_dev)
+       check_dealloc_gpu("elpa1_template: qIntern_dev", successGPU)
+     endif
    endif
 #endif
+#endif /* REDISTRIBUTE_MATRIX  && defined(DEVICE_POINTER) */
 
 #endif /* defined(DEVICE_POINTER) || defined(REDISTRIBUTE_MATRIX) */
 
@@ -1200,6 +1252,8 @@ print *,"Device pointer + REDIST"
    nullify(q_actual)
 
 #ifdef DEVICE_POINTER
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
+
    successGPU = gpu_free(e_dev)
    check_dealloc_gpu("elpa1_template: e_dev", successGPU)
 
@@ -1212,6 +1266,7 @@ print *,"Device pointer + REDIST"
      check_dealloc_gpu("elpa1_template: q_skew_imag_dev", successGPU)
 #endif
    endif
+#endif
 #endif
 
 

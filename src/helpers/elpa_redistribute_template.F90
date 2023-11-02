@@ -203,6 +203,32 @@
      check_allocate("redistribute: qIntern", istat, errorMessage)
 
 #endif
+
+#ifdef DEVICE_POINTER
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
+     call obj%timer%start("gpumemcpy extern")
+     ! copy External device pointer to host arrays
+     successGPU = gpu_memcpy(c_loc(aExtern(1,1)), aDev_extern, obj%local_nrows*obj%local_ncols*size_of_datatype, &
+                             gpuMemcpyDeviceToHost)
+     check_memcpy_gpu("elpa1 redistribute: aExtern -> aIntern", successGPU)
+
+     successGPU = gpu_memcpy(c_loc(evExtern(1)), evDev_extern, obj%na*size_of_datatype, &
+                             gpuMemcpyDeviceToHost)
+     check_memcpy_gpu("elpa1 redistribute: aExtern -> aIntern", successGPU)
+
+#ifdef ACTIVATE_SKEW
+     successGPU = gpu_memcpy(c_loc(qExtern(1,1)), qDev_extern, obj%local_nrows*2*obj%local_ncols*size_of_datatype, &
+                           gpuMemcpyDeviceToHost)
+     check_memcpy_gpu("elpa1 redistribute: qExtern -> qIntern", successGPU)
+#else
+     successGPU = gpu_memcpy(c_loc(qExtern(1,1)), qDev_extern, obj%local_nrows*obj%local_ncols*size_of_datatype, &
+                           gpuMemcpyDeviceToHost)
+     check_memcpy_gpu("elpa1 redistribute: qExtern -> qIntern", successGPU)
+#endif
+     call obj%timer%stop("gpumemcpy extern")
+#endif
+#endif /* DEVICE_POINTER */
+
      call obj%timer%start("GEMR2D")
      call scal_PRECISION_GEMR2D &
      (int(na,kind=BLAS_KIND), int(na,kind=BLAS_KIND), aExtern, 1_BLAS_KIND, 1_BLAS_KIND, sc_desc, aIntern, &
@@ -224,6 +250,50 @@
 
      
      call obj%timer%stop("redistribute")
+
+#ifdef DEVICE_POINTER
+#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
+     call obj%timer%start("gpu copy to intern")
+     ! allocate aIntern_dev, evIntern_dev, qIntern_dev
+     !num = na*size_of_real_datatype
+     !successGPU = gpu_malloc(evIntern_dev, num)
+     !check_alloc_gpu("redistribute: evIntern_dev", successGPU)
+
+     !num = na*size_of_real_datatype
+     !successGPU = gpu_memcpy(evIntern_dev, int(loc(ev), kind=c_intptr_t), num, &
+     !                        gpuMemcpyHostToDevice)
+     !check_memcpy_gpu("redistribute: evIntern -> evIntern_dev", successGPU)
+
+     num = matrixRows*matrixCols*size_of_datatype
+     successGPU = gpu_malloc(aIntern_dev, num)
+     check_alloc_gpu("redistribute: aIntern_dev", successGPU)
+
+     num = matrixRows*matrixCols*size_of_datatype
+     successGPU = gpu_memcpy(aIntern_dev, int(loc(aIntern), kind=c_intptr_t), num, &
+                             gpuMemcpyHostToDevice)
+     check_memcpy_gpu("redistribute: aIntern-> aIntern_dev", successGPU)
+
+     if (present(qDev_extern)) then
+#ifdef ACTIVATE_SKEW
+       num = matrixRows*2*matrixCols*size_of_datatype
+#else
+       num = matrixRows*matrixCols*size_of_datatype
+#endif
+       successGPU = gpu_malloc(qIntern_dev, num)
+       check_alloc_gpu("redistribute: qIntern_dev", successGPU)
+
+       successGPU = gpu_memcpy(qIntern_dev, int(loc(qIntern), kind=c_intptr_t), num, &
+                             gpuMemcpyHostToDevice)
+       check_memcpy_gpu("redistribute: qIntern-> qIntern_dev", successGPU)
+     endif
+
+     a_dev = transfer(aIntern_dev, a_dev)
+     q_dev = transfer(qIntern_dev, q_dev)
+
+     call obj%timer%stop("gpu copy to intern")
+#endif
+#endif /* DEVICE_POINTER */
+
    !else
    !  print *,"not redistributing"
    !  a => aExtern(1:matrixRows,1:matrixCols)
