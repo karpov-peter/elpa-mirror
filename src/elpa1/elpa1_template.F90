@@ -180,12 +180,18 @@ function elpa_solve_evp_&
 
 #ifdef DEVICE_POINTER
   integer(kind=c_intptr_t)                                           :: ev_dev, ev_intern_dev
-  integer(kind=c_intptr_t)                                           :: q_actual_dev, q_real_dev, q_dev
+  integer(kind=c_intptr_t)                                           :: q_real_dev, q_dev
   integer(kind=c_intptr_t)                                           :: e_dev
   integer(kind=c_intptr_t)                                           :: num
-  integer(kind=c_intptr_t)                                           :: q_dev_imag
+  integer(kind=c_intptr_t)                                           :: q_skew_real_dev, q_skew_imag_dev
   integer(kind=c_intptr_t)                                           :: a_dev
+
+#ifdef ACTIVATE_SKEW
+   MATH_DATATYPE(kind=C_DATATYPE_KIND)                               :: q_skew_real(1:obj%local_nrows,1:obj%local_ncols)
+   MATH_DATATYPE(kind=C_DATATYPE_KIND)                               :: q_skew_imag(1:obj%local_nrows,1:obj%local_ncols)
 #endif
+#endif /* DEVICE_POINTER */
+
 
 #if REALCASE == 1
    real(kind=C_DATATYPE_KIND), allocatable           :: tau(:)
@@ -266,7 +272,7 @@ function elpa_solve_evp_&
                                                                       &_real
 #endif
 #ifdef WITH_GPU_STREAMS
-   !integer(kind=c_intptr_t)                        :: num
+   !integer(kind=c_intptr_t)                        ::`` num
 #endif
  
   ! ELPA works with the variables, a, q_actual, q_real, and ev, or a_dev, q_dev_actual, and q_dev_real, and ev_dev, respectively
@@ -780,13 +786,13 @@ print *,"Device pointer + REDIST"
 #ifndef REDISTRIBUTE_MATRIX
 
 #if REALCASE == 1
-     q_actual_dev = transfer(qDev_extern, q_actual_dev)
+     q_dev = transfer(qDev_extern, q_dev)
 #endif
 
 #else /* REDISTRIBUTE_MATRIX */
      !ev_dev = transfer(ev_intern_dev, ev_dev)
 #if REALCASE == 1
-     q_actual_dev = transfer(q_intern_dev, q_actual_dev)
+     q_dev = transfer(q_intern_dev, q_dev)
 #endif
 #endif /* REDISTRIBUTE_MATRIX */
 
@@ -794,7 +800,7 @@ print *,"Device pointer + REDIST"
      &PRECISION&
      ( obj, na, nev, ev_dev, e_dev, &
 #if REALCASE == 1
-        q_actual_dev, matrixRows,          &
+        q_dev, matrixRows,          &
 #endif
 #if COMPLEXCASE == 1
         q_real_dev, l_rows,  &
@@ -883,45 +889,86 @@ print *,"Device pointer + REDIST"
      check_memcpy_gpu("elpa1: q_dev -> q", successGPU)
 #endif
 #endif /* COMPLEXCASE == 1 */
-!     if (isSkewsymmetric) then
-!#ifdef DEVICE_POINTER
-!       ! TODO: write GPU version and remove memcpys
-!       num = matrixRows * 2*matrixCols * size_of_datatype
-!       successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t), q_dev, num, &
-!                             gpuMemcpyDeviceToHost)
-!       check_memcpy_gpu("elpa1: q_dev -> q", successGPU)
-!#endif
-!
-!     ! Extra transformation step for skew-symmetric matrix. Multiplication with diagonal complex matrix D.
-!     ! This makes the eigenvectors complex.
-!     ! For now real part of eigenvectors is generated in first half of q, imaginary part in second part.
-!       q(1:matrixRows, matrixCols+1:2*matrixCols) = 0.0
-!       do i = 1, matrixRows
-!!        global_index = indxl2g(i, nblk, my_prow, 0, np_rows)
-!         global_index = np_rows*nblk*((i-1)/nblk) + MOD(i-1,nblk) + MOD(np_rows+my_prow-0, np_rows)*nblk + 1
-!         if (mod(global_index-1,4) .eq. 0) then
-!            ! do nothing
-!         end if
-!         if (mod(global_index-1,4) .eq. 1) then
-!            q(i,matrixCols+1:2*matrixCols) = q(i,1:matrixCols)
-!            q(i,1:matrixCols) = 0
-!         end if
-!         if (mod(global_index-1,4) .eq. 2) then
-!            q(i,1:matrixCols) = -q(i,1:matrixCols)
-!         end if
-!         if (mod(global_index-1,4) .eq. 3) then
-!            q(i,matrixCols+1:2*matrixCols) = -q(i,1:matrixCols)
-!            q(i,1:matrixCols) = 0
-!         end if
-!       end do
-!#ifdef DEVICE_POINTER
-!       !TODO: gpu version of this and remove memcpy
-!       num = matrixRows * 2*matrixCols * size_of_datatype
-!       successGPU = gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t), num, &
-!                             gpuMemcpyHostToDevice)
-!       check_memcpy_gpu("elpa1: q -> q_dev", successGPU)
-!#endif
-!     endif ! isSkewsymmetric
+     if (isSkewsymmetric) then
+#ifdef DEVICE_POINTER
+       ! TODO: write GPU version and remove memcpys
+       num = matrixRows * 2*matrixCols * size_of_datatype
+       successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t), q_dev, num, &
+                             gpuMemcpyDeviceToHost)
+       check_memcpy_gpu("elpa1: q_dev -> q", successGPU)
+
+#ifdef ACTIVATE_SKEW
+       num = matrixRows*matrixCols*size_of_datatype
+       successGPU = gpu_malloc(q_skew_real_dev, num)
+       check_alloc_gpu("elpa1_template: q_skew_real_dev", successGPU)
+
+       num = matrixRows*matrixCols*size_of_datatype
+       successGPU = gpu_malloc(q_skew_imag_dev, num)
+       check_alloc_gpu("elpa1_template: q_imag_real_dev", successGPU)
+#endif
+#endif /* DEVICE_POINTER */
+
+     ! Extra transformation step for skew-symmetric matrix. Multiplication with diagonal complex matrix D.
+     ! This makes the eigenvectors complex.
+     ! For now real part of eigenvectors is generated in first half of q, imaginary part in second part.
+#ifndef DEVICE_POINTER
+       q(1:matrixRows, matrixCols+1:2*matrixCols) = 0.0
+       do i = 1, matrixRows
+!        global_index = indxl2g(i, nblk, my_prow, 0, np_rows)
+         global_index = np_rows*nblk*((i-1)/nblk) + MOD(i-1,nblk) + MOD(np_rows+my_prow-0, np_rows)*nblk + 1
+         if (mod(global_index-1,4) .eq. 0) then
+            ! do nothing
+         end if
+         if (mod(global_index-1,4) .eq. 1) then
+            q(i,matrixCols+1:2*matrixCols) = q(i,1:matrixCols)
+            q(i,1:matrixCols) = 0
+         end if
+         if (mod(global_index-1,4) .eq. 2) then
+            q(i,1:matrixCols) = -q(i,1:matrixCols)
+         end if
+         if (mod(global_index-1,4) .eq. 3) then
+            q(i,matrixCols+1:2*matrixCols) = -q(i,1:matrixCols)
+            q(i,1:matrixCols) = 0
+         end if
+       end do
+#else /* DEVICE_POINTER */
+
+#ifdef ACTIVATE_SKEW
+       q_skew_real(1:matrixRows, 1:matrixCols) = 0.0
+       q_skew_imag(1:matrixRows, 1:matrixCols) = 0.0
+       do i = 1, matrixRows
+!        global_index = indxl2g(i, nblk, my_prow, 0, np_rows)
+         global_index = np_rows*nblk*((i-1)/nblk) + MOD(i-1,nblk) + MOD(np_rows+my_prow-0, np_rows)*nblk + 1
+         if (mod(global_index-1,4) .eq. 0) then
+            ! do nothing
+         end if
+         if (mod(global_index-1,4) .eq. 1) then
+            q_skew_imag(i,1:matrixCols) = q(i,1:matrixCols)
+            q_skew_real(i,1:matrixCols) = 0
+         end if
+         if (mod(global_index-1,4) .eq. 2) then
+            q_skew_real(i,1:matrixCols) = -q(i,1:matrixCols)
+         end if
+         if (mod(global_index-1,4) .eq. 3) then
+            q_skew_imag(i,1:matrixCols) = -q(i,1:matrixCols)
+            q_skew_real(i,1:matrixCols) = 0
+         end if
+       end do
+
+       !TODO: gpu version of this and remove memcpy
+       num = matrixRows * matrixCols * size_of_datatype
+       successGPU = gpu_memcpy(q_skew_real_dev, int(loc(q_skew_real(1,1)),kind=c_intptr_t), num, &
+                             gpuMemcpyHostToDevice)
+       check_memcpy_gpu("elpa1: q_skew_real -> q_skew_real_dev", successGPU)
+
+       num = matrixRows * matrixCols * size_of_datatype
+       successGPU = gpu_memcpy(q_skew_imag_dev, int(loc(q_skew_imag(1,1)),kind=c_intptr_t), num, &
+                             gpuMemcpyHostToDevice)
+       check_memcpy_gpu("elpa1: q_skew_imag -> q_skew_imag_dev", successGPU)
+#endif /* ACTIVATE_SKEW */
+
+#endif /* DEVICE_POINTER */
+     endif ! isSkewsymmetric
 
      call obj%autotune_timer%start("tridi_to_full")
      call obj%timer%start("back")
@@ -940,62 +987,86 @@ print *,"Device pointer + REDIST"
      &PRECISION&
      & (obj, na, nev, a, matrixRows, tau, q, matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, do_useGPU_trans_ev, &
         success)
-
-#ifdef DEVICE_POINTER
-     num = matrixRows * matrixCols * size_of_datatype
-     successGPU = gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t), num, &
-                             gpuMemcpyHostToDevice)
-     check_memcpy_gpu("elpa1: q_dev -> q", successGPU)
-#endif
-
 #else /* DEVICE_POINTER */
      ! In the skew-symmetric case this transforms the real part
-     call trans_ev_dptr_&
-     &MATH_DATATYPE&
-     &_&
-     &PRECISION&
-     & (obj, na, nev, a_dev, matrixRows, tau, &
-#if REALCASE == 1
-        q_actual_dev, &
+
+     if (isSkewsymmetric) then
+#ifdef ACTIVATE_SKEW
+       call trans_ev_dptr_&
+       &MATH_DATATYPE&
+       &_&
+       &PRECISION&
+       & (obj, na, nev, a_dev, matrixRows, tau, &
+          q_skew_real_dev, &
+          matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, &
+          do_useGPU_trans_ev, success)
 #endif
-#if COMPLEXCASE == 1
-        q_dev, &
-#endif
-        matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, &
-        do_useGPU_trans_ev, success)
-#endif /* DEVICE_POINTER */ 
+     else ! isSkewsymmetric
+       call trans_ev_dptr_&
+       &MATH_DATATYPE&
+       &_&
+       &PRECISION&
+       & (obj, na, nev, a_dev, matrixRows, tau, &
+          q_dev, &
+          matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, &
+          do_useGPU_trans_ev, success)
+     endif ! isSkewsymmetric
+#endif /* DEVICE_POINTER */
 
      if (.not.(success)) then
        write(error_unit,*) "Error in trans_ev. Aborting..."
        return
      endif
-!     if (isSkewsymmetric) then
-!#ifndef DEVICE_POINTER
-!       ! Transform imaginary part
-!       ! Transformation of real and imaginary part could also be one call of trans_ev_tridi acting on the n x 2n matrix.
-!       call trans_ev_&
-!             &MATH_DATATYPE&
-!             &_&
-!             &PRECISION&
-!             & (obj, na, nev, a, matrixRows, tau, q(1:matrixRows, matrixCols+1:2*matrixCols), matrixRows, nblk, matrixCols, &
-!                mpi_comm_rows, mpi_comm_cols, do_useGPU_trans_ev, success)
-!#else /* DEVICE_POINTER */
-!       ! Transform imaginary part
-!       ! Transformation of real and imaginary part could also be one call of trans_ev_tridi acting on the n x 2n matrix.
-!
-!       !TODO: 
-!       call trans_ev_dptr_&
-!             &MATH_DATATYPE&
-!             &_&
-!             &PRECISION&
-!             & (obj, na, nev, a_dev, matrixRows, tau, q_dev_imag, matrixRows, nblk, matrixCols, &
-!                mpi_comm_rows, mpi_comm_cols, do_useGPU_trans_ev, success)
-!#endif /* DEVICE_POINTER */
-!        if (.not.(success)) then
-!          write(error_unit,*) "Error in trans_ev. Aborting..."
-!          return
-!        endif
-!      endif ! isSkewsymmetric
+     if (isSkewsymmetric) then
+       ! Transform imaginary part
+       ! Transformation of real and imaginary part could also be one call of trans_ev_tridi acting on the n x 2n matrix.
+#ifndef DEVICE_POINTER
+       call trans_ev_&
+             &MATH_DATATYPE&
+             &_&
+             &PRECISION&
+             & (obj, na, nev, a, matrixRows, tau, q(1:matrixRows, matrixCols+1:2*matrixCols), matrixRows, nblk, matrixCols, &
+                mpi_comm_rows, mpi_comm_cols, do_useGPU_trans_ev, success)
+#else /* DEVICE_POINTER */
+#ifdef ACTIVATE_SKEW
+       call trans_ev_dptr_&
+             &MATH_DATATYPE&
+             &_&
+             &PRECISION&
+             & (obj, na, nev, a_dev, matrixRows, tau, q_skew_imag_dev, matrixRows, nblk, matrixCols, &
+                mpi_comm_rows, mpi_comm_cols, do_useGPU_trans_ev, success)
+#endif /* ACTIVATE_SKEW */
+#endif /* DEVICE_POINTER */
+        if (.not.(success)) then
+          write(error_unit,*) "Error in trans_ev. Aborting..."
+          return
+        endif
+      endif ! isSkewsymmetric
+
+#ifdef DEVICE_POINTER
+     if (isSkewsymmetric) then
+#ifdef ACTIVATE_SKEW
+       !TODO: copy everything to gpu write kernel!
+       num = matrixRows * matrixCols * size_of_datatype
+       successGPU = gpu_memcpy(int(loc(q_skew_real(1,1)),kind=c_intptr_t), q_skew_real_dev, num, &
+                               gpuMemcpyDeviceToHost)
+       check_memcpy_gpu("elpa1: q_skew_real_dev -> q_skew_real", successGPU)
+
+       num = matrixRows * matrixCols * size_of_datatype
+       successGPU = gpu_memcpy(int(loc(q_skew_imag(1,1)),kind=c_intptr_t), q_skew_imag_dev, num, &
+                               gpuMemcpyDeviceToHost)
+       check_memcpy_gpu("elpa1: q_skew_imag_dev -> q_skew_imag", successGPU)
+
+       q(1:matrixRows,           1:matrixCols)   = q_skew_real(1:matrixRows,1:matrixCols)
+       q(1:matrixRows,matrixCols+1:2*matrixCols) = q_skew_imag(1:matrixRows,1:matrixCols)
+
+       num = matrixRows * 2*matrixCols * size_of_datatype
+       successGPU = gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t), num, &
+                             gpuMemcpyHostToDevice)
+       check_memcpy_gpu("elpa1: q -> q_dev", successGPU)
+#endif /* ACTIVATE_SKEW */
+     endif
+#endif /* DEVICE_POINTER */
 
 #ifdef WITH_NVTX
      call nvtxRangePop()
@@ -1131,6 +1202,16 @@ print *,"Device pointer + REDIST"
 #ifdef DEVICE_POINTER
    successGPU = gpu_free(e_dev)
    check_dealloc_gpu("elpa1_template: e_dev", successGPU)
+
+   if (isSkewsymmetric) then
+#ifdef ACTIVATE_SKEW
+     successGPU = gpu_free(q_skew_real_dev)
+     check_dealloc_gpu("elpa1_template: q_skew_real_dev", successGPU)
+     
+     successGPU = gpu_free(q_skew_imag_dev)
+     check_dealloc_gpu("elpa1_template: q_skew_imag_dev", successGPU)
+#endif
+   endif
 #endif
 
 

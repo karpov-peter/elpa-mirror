@@ -190,11 +190,18 @@
 
 
      ! allocate the memory for the redistributed matrices
-     allocate(aIntern(na_rows_,na_cols_))
+     allocate(aIntern(na_rows_,na_cols_), stat=istat, errmsg=errorMessage)
+     check_allocate("redistribute: aIntern", istat, errorMessage)
+
+
 #ifdef HAVE_SKEWSYMMETRIC
-     allocate(qIntern(na_rows_,2*na_cols_))
+     allocate(qIntern(na_rows_,2*na_cols_), stat=istat, errmsg=errorMessage)
+     check_allocate("redistribute: qIntern", istat, errorMessage)
+
 #else
-     allocate(qIntern(na_rows_,na_cols_))
+     allocate(qIntern(na_rows_,na_cols_), stat=istat, errmsg=errorMessage)
+     check_allocate("redistribute: qIntern", istat, errorMessage)
+
 #endif
      call obj%timer%start("GEMR2D")
      call scal_PRECISION_GEMR2D &
