@@ -569,9 +569,9 @@ dnl check whether single precision is requested
 AC_MSG_CHECKING(whether ELPA library should contain also single precision functions)
 AC_ARG_ENABLE(single-precision,
               [AS_HELP_STRING([--enable-single-precision],
-                              [build with single precision (default: yes)])],
+                              [build with single precision (default: no)])],
               [want_single_precision="$enableval"],
-              [want_single_precision="yes"])
+              [want_single_precision="no"])
 AC_MSG_RESULT([${want_single_precision}])
 
 
@@ -3408,13 +3408,13 @@ AM_CONDITIONAL([WANT_SINGLE_PRECISION_COMPLEX],[test x"$want_single_precision" =
 AC_MSG_CHECKING(whether we should enable skew-symmetric support)
 AC_ARG_ENABLE([skew-symmetric-support],
               AS_HELP_STRING([--enable-skew-symmetric-support],
-                             [enable support for real valued skew-symmetric matrices (default: yes)]),
+                             [enable support for real valued skew-symmetric matrices (default: no)]),
 			     [if test x"$enableval" = x"yes"; then
 			        enable_skewsymmetric=yes
 		              else
 				enable_skewsymmetric=no
 			      fi],
-              [enable_skewsymmetric=yes])
+              [enable_skewsymmetric=no])
 AC_MSG_RESULT([${enable_skewsymmetric}])
 AM_CONDITIONAL([HAVE_SKEWSYMMETRIC],[test x"$enable_skewsymmetric" = x"yes"])
 if test x"${enable_skewsymmetric}" = x"yes"; then
