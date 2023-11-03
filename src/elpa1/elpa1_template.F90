@@ -1092,14 +1092,15 @@ print *,"done calling trans_ev"
    check_deallocate("elpa1_template: e, tau", istat, errorMessage)
 
    if (obj%eigenvalues_only) then
+#ifndef DEVICE_POINTER
      deallocate(q_dummy, stat=istat, errmsg=errorMessage)
      check_deallocate("elpa1_template: q_dummy", istat, errorMessage)
-#ifdef DEVICE_POINTER
+#else /* DEVICE_POINTER */
 #if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
      successGPU = gpu_free(q_dummy_dev)
      check_dealloc_gpu("elpa1_template: q_dummy_dev", successGPU)
 #endif
-#endif
+#endif /* DEVICE_POINTER */
    endif
 
 #ifdef WITH_NVTX
