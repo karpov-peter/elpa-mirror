@@ -72,6 +72,7 @@
 #endif
 
 #ifdef WITH_AMD_GPU_VERSION
+WITH_AMD_GPU_VERSION_COMPILETIME_BUG
 #include "./rocmFunctions_template.h"
 #endif
 

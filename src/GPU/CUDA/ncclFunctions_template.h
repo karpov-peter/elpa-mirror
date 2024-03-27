@@ -9,6 +9,9 @@
 ncclUniqueId globalIDFixThis;
 
 #ifdef WITH_NVIDIA_NCCL
+
+WITH_NVIDIA_NCCL_COMPILETIME_BUG
+
 extern "C" {
   int ncclGroupStartFromC() {
     ncclResult_t ncclError;
