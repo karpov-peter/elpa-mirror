@@ -3485,6 +3485,23 @@ if test x"${enable_autotune_redistribute_matrix}" = x"yes" ; then
   AC_DEFINE([REDISTRIBUTE_MATRIX],[1],[enable matrix re-distribution during autotuning])
 fi
 
+AC_MSG_CHECKING(whether all Fortran tests should be provided)
+AC_ARG_ENABLE([fortran-tests],
+              AS_HELP_STRING([--enable-fortran-tests],
+                             [enables ALL the Fortran tests (some are always build) for elpa, default yes.]),
+			     [
+			      if test x"$enableval" = x"yes"; then
+			        enable_fortran_tests=yes
+		              else
+			        enable_fortran_tests=no
+			      fi
+			      ],
+              [enable_fortran_tests=yes])
+AC_MSG_RESULT([${enable_fortran_tests}])
+AM_CONDITIONAL([ENABLE_FORTRAN_TESTS],[test x"$enable_fortran_tests" = x"yes"])
+if test x"${enable_fortran_tests}" = x"yes"; then
+ AC_DEFINE([ENABLE_FORTRAN_TESTS], [1], [enable FORTRAN tests])
+fi
 
 
 
