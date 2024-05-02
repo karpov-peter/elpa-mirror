@@ -1492,21 +1492,6 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
     endif
 #endif /* REALCASE */
 
-    !if (.not. obj%eigenvalues_only) then
-    !  q_actual => q(1:matrixRows,1:matrixCols)
-    !else
-    ! allocate(q_dummy(1:matrixRows,1:matrixCols), stat=istat, errmsg=errorMessage)
-    ! check_allocate("elpa2_template: q_dummy", istat, errorMessage)
-    ! q_actual => q_dummy(1:matrixRows,1:matrixCols)
-    !endif
-
-    ! set the default values for each of the 5 compute steps
-    do_bandred        = .true.
-    do_tridiag        = .true.
-    do_solve_tridi    = .true.
-    do_trans_to_band  = .true.
-    do_trans_to_full  = .true.
-
     if (obj%eigenvalues_only) then
       do_trans_to_band  = .false.
       do_trans_to_full  = .false.
