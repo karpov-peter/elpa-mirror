@@ -208,12 +208,17 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in)   :: l_cols_nev, l_rows, matrixRows
-      integer(kind=C_intptr_T)     :: q_dev, q_real_dev
-      integer(kind=c_intptr_t)     :: my_stream
+      integer(c_int), intent(in)         :: l_cols_nev, l_rows, matrixRows
+      integer(kind=C_intptr_T)           :: q_dev, q_real_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_copy_real_part_to_q_double_complex_c(q_dev, q_real_dev, matrixRows, l_rows, l_cols_nev, my_stream)
+      if (present(my_stream)) then
+        call cuda_copy_real_part_to_q_double_complex_c(q_dev, q_real_dev, matrixRows, l_rows, l_cols_nev, my_stream)
+      else
+        call cuda_copy_real_part_to_q_double_complex_c(q_dev, q_real_dev, matrixRows, l_rows, l_cols_nev, my_stream2)
+      endif
 #endif
     end subroutine
 
@@ -222,12 +227,17 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in)   :: l_cols_nev, l_rows, matrixRows
-      integer(kind=C_intptr_T)     :: q_dev, q_real_dev
-      integer(kind=c_intptr_t)     :: my_stream
+      integer(c_int), intent(in)         :: l_cols_nev, l_rows, matrixRows
+      integer(kind=C_intptr_T)           :: q_dev, q_real_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_copy_real_part_to_q_float_complex_c(q_dev, q_real_dev, matrixRows, l_rows, l_cols_nev, my_stream)
+      if (present(my_stream)) then
+        call cuda_copy_real_part_to_q_float_complex_c(q_dev, q_real_dev, matrixRows, l_rows, l_cols_nev, my_stream)
+      else
+        call cuda_copy_real_part_to_q_float_complex_c(q_dev, q_real_dev, matrixRows, l_rows, l_cols_nev, my_stream2)
+      endif
 #endif
     end subroutine
 
@@ -235,12 +245,18 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in) :: matrixRows, matrixCols
-      integer(kind=C_intptr_T)   :: q_dev
-      integer(kind=c_intptr_t)   :: my_stream
+      integer(c_int), intent(in)         :: matrixRows, matrixCols
+      integer(kind=C_intptr_T)           :: q_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
+
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_zero_skewsymmetric_q_double_real_c(q_dev, matrixRows, matrixCols, my_stream)
+      if (present(my_stream)) then
+        call cuda_zero_skewsymmetric_q_double_real_c(q_dev, matrixRows, matrixCols, my_stream)
+      else
+        call cuda_zero_skewsymmetric_q_double_real_c(q_dev, matrixRows, matrixCols, my_stream2)
+      endif
 #endif
     end subroutine
 
@@ -248,12 +264,18 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in) :: matrixRows, matrixCols
-      integer(kind=C_intptr_T)   :: q_dev
-      integer(kind=c_intptr_t)   :: my_stream
+      integer(c_int), intent(in)         :: matrixRows, matrixCols
+      integer(kind=C_intptr_T)           :: q_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
+
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_zero_skewsymmetric_q_float_real_c(q_dev, matrixRows, matrixCols, my_stream)
+      if (present(my_stream)) then
+        call cuda_zero_skewsymmetric_q_float_real_c(q_dev, matrixRows, matrixCols, my_stream)
+      else
+        call cuda_zero_skewsymmetric_q_float_real_c(q_dev, matrixRows, matrixCols, my_stream2)
+      endif
 #endif
     end subroutine
 
@@ -262,13 +284,20 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in) :: i, matrixRows, matrixCols, negative_or_positive
-      integer(kind=C_intptr_T)   :: q_dev
-      integer(kind=c_intptr_t)   :: my_stream
+      integer(c_int), intent(in)         :: i, matrixRows, matrixCols, negative_or_positive
+      integer(kind=C_intptr_T)           :: q_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
+
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_copy_skewsymmetric_second_half_q_double_real_c(q_dev, i, matrixRows, matrixCols, &
+      if (present(my_stream)) then
+        call cuda_copy_skewsymmetric_second_half_q_double_real_c(q_dev, i, matrixRows, matrixCols, &
                                                                negative_or_positive, my_stream)
+      else
+        call cuda_copy_skewsymmetric_second_half_q_double_real_c(q_dev, i, matrixRows, matrixCols, &
+                                                               negative_or_positive, my_stream2)
+      endif
 #endif
     end subroutine
 
@@ -277,13 +306,20 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in) :: i, matrixRows, matrixCols, negative_or_positive
-      integer(kind=C_intptr_T)   :: q_dev
-      integer(kind=c_intptr_t)   :: my_stream
+      integer(c_int), intent(in)         :: i, matrixRows, matrixCols, negative_or_positive
+      integer(kind=C_intptr_T)           :: q_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
+
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_copy_skewsymmetric_second_half_q_float_real_c(q_dev, i, matrixRows, matrixCols, &
+      if (present(my_stream)) then
+        call cuda_copy_skewsymmetric_second_half_q_float_real_c(q_dev, i, matrixRows, matrixCols, &
                                                                negative_or_positive, my_stream)
+      else
+        call cuda_copy_skewsymmetric_second_half_q_float_real_c(q_dev, i, matrixRows, matrixCols, &
+                                                               negative_or_positive, my_stream2)
+      endif
 #endif
     end subroutine
 
@@ -292,13 +328,20 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in) :: i, matrixRows, matrixCols, negative_or_positive
-      integer(kind=C_intptr_T)   :: q_dev
-      integer(kind=c_intptr_t)   :: my_stream
+      integer(c_int), intent(in)         :: i, matrixRows, matrixCols, negative_or_positive
+      integer(kind=C_intptr_T)           :: q_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
+
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_copy_skewsymmetric_first_half_q_double_real_c(q_dev, i, matrixRows, matrixCols, &
+      if (present(my_stream)) then
+        call cuda_copy_skewsymmetric_first_half_q_double_real_c(q_dev, i, matrixRows, matrixCols, &
                                                                negative_or_positive, my_stream)
+      else
+        call cuda_copy_skewsymmetric_first_half_q_double_real_c(q_dev, i, matrixRows, matrixCols, &
+                                                               negative_or_positive, my_stream2)
+      endif
 #endif
     end subroutine
 
@@ -307,13 +350,20 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in) :: i, matrixRows, matrixCols, negative_or_positive
-      integer(kind=C_intptr_T)   :: q_dev
-      integer(kind=c_intptr_t)   :: my_stream
+      integer(c_int), intent(in)         :: i, matrixRows, matrixCols, negative_or_positive
+      integer(kind=C_intptr_T)           :: q_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
+
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_copy_skewsymmetric_first_half_q_float_real_c(q_dev, i, matrixRows, matrixCols, &
+      if (present(my_stream)) then
+        call cuda_copy_skewsymmetric_first_half_q_float_real_c(q_dev, i, matrixRows, matrixCols, &
                                                                negative_or_positive, my_stream)
+      else
+        call cuda_copy_skewsymmetric_first_half_q_float_real_c(q_dev, i, matrixRows, matrixCols, &
+                                                               negative_or_positive, my_stream2)
+      endif
 #endif
     end subroutine
 
@@ -322,13 +372,20 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in) :: matrixRows, matrixCols
-      integer(kind=C_intptr_T)   :: q_dev, q2nd_dev
-      integer(kind=c_intptr_t)   :: my_stream
+      integer(c_int), intent(in)         :: matrixRows, matrixCols
+      integer(kind=C_intptr_T)           :: q_dev, q2nd_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
+
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_get_skewsymmetric_second_half_q_double_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
+      if (present(my_stream)) then
+        call cuda_get_skewsymmetric_second_half_q_double_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
                                                                 my_stream)
+      else
+        call cuda_get_skewsymmetric_second_half_q_double_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
+                                                                my_stream2)
+      endif
 #endif
     end subroutine
 
@@ -337,13 +394,20 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in) :: matrixRows, matrixCols
-      integer(kind=C_intptr_T)   :: q_dev, q2nd_dev
-      integer(kind=c_intptr_t)   :: my_stream
+      integer(c_int), intent(in)         :: matrixRows, matrixCols
+      integer(kind=C_intptr_T)           :: q_dev, q2nd_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
+
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_get_skewsymmetric_second_half_q_float_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
+      if (present(my_stream)) then
+        call cuda_get_skewsymmetric_second_half_q_float_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
                                                                 my_stream)
+      else
+        call cuda_get_skewsymmetric_second_half_q_float_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
+                                                                my_stream2)
+      endif
 #endif
     end subroutine
 
@@ -352,13 +416,20 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in) :: matrixRows, matrixCols
-      integer(kind=C_intptr_T)   :: q_dev, q2nd_dev
-      integer(kind=c_intptr_t)   :: my_stream
+      integer(c_int), intent(in)         :: matrixRows, matrixCols
+      integer(kind=C_intptr_T)           :: q_dev, q2nd_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
+
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_put_skewsymmetric_second_half_q_double_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
+      if (present(my_stream)) then
+        call cuda_put_skewsymmetric_second_half_q_double_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
                                                                 my_stream)
+      else
+        call cuda_put_skewsymmetric_second_half_q_double_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
+                                                                my_stream2)
+      endif
 #endif
     end subroutine
 
@@ -367,13 +438,20 @@ module elpa1_cuda
       use, intrinsic :: iso_c_binding
 
       implicit none
-      integer(c_int), intent(in) :: matrixRows, matrixCols
-      integer(kind=C_intptr_T)   :: q_dev, q2nd_dev
-      integer(kind=c_intptr_t)   :: my_stream
+      integer(c_int), intent(in)         :: matrixRows, matrixCols
+      integer(kind=C_intptr_T)           :: q_dev, q2nd_dev
+      integer(kind=c_intptr_t), optional :: my_stream
+      integer(kind=c_intptr_t)           :: my_stream2
+
 
 #ifdef WITH_NVIDIA_GPU_VERSION
-      call cuda_put_skewsymmetric_second_half_q_float_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
+      if (present(my_stream)) then
+        call cuda_put_skewsymmetric_second_half_q_float_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
                                                                 my_stream)
+      else
+        call cuda_put_skewsymmetric_second_half_q_float_real_c(q_dev, q2nd_dev, matrixRows, matrixCols, &
+                                                                my_stream2)
+      endif
 #endif
     end subroutine
 

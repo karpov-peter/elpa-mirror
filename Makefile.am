@@ -88,6 +88,7 @@ libelpa@SUFFIX@_private_la_SOURCES = \
   src/GPU/SYCL/mod_sycl.F90 \
   src/GPU/SYCL/mod_syclsolver.F90 \
   src/GPU/SYCL/syclFunctions_template.hpp \
+  src/elpa2/mod_elpa2_utils.F90 \
   src/elpa2/GPU/interface_c_gpu_kernel.F90 \
   src/elpa2/GPU/CUDA/interface_c_cuda_kernel.F90 \
   src/elpa2/GPU/ROCm/interface_c_hip_kernel.F90 \
@@ -1075,8 +1076,8 @@ EXTRA_DIST = \
   src/elpa_impl_math_solvers_template.F90 \
   src/elpa_impl_math_generalized_template.F90 \
   src/helpers/elpa_redistribute_template.F90 \
-  src/helpers/elpa_redistribute_elpa1_template.F90 \
-  src/helpers/elpa_redistribute_back_elpa1_template.F90 \
+  src/helpers/elpa_redistribute_template.F90 \
+  src/helpers/elpa_redistribute_back_template.F90 \
   src/helpers/elpa_openmp_settings_template.F90 \
   src/elpa_impl_generalized_transform_template.F90 \
   src/elpa1/elpa1_compute_template.F90 \

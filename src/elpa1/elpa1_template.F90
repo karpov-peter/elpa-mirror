@@ -261,13 +261,37 @@ function elpa_solve_evp_&
 
    integer(kind=c_intptr_t)                         :: a_dev, q_dev, ev_dev, q_dev_actual, q_dev_dummy, &
                                                        q_dev_real, e_dev
- 
+   integer(kind=ik)                                 :: success_int
+   logical                                                            :: useNonBlockingCollectivesAll
+   integer(kind=ik)                                                   :: non_blocking_collectives_all
+   integer(kind=MPI_KIND)                                             :: allreduce_request1, &
+                                                                         allreduce_request2, allreduce_request3, &
+                                                                         allreduce_request4, allreduce_request
+
+
+   ! to implement a possibiltiy to set this                             
+   useNonBlockingCollectivesAll = .false.
+
    ! routine preperation
    na         = obj%na
    nev        = obj%nev
    matrixRows = obj%local_nrows
    nblk       = obj%nblk
    matrixCols = obj%local_ncols
+
+
+   call obj%get("nbc_all_elpa2_main", non_blocking_collectives_all, error)
+   if (error .ne. ELPA_OK) then
+     write(error_unit,*) "ELPA1: Problem getting option for non blocking collectives. Aborting..."
+#include "./elpa1_aborting_template.F90"
+   endif                                                                
+
+   if (non_blocking_collectives_all .eq. 1) then                     
+     useNonBlockingCollectivesAll = .true.
+   else
+     useNonBlockingCollectivesAll = .false.
+   endif
+
    ! skew?  
 #ifdef ACTIVATE_SKEW
    isSkewsymmetric = .true.
@@ -336,9 +360,6 @@ function elpa_solve_evp_&
      write(error_unit, *) "ELPA1: Problem getting mpi_comm_all. Aborting..."
 #include "./elpa1_aborting_template.F90"
    endif
-
-   call mpi_comm_rank(int(mpi_comm_all,kind=MPI_KIND), my_peMPI, mpierr)
-   my_pe = int(my_peMPI,kind=c_int)
 
     ! openmp setting
 #include "../helpers/elpa_openmp_settings_template.F90"
@@ -414,23 +435,18 @@ function elpa_solve_evp_&
    ! TODO: make sure that nowhere in ELPA the communicators are getting "getted",
    ! and the variables obj%local_nrows,1:obj%local_ncols are being used
    ! - a points then to aIntern, q points to qIntern
-#include "../helpers/elpa_redistribute_elpa1_template.F90"
+#include "../helpers/elpa_redistribute_template.F90"
 #endif /* REDISTRIBUTE_MATRIX */
 !
 
-   call obj%timer%start("mpi_communication")
+   my_pe    = obj%mpi_setup%myRank_comm_parent
+   my_prow = obj%mpi_setup%myRank_comm_rows
+   my_pcol = obj%mpi_setup%myRank_comm_cols
 
-   call mpi_comm_rank(int(mpi_comm_rows,kind=MPI_KIND), my_prowMPI, mpierr)
-   call mpi_comm_rank(int(mpi_comm_cols,kind=MPI_KIND), my_pcolMPI, mpierr)
+   np_rows = obj%mpi_setup%nRanks_comm_rows
+   np_cols = obj%mpi_setup%nRanks_comm_cols
+   n_pes   = obj%mpi_setup%nRanks_comm_parent
 
-   my_prow = int(my_prowMPI,kind=c_int)
-   my_pcol = int(my_pcolMPI,kind=c_int)
-
-   call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
-   call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
-
-   np_rows = int(np_rowsMPI,kind=c_int)
-   np_cols = int(np_colsMPI,kind=c_int)
 
 #if COMPLEXCASE == 1
    l_rows = local_index(na, my_prow, np_rows, nblk, -1) ! Local rows of a and q
@@ -794,13 +810,13 @@ function elpa_solve_evp_&
 
      else ! doRedistributeMatrix
        ! associate a_dev, q_dev, ev_dev
-       !a_devIntern = transfer(aDevExtern, a_devIntern)
+       a_devIntern = transfer(aDevExtern, a_devIntern)
        a_dev = transfer(a_devIntern, a_dev)
        ev_dev = transfer(evDevExtern, a_dev)
        ev_devIntern = transfer(evDevExtern, a_devIntern)
        if (present(qDevExtern)) then
+         q_devIntern = transfer(qDevExtern, q_devIntern)
          q_dev = transfer(q_devIntern, q_dev)
-         !q_devIntern = transfer(qDevExtern, q_devIntern)
        endif
 
        ! allocate dummy q_devIntern, if eigenvectors should not be commputed and thus q is NOT present
@@ -913,10 +929,25 @@ function elpa_solve_evp_&
        & (obj, na, a, matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, ev, e, tau, wantDebug, &
           nrThreads, isSkewsymmetric, success)
      endif
-     if (.not.(success)) then
+     if (success) then
+       success_int = 0
+     else
+       success_int = 1
+     endif
+#ifdef WITH_MPI
+     if (useNonBlockingCollectivesAll) then
+       call mpi_iallreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), &
+       allreduce_request1, mpierr)
+       call mpi_wait(allreduce_request1, MPI_STATUS_IGNORE, mpierr)
+     else
+       call mpi_allreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), mpierr)
+     endif
+#endif
+     if (success_int .eq. 1) then
        write(error_unit,*) "Error in tridiag. Aborting..."
        return
      endif
+
 
 
 #ifdef WITH_NVTX
@@ -974,9 +1005,23 @@ function elpa_solve_evp_&
 #endif
      call obj%timer%stop("solve")
      call obj%autotune_timer%stop("solve")
-     if (.not.(success)) then
-       write(error_unit, *) "ELPA1: solve step encountered an error. Aborting..."
-#include "./elpa1_aborting_template.F90"
+     if (success) then
+       success_int = 0
+     else
+       success_int = 1
+     endif
+#ifdef WITH_MPI
+     if (useNonBlockingCollectivesAll) then
+       call mpi_iallreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), &
+       allreduce_request2, mpierr)
+       call mpi_wait(allreduce_request2, MPI_STATUS_IGNORE, mpierr)
+     else
+       call mpi_allreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), mpierr)
+     endif
+#endif
+     if (success_int .eq. 1) then
+       write(error_unit,*) "Error in solve. Aborting..."
+       return
      endif
    endif !do_solve
 
@@ -1138,8 +1183,22 @@ function elpa_solve_evp_&
         success)
      endif
 
-     if (.not.(success)) then
-       write(error_unit,*) "Error in trans_ev. Aborting..."
+     if (success) then
+       success_int = 0
+     else
+       success_int = 1
+     endif
+#ifdef WITH_MPI
+     if (useNonBlockingCollectivesAll) then
+       call mpi_iallreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), &
+       allreduce_request3, mpierr)
+       call mpi_wait(allreduce_request3, MPI_STATUS_IGNORE, mpierr)
+     else
+       call mpi_allreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), mpierr)
+     endif
+#endif
+     if (success_int .eq. 1) then
+       write(error_unit,*) "Error in trans_ev (real). Aborting..."
        return
      endif
 
@@ -1208,8 +1267,22 @@ function elpa_solve_evp_&
          & (obj, na, nev, a_dev, matrixRows, tau_dev, q_part2_dev, matrixRows, nblk, matrixCols, &
             mpi_comm_rows, mpi_comm_cols, success)
        endif ! do_useGPU_trans_ev
-       if (.not.(success)) then
-         write(error_unit,*) "Error in trans_ev. Aborting..."
+       if (success) then
+         success_int = 0
+       else
+         success_int = 1
+       endif
+#ifdef WITH_MPI
+       if (useNonBlockingCollectivesAll) then
+         call mpi_iallreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), &
+         allreduce_request4, mpierr)
+         call mpi_wait(allreduce_request4, MPI_STATUS_IGNORE, mpierr)
+       else
+         call mpi_allreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), mpierr)
+       endif
+#endif
+       if (success_int .eq. 1) then
+         write(error_unit,*) "Error in trans_ev (imag). Aborting..."
          return
        endif
      endif ! isSkewsymmetric
@@ -1238,10 +1311,10 @@ function elpa_solve_evp_&
                     num, gpuMemcpyDeviceToHost)
        check_memcpy_gpu("elpa1_template q_dev -> q", successGPU)
 
-       num = (matrixRows* matrixCols) * size_of_datatype
-       successGPU = gpu_memcpy(int(loc(a(1,1)),kind=c_intptr_t), a_dev, &
-                 num, gpuMemcpyDeviceToHost)
-       check_memcpy_gpu("elpa1_template a_dev -> a", successGPU)
+       !num = (matrixRows* matrixCols) * size_of_datatype
+       !successGPU = gpu_memcpy(int(loc(a(1,1)),kind=c_intptr_t), a_dev, &
+       !          num, gpuMemcpyDeviceToHost)
+       !check_memcpy_gpu("elpa1_template a_dev -> a", successGPU)
 
        num = (na) * size_of_real_datatype
        successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
@@ -1299,7 +1372,7 @@ function elpa_solve_evp_&
 #endif
 
 #ifdef REDISTRIBUTE_MATRIX
-#include "../helpers/elpa_redistribute_back_elpa1_template.F90"
+#include "../helpers/elpa_redistribute_back_template.F90"
 #endif /* REDISTRIBUTE_MATRIX */
 
 #if defined(DEVICE_POINTER) || defined(REDISTRIBUTE_MATRIX)

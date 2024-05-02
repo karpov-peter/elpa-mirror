@@ -65,13 +65,23 @@
 !#undef WITH_CUDA_AWARE_MPI_TRANS_TRIDI_TO_BAND
 !#endif
 
-subroutine trans_ev_tridi_to_band_&
+#ifdef TRANS_EV_TRIDI_GPU
+subroutine trans_ev_tridi_to_band_gpu_&
 &MATH_DATATYPE&
 &_&
 &PRECISION &
-(obj, na, nev, nblk, nbw, q, ldq, matrixCols,         &
- hh_trans, my_pe, mpi_comm_rows, mpi_comm_cols, wantDebug, useGPU, max_threads_in, success, &
+(obj, na, nev, nblk, nbw, q_dev, matrixRows, matrixCols,         &
+ hh_trans_dev, hh_trans_size, my_pe, mpi_comm_rows, mpi_comm_cols, wantDebug, max_threads_in, success, &
  kernel)
+#else
+subroutine trans_ev_tridi_to_band_cpu_&
+&MATH_DATATYPE&
+&_&
+&PRECISION &
+(obj, na, nev, nblk, nbw, q, matrixRows, matrixCols,         &
+ hh_trans, hh_trans_size, my_pe, mpi_comm_rows, mpi_comm_cols, wantDebug, max_threads_in, success, &
+ kernel)
+#endif
 
 !-------------------------------------------------------------------------------
 !  trans_ev_tridi_to_band_real/complex:
@@ -91,7 +101,7 @@ subroutine trans_ev_tridi_to_band_&
 !              On output: Transformed eigenvectors
 !              Distribution is like in Scalapack.
 !
-!  ldq         Leading dimension of q
+!  matrixRows         Leading dimension of q
 !  matrixCols  local columns of matrix q
 !
 !  mpi_comm_rows
@@ -114,18 +124,23 @@ subroutine trans_ev_tridi_to_band_&
   implicit none
 #include "../general/precision_kinds.F90"
   class(elpa_abstract_impl_t), intent(inout)   :: obj
-  logical, intent(in)                          :: useGPU
+  logical                                      :: useGPU
 
-  integer(kind=ik), intent(in)                 :: kernel, my_pe
-  integer(kind=ik), intent(in)                 :: na, nev, nblk, nbw, ldq, matrixCols, mpi_comm_rows, mpi_comm_cols
+  integer(kind=ik), intent(in)                 :: kernel, my_pe, hh_trans_size
+  integer(kind=ik), intent(in)                 :: na, nev, nblk, nbw, matrixRows, matrixCols, mpi_comm_rows, mpi_comm_cols
 
+#ifdef TRANS_EV_TRIDI_GPU
+  MATH_DATATYPE(kind=rck), target              :: q(matrixRows,matrixCols)
+  MATH_DATATYPE(kind=rck)                      :: hh_trans(1:nbw,1:hh_trans_size)
+#else /* TRANS_EV_TRIDI_GPU */
 #ifdef USE_ASSUMED_SIZE
-  MATH_DATATYPE(kind=rck), target              :: q(ldq,*)
+  MATH_DATATYPE(kind=rck), target              :: q(matrixRows,*)
 #else
-  MATH_DATATYPE(kind=rck), target              :: q(ldq,matrixCols)
+  MATH_DATATYPE(kind=rck), target              :: q(matrixRows,matrixCols)
 #endif
+  MATH_DATATYPE(kind=rck), intent(in),target   :: hh_trans(1:nbw,1:hh_trans_size)
+#endif /* TRANS_EV_TRIDI_GPU */
 
-  MATH_DATATYPE(kind=rck), intent(in),target   :: hh_trans(:,:)
   integer(kind=c_intptr_t)                     :: hh_trans_dev
   type(c_ptr)                                  :: hh_trans_mpi_dev
   MATH_DATATYPE(kind=rck), pointer             :: hh_trans_mpi_fortran_ptr(:,:)
@@ -279,6 +294,11 @@ subroutine trans_ev_tridi_to_band_&
   integer(kind=c_int)                        :: non_blocking_collectives_rows, non_blocking_collectives_cols
 
   integer(kind=c_intptr_t)                   :: gpuHandle, my_stream
+
+  useGPU = .false.
+#ifdef TRANS_EV_TRIDI_GPU
+  useGPU = .true.
+#endif
 
   if(useGPU) then
     gpuString = "_gpu"
@@ -645,48 +665,62 @@ subroutine trans_ev_tridi_to_band_&
 
   if (useGPU) then
 
+    ! debug remove at a later stage
+    if (.not.allComputeOnGPU) then
+      successGPU =  gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t),  q_dev, &
+                               matrixRows*matrixCols * size_of_datatype, &
+                               gpuMemcpyDeviceToHost)
+      check_memcpy_gpu("trans_ev_tridi_to_band 1: q_dev -> q", successGPU)
+
+      successGPU =  gpu_memcpy(int(loc(hh_trans(1,1)),kind=c_intptr_t),  hh_trans_dev, &
+                               nbw*hh_trans_size * size_of_datatype, &
+                               gpuMemcpyDeviceToHost)
+      check_memcpy_gpu("trans_ev_tridi_to_band 1: hh_trans_dev -> hh_trans", successGPU)
+    endif
+
+
     if (allComputeOnGPU) then
       if (wantDebug) call obj%timer%start("cuda_memcpy")
 
-      successGPU = gpu_malloc(q_dev, ldq*matrixCols* size_of_datatype)
-      check_alloc_gpu("tridi_to_band: q_dev", successGPU)
+!      successGPU = gpu_malloc(q_dev, matrixRows*matrixCols* size_of_datatype)
+!      check_alloc_gpu("tridi_to_band: q_dev", successGPU)
 
 #ifdef WITH_GPU_STREAMS
       successGPU = gpu_host_register(int(loc(q),kind=c_intptr_t), &
-                    ldq*matrixCols * size_of_datatype,&
+                    matrixRows*matrixCols * size_of_datatype,&
                     gpuHostRegisterDefault)
       check_host_register_gpu("tridi_to_band: q", successGPU)
 
-      my_stream = obj%gpu_setup%my_stream
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q -> q_dev", successGPU)
-
-      successGPU =  gpu_memcpy_async(q_dev, int(loc(q(1,1)),kind=c_intptr_t),  &
-                               ldq*matrixCols * size_of_datatype, &
-                               gpuMemcpyHostToDevice, my_stream)
-      check_memcpy_gpu("trans_ev_tridi_to_band 1: q -> q_dev", successGPU)
-      
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q -> q_dev", successGPU)
-      ! synchronize streamsPerThread; maybe not neccessary
-      successGPU = gpu_stream_synchronize()
-      check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q -> q_dev", successGPU)
+!      my_stream = obj%gpu_setup%my_stream
+!      successGPU = gpu_stream_synchronize(my_stream)
+!      check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q -> q_dev", successGPU)
+!
+!      successGPU =  gpu_memcpy_async(q_dev, int(loc(q(1,1)),kind=c_intptr_t),  &
+!                               matrixRows*matrixCols * size_of_datatype, &
+!                               gpuMemcpyHostToDevice, my_stream)
+!      check_memcpy_gpu("trans_ev_tridi_to_band 1: q -> q_dev", successGPU)
+!      
+!      successGPU = gpu_stream_synchronize(my_stream)
+!      check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q -> q_dev", successGPU)
+!      ! synchronize streamsPerThread; maybe not neccessary
+!      successGPU = gpu_stream_synchronize()
+!      check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q -> q_dev", successGPU)
 #else
-      successGPU =  gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t),  &
-                               ldq*matrixCols * size_of_datatype, &
-                               gpuMemcpyHostToDevice)
-      check_memcpy_gpu("trans_ev_tridi_to_band 1: q -> q_dev", successGPU)
+!      successGPU =  gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t),  &
+!                               matrixRows*matrixCols * size_of_datatype, &
+!                               gpuMemcpyHostToDevice)
+!      check_memcpy_gpu("trans_ev_tridi_to_band 1: q -> q_dev", successGPU)
 #endif
 
       ! associate with c_ptr
       q_mpi_dev = transfer(q_dev, q_mpi_dev)
       ! and associate a fortran pointer
       call c_f_pointer(q_mpi_dev, q_mpi_fortran_ptr, &
-                       [ldq,matrixCols])
+                       [matrixRows,matrixCols])
       if (wantDebug) call obj%timer%stop("cuda_memcpy")
 
-      successGPU = gpu_malloc(hh_trans_dev, size(hh_trans,dim=1)*size(hh_trans,dim=2)* size_of_datatype)
-      check_alloc_gpu("tridi_to_band: hh_trans_dev", successGPU)
+      !successGPU = gpu_malloc(hh_trans_dev, size(hh_trans,dim=1)*size(hh_trans,dim=2)* size_of_datatype)
+      !check_alloc_gpu("tridi_to_band: hh_trans_dev", successGPU)
       ! associate with c_ptr
       hh_trans_mpi_dev = transfer(hh_trans_dev, hh_trans_mpi_dev)
       ! and associate a fortran pointer
@@ -694,32 +728,32 @@ subroutine trans_ev_tridi_to_band_&
                        [size(hh_trans,dim=1),size(hh_trans,dim=2)])
 #ifdef WITH_GPU_STREAMS
 
-      successGPU = gpu_host_register(int(loc(hh_trans),kind=c_intptr_t), &
-                    size(hh_trans,dim=1)*size(hh_trans,dim=2) * size_of_datatype,&
-                    gpuHostRegisterDefault)
-      check_host_register_gpu("tridi_to_band: hh_trans", successGPU)
+      !successGPU = gpu_host_register(int(loc(hh_trans),kind=c_intptr_t), &
+      !              size(hh_trans,dim=1)*size(hh_trans,dim=2) * size_of_datatype,&
+      !              gpuHostRegisterDefault)
+      !check_host_register_gpu("tridi_to_band: hh_trans", successGPU)
 
-      my_stream = obj%gpu_setup%my_stream
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("tridi_to_band: hh_trans -> hh_trans_dev", successGPU)
+      !my_stream = obj%gpu_setup%my_stream
+      !successGPU = gpu_stream_synchronize(my_stream)
+      !check_stream_synchronize_gpu("tridi_to_band: hh_trans -> hh_trans_dev", successGPU)
 
-      successGPU =  gpu_memcpy_async(c_loc(hh_trans_mpi_fortran_ptr(1,1)),  &
-                               c_loc(hh_trans(1,1)), &
-                               size(hh_trans,dim=1)*size(hh_trans,dim=2) * size_of_datatype, &
-                               gpuMemcpyHostToDevice, my_stream)
-      check_memcpy_gpu("tridi_to_band: hh_trans -> hh_trans_dev", successGPU)
+      !successGPU =  gpu_memcpy_async(c_loc(hh_trans_mpi_fortran_ptr(1,1)),  &
+      !                         c_loc(hh_trans(1,1)), &
+      !                         size(hh_trans,dim=1)*size(hh_trans,dim=2) * size_of_datatype, &
+      !                         gpuMemcpyHostToDevice, my_stream)
+      !check_memcpy_gpu("tridi_to_band: hh_trans -> hh_trans_dev", successGPU)
 
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("tridi_to_band: hh_trans -> hh_trans_dev", successGPU)
-      ! synchronize streamsPerThread; maybe not neccessary
-      successGPU = gpu_stream_synchronize()
-      check_stream_synchronize_gpu("tridi_to_band: hh_trans -> hh_trans_dev", successGPU)
+      !successGPU = gpu_stream_synchronize(my_stream)
+      !check_stream_synchronize_gpu("tridi_to_band: hh_trans -> hh_trans_dev", successGPU)
+      !! synchronize streamsPerThread; maybe not neccessary
+      !successGPU = gpu_stream_synchronize()
+      !check_stream_synchronize_gpu("tridi_to_band: hh_trans -> hh_trans_dev", successGPU)
 #else
-      successGPU =  gpu_memcpy(c_loc(hh_trans_mpi_fortran_ptr(1,1)),  &
-                               c_loc(hh_trans(1,1)), &
-                               size(hh_trans,dim=1)*size(hh_trans,dim=2) * size_of_datatype, &
-                               gpuMemcpyHostToDevice)
-      check_memcpy_gpu("tridi_to_band: hh_trans -> hh_trans_dev", successGPU)
+      !successGPU =  gpu_memcpy(c_loc(hh_trans_mpi_fortran_ptr(1,1)),  &
+      !                         c_loc(hh_trans(1,1)), &
+      !                         size(hh_trans,dim=1)*size(hh_trans,dim=2) * size_of_datatype, &
+      !                         gpuMemcpyHostToDevice)
+      !check_memcpy_gpu("tridi_to_band: hh_trans -> hh_trans_dev", successGPU)
 #endif
 
     endif ! allComputeOnGPU
@@ -1148,7 +1182,7 @@ subroutine trans_ev_tridi_to_band_&
             if (allComputeOnGPU) then
               if (wantDebug) call obj%timer%start("cuda_aware_gpublas")
               gpuHandle = obj%gpu_setup%gpublasHandleArray(0)
-              call gpublas_PRECISION_COPY(l_nev, c_loc(q_mpi_fortran_ptr(src_offset,1)), ldq, &
+              call gpublas_PRECISION_COPY(l_nev, c_loc(q_mpi_fortran_ptr(src_offset,1)), matrixRows, &
                                           c_loc(row_group_mpi_fortran_ptr(1,row_group_size)), 1, gpuHandle)
               if (wantDebug) call obj%timer%stop("cuda_aware_gpublas")
             else ! allComputeOnGPU
@@ -1211,7 +1245,7 @@ subroutine trans_ev_tridi_to_band_&
 
               if (wantDebug) call obj%timer%start("cuda_aware_gpublas")
               gpuHandle = obj%gpu_setup%gpublasHandleArray(0)
-              call gpublas_PRECISION_COPY(l_nev, c_loc(q_mpi_fortran_ptr(src_offset,1)), ldq, &
+              call gpublas_PRECISION_COPY(l_nev, c_loc(q_mpi_fortran_ptr(src_offset,1)), matrixRows, &
                                           c_loc(row_mpi_fortran_ptr(1)), 1, gpuHandle)
               if (wantDebug) call obj%timer%stop("cuda_aware_gpublas")
 #ifdef WITH_GPU_STREAMS
@@ -1267,7 +1301,7 @@ subroutine trans_ev_tridi_to_band_&
 
             if (wantDebug) call obj%timer%start("cuda_aware_gpublas")
             gpuHandle = obj%gpu_setup%gpublasHandleArray(0)
-            call gpublas_PRECISION_COPY(l_nev, c_loc(q_mpi_fortran_ptr(src_offset,1)), ldq, &
+            call gpublas_PRECISION_COPY(l_nev, c_loc(q_mpi_fortran_ptr(src_offset,1)), matrixRows, &
                                           c_loc(row_mpi_fortran_ptr(1)), 1, gpuHandle)
             if (wantDebug) call obj%timer%stop("cuda_aware_gpublas")
 
@@ -2014,7 +2048,7 @@ subroutine trans_ev_tridi_to_band_&
 
           successGPU =  gpu_memcpy_async(c_loc(bcast_buffer_mpi_fortran_ptr(1,1)), &
                                    c_loc(hh_trans_mpi_fortran_ptr(1,current_tv_off+1)),  &
-                                     size(hh_trans,dim=1) * (current_tv_off+current_local_n-(current_tv_off+1)+1) * &   
+                                     nbw * (current_tv_off+current_local_n-(current_tv_off+1)+1) * &   
                                      size_of_datatype, &
                                      gpuMemcpyDeviceToDevice, my_stream)
           check_memcpy_gpu("tridi_to_band: bcast_buffer -> bcast_buffer_dev", successGPU)
@@ -2027,7 +2061,7 @@ subroutine trans_ev_tridi_to_band_&
 #else
           successGPU =  gpu_memcpy(c_loc(bcast_buffer_mpi_fortran_ptr(1,1)), &
                                    c_loc(hh_trans_mpi_fortran_ptr(1,current_tv_off+1)),  &
-                                     size(hh_trans,dim=1) * (current_tv_off+current_local_n-(current_tv_off+1)+1) * &
+                                     nbw * (current_tv_off+current_local_n-(current_tv_off+1)+1) * &
                                      size_of_datatype, &
                                      gpuMemcpyDeviceToDevice)
           check_memcpy_gpu("tridi_to_band: bcast_buffer -> bcast_buffer_dev", successGPU)
@@ -4311,7 +4345,7 @@ subroutine trans_ev_tridi_to_band_&
                if (wantDebug) call obj%timer%start("cuda_aware_gpublas")
                gpuHandle = obj%gpu_setup%gpublasHandleArray(0)
                call gpublas_PRECISION_COPY(l_nev, c_loc(row_group_mpi_fortran_ptr(1,i)), 1, &
-                                           c_loc(q_mpi_fortran_ptr((num_blk / np_rows) * nblk + i,1)), ldq, gpuHandle)
+                                           c_loc(q_mpi_fortran_ptr((num_blk / np_rows) * nblk + i,1)), matrixRows, gpuHandle)
                if (wantDebug) call obj%timer%stop("cuda_aware_gpublas")
               enddo
             else ! allComputeOnGPU
@@ -4479,7 +4513,7 @@ subroutine trans_ev_tridi_to_band_&
               if (wantDebug) call obj%timer%start("cuda_aware_gpublas")
               gpuHandle = obj%gpu_setup%gpublasHandleArray(0)
               call gpublas_PRECISION_COPY(l_nev, c_loc(result_buffer_mpi_fortran_ptr(1,i,nbuf)), 1, &
-                                          c_loc(q_mpi_fortran_ptr(j*nblk + i,1)), ldq, gpuHandle)
+                                          c_loc(q_mpi_fortran_ptr(j*nblk + i,1)), matrixRows, gpuHandle)
               if (wantDebug) call obj%timer%stop("cuda_aware_gpublas")
             enddo
           else ! allComputeOnGPU
@@ -4756,32 +4790,49 @@ subroutine trans_ev_tridi_to_band_&
 
   if (useGPU .and. allComputeOnGPU) then
     ! finally copy q_dev to q
-    if (wantDebug) call obj%timer%start("cuda_memcpy")
-#ifdef WITH_GPU_STREAMS
-    successGPU = gpu_stream_synchronize(my_stream)
-    check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q_dev -> q", successGPU)
-
-    successGPU =  gpu_memcpy_async(int(loc(q(1,1)),kind=c_intptr_t),  &
-                             q_dev, &
-                             ldq*matrixCols * size_of_datatype, &
-                             gpuMemcpyDeviceToHost, my_stream)
-    check_memcpy_gpu("trans_ev_tridi_to_band 1: q_dev -> q", successGPU)
-
-    successGPU = gpu_stream_synchronize(my_stream)
-    check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q_dev -> q", successGPU)
-    ! synchronize streamsPerThread; maybe not neccessary
-    successGPU = gpu_stream_synchronize()
-    check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q_dev -> q", successGPU)
-#else
-    successGPU =  gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t),  &
-                             q_dev, &
-                             ldq*matrixCols * size_of_datatype, &
-                             gpuMemcpyDeviceToHost)
-    check_memcpy_gpu("trans_ev_tridi_to_band 1: q_dev -> q", successGPU)
-#endif
-    if (wantDebug) call obj%timer%stop("cuda_memcpy")
+!    if (wantDebug) call obj%timer%start("cuda_memcpy")
+!#ifdef WITH_GPU_STREAMS
+!    successGPU = gpu_stream_synchronize(my_stream)
+!    check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q_dev -> q", successGPU)
+!
+!    successGPU =  gpu_memcpy_async(int(loc(q(1,1)),kind=c_intptr_t),  &
+!                             q_dev, &
+!                             matrixRows*matrixCols * size_of_datatype, &
+!                             gpuMemcpyDeviceToHost, my_stream)
+!    check_memcpy_gpu("trans_ev_tridi_to_band 1: q_dev -> q", successGPU)
+!
+!    successGPU = gpu_stream_synchronize(my_stream)
+!    check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q_dev -> q", successGPU)
+!    ! synchronize streamsPerThread; maybe not neccessary
+!    successGPU = gpu_stream_synchronize()
+!    check_stream_synchronize_gpu("trans_ev_tridi_to_band 1: q_dev -> q", successGPU)
+!#else
+!    successGPU =  gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t),  &
+!                             q_dev, &
+!                             matrixRows*matrixCols * size_of_datatype, &
+!                             gpuMemcpyDeviceToHost)
+!    check_memcpy_gpu("trans_ev_tridi_to_band 1: q_dev -> q", successGPU)
+!#endif
+!    if (wantDebug) call obj%timer%stop("cuda_memcpy")
 
   endif
+
+  if (useGPU) then
+    ! debug remove at a later stage
+    if (.not.allComputeOnGPU) then
+      successGPU =  gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t),  &
+                               matrixRows*matrixCols * size_of_datatype, &
+                               gpuMemcpyHostToDevice)
+      check_memcpy_gpu("trans_ev_tridi_to_band 1: q -> q_dev", successGPU)
+
+      !! needed? no output
+      !successGPU =  gpu_memcpy(hh_trans_dev, int(loc(hh_trans(1,1)),kind=c_intptr_t), &
+      !                         nbw*hh_trans_size * size_of_datatype, &
+      !                         gpuMemcpyHostToDevice)
+      !check_memcpy_gpu("trans_ev_tridi_to_band 1: hh_trans -> hh_trans_dev", successGPU)
+    endif
+  endif
+
 
   if (my_prow==0 .and. my_pcol==0 .and.print_flops == 1) then
       write(error_unit,'(" Kernel time:",f10.3," MFlops: ",es12.5)')  kernel_time, kernel_flops/kernel_time*1.d-6
@@ -4843,8 +4894,8 @@ subroutine trans_ev_tridi_to_band_&
       check_dealloc_gpu("tridi_to_band: q_dev", successGPU)
       nullify(q_mpi_fortran_ptr)
 
-      successGPU = gpu_free(hh_trans_dev)
-      check_dealloc_gpu("tridi_to_band: hh_trans_dev", successGPU)
+      !successGPU = gpu_free(hh_trans_dev)
+      !check_dealloc_gpu("tridi_to_band: hh_trans_dev", successGPU)
       nullify(hh_trans_mpi_fortran_ptr)
 
       successGPU = gpu_free(top_border_recv_buffer_dev)

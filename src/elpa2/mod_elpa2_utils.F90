@@ -1,4 +1,6 @@
 #if 0
+!    Copyright 2024, A. Marek
+!
 !    This file is part of ELPA.
 !
 !    The ELPA library was originally created by the ELPA consortium,
@@ -43,45 +45,61 @@
 !    any derivatives of ELPA under the same license that we chose for
 !    the original distribution, the GNU Lesser General Public License.
 !
-!
-! ELPA2 -- 2-stage solver for ELPA
-!
-! Copyright of the original code rests with the authors inside the ELPA
-! consortium. The copyright of any additional modifications shall rest
-! with their original authors, but shall adhere to the licensing terms
-! distributed along with the original code in the file "COPYING".
-!
-! Author: Andreas Marek, MPCDF
+! This file was written by A. Marek, MPCDF
 #endif
 
-#include "../general/sanity.F90"
+#include "config-f90.h"
+
+module elpa2_utils
+
+  private
+  public :: get_hh_vec_real_double
+  public :: apply_ht_real_double
+  public :: get_hh_vec_complex_double
+  public :: apply_ht_complex_double
+#ifdef WANT_SINGLE_PRECISION_REAL
+  public :: get_hh_vec_real_single
+  public :: apply_ht_real_single
+#endif
+#ifdef WANT_SINGLE_PRECISION_COMPLEX
+  public :: get_hh_vec_complex_single
+  public :: apply_ht_complex_single
+#endif
+
+
+  contains
+
+#define REALCASE 1
+#define DOUBLE_PRECISION 1
+#include "../general/precision_macros.h"
+#include "./elpa2_utils_template.F90"
+#undef REALCASE
+#undef DOUBLE_PRECISION
+
+#if defined(WANT_SINGLE_PRECISION_REAL)
+#define REALCASE 1
+#define SINGLE_PRECISION 1
+#include "../general/precision_macros.h"
+#include "./elpa2_utils_template.F90"
+#undef REALCASE
+#undef SINGLE_PRECISION
+#endif
+
 
 #define COMPLEXCASE 1
-#undef REALCASE
-#undef BANDRED_GPU
-#include "elpa2_bandred_template.F90"
-#define BANDRED_GPU
-#include "elpa2_bandred_template.F90"
-#undef BANDRED_GPU
+#define DOUBLE_PRECISION 1
+#include "../general/precision_macros.h"
+#include "./elpa2_utils_template.F90"
+#undef COMPLEXCASE
+#undef DOUBLE_PRECISION
 
-#include "elpa2_herm_matrix_allreduce_complex_template.F90"
+#if defined(WANT_SINGLE_PRECISION_COMPLEX)
+#define COMPLEXCASE 1
+#define SINGLE_PRECISION 1
+#include "../general/precision_macros.h"
+#include "./elpa2_utils_template.F90"
+#undef COMPLEXCASE
+#undef SINGLE_PRECISION
+#endif
 
-#undef TRIDIAG_GPU
-#include "elpa2_tridiag_band_template.F90"
-#define TRIDIAG_GPU
-#include "elpa2_tridiag_band_template.F90"
-#undef TRIDIAG_GPU
-
-#undef TRANS_EV_TRIDI_GPU
-#include "elpa2_trans_ev_tridi_to_band_template.F90"
-#define TRANS_EV_TRIDI_GPU
-#include "elpa2_trans_ev_tridi_to_band_template.F90"
-#undef TRANS_EV_TRIDI_GPU
-
-#undef TRANS_EV_BAND_GPU 
-#include "elpa2_trans_ev_band_to_full_template.F90"
-#define TRANS_EV_BAND_GPU 
-#include "elpa2_trans_ev_band_to_full_template.F90"
-#undef TRANS_EV_BAND_GPU 
-
-
+end module
