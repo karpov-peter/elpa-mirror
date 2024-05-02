@@ -136,8 +136,8 @@ subroutine trans_ev_band_to_full_cpu_&
 #if REALCASE == 1
   logical, intent(in)                            :: useQR
 #endif
-  integer(kind=ik), intent(in)                   :: na, nqc, matrixRows, qMatrixRows, nblk, nbw, matrixCols, numBlocks, mpi_comm_rows, &
-                                                   mpi_comm_cols
+  integer(kind=ik), intent(in)                   :: na, nqc, matrixRows, qMatrixRows, nblk, nbw, matrixCols, numBlocks, &
+                                                    mpi_comm_rows, mpi_comm_cols
 #ifdef TRANS_EV_BAND_GPU
   MATH_DATATYPE(kind=rck)                        :: a_mat(matrixRows,matrixCols)
   MATH_DATATYPE(kind=rck)                        :: q_mat(qMatrixRows,matrixCols), tmat(nbw, nbw, numBlocks)
@@ -343,17 +343,17 @@ subroutine trans_ev_band_to_full_cpu_&
 
     successGPU = gpu_memcpy_async(int(loc(tmat),kind=c_intptr_t), tmat_dev, &
                   nbw*nbw*numBlocks*size_of_datatype, gpuMemcpyDeviceToHost, my_stream)
-    check_memcpy_gpu("trans_ev_band_to_full: tmat_dev -> tmat_mat", successGPU)
+    check_memcpy_gpu("trans_ev_band_to_full: tmat_dev -> tmat", successGPU)
 
     successGPU = gpu_stream_synchronize(my_stream)
-    check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_dev -> tmat_mat", successGPU)
+    check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_dev -> tmat", successGPU)
     ! synchronize streamPerThread; maybe not neccessary
     successGPU = gpu_stream_synchronize()
-    check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_dev -> tmat_mat", successGPU)
+    check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_dev -> tmat", successGPU)
 #else
-    successGPU = gpu_memcpy(int(loc(tmat_mat),kind=c_intptr_t), tmat_dev, &
+    successGPU = gpu_memcpy(int(loc(tmat),kind=c_intptr_t), tmat_dev, &
                   nbw*nbw*numBlocks*size_of_datatype, gpuMemcpyDeviceToHost)
-    check_memcpy_gpu("trans_ev_band_to_full: tmat_dev -> tmat_mat", successGPU)
+    check_memcpy_gpu("trans_ev_band_to_full: tmat_dev -> tmat", successGPU)
 #endif
 
 

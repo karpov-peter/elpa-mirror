@@ -1606,7 +1606,8 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
          &MATH_DATATYPE&
          &_&
          &PRECISION&
-         (obj, na, nbw, nblk, hh_trans_size, a, matrixRows, ev, e, matrixCols, hh_trans, mpi_comm_rows, mpi_comm_cols, mpi_comm_all, &
+         (obj, na, nbw, nblk, hh_trans_size, a, matrixRows, ev, e, matrixCols, hh_trans, mpi_comm_rows, mpi_comm_cols, &
+          mpi_comm_all, &
           wantDebug, nrThreads, isSkewsymmetric, success)
        endif 
 
@@ -1685,8 +1686,10 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 
 
          if (useNonBlockingCollectivesAll) then
-           call mpi_ibcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), bcast_request1, mpierr)
-           call mpi_ibcast(e, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), bcast_request2, mpierr)
+           call mpi_ibcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), &
+                   bcast_request1, mpierr)
+           call mpi_ibcast(e, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), &
+                   bcast_request2, mpierr)
 
            call mpi_wait(bcast_request1, MPI_STATUS_IGNORE, mpierr)
            call mpi_wait(bcast_request2, MPI_STATUS_IGNORE, mpierr)
@@ -1705,8 +1708,10 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 #endif
        else
          if (useNonBlockingCollectivesAll) then
-           call mpi_ibcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), bcast_request1, mpierr)
-           call mpi_ibcast(e, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), bcast_request2, mpierr)
+           call mpi_ibcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), &
+                   bcast_request1, mpierr)
+           call mpi_ibcast(e, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), &
+                   bcast_request2, mpierr)
 
            call mpi_wait(bcast_request1, MPI_STATUS_IGNORE, mpierr)
            call mpi_wait(bcast_request2, MPI_STATUS_IGNORE, mpierr)
