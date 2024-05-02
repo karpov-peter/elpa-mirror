@@ -188,8 +188,10 @@
      ! now we can set up the the blacs descriptor
 
      !sc_desc_(:) = 0
-     na_rowsInternal = numroc(int(na,kind=BLAS_KIND), int(nblkInternal,kind=BLAS_KIND), my_prowInternal, 0_BLAS_KIND, np_rowsInternal)
-     na_colsInternal = numroc(int(na,kind=BLAS_KIND), int(nblkInternal,kind=BLAS_KIND), my_pcolInternal, 0_BLAS_KIND, np_colsInternal)
+     na_rowsInternal = numroc(int(na,kind=BLAS_KIND), int(nblkInternal,kind=BLAS_KIND), my_prowInternal, &
+                              0_BLAS_KIND, np_rowsInternal)
+     na_colsInternal = numroc(int(na,kind=BLAS_KIND), int(nblkInternal,kind=BLAS_KIND), my_pcolInternal, &
+                              0_BLAS_KIND, np_colsInternal)
 
      info_ = 0
      call descinit(sc_descInternal, int(na,kind=BLAS_KIND), int(na,kind=BLAS_KIND), int(nblkInternal,kind=BLAS_KIND), &
