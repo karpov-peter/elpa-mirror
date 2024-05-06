@@ -343,6 +343,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
    matrixCols = obj%local_ncols
    matrixRows = obj%local_nrows
 
+   do_tridiag       = .true.
    do_bandred       = .true.
    do_solve_tridi   = .true.
    do_trans_to_band = .true.
