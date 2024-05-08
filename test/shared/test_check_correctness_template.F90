@@ -1385,7 +1385,7 @@ function check_correctness_evp_gen_numeric_residuals_&
 #endif
       real(kind=rck)            :: tmp, maxerr
       TEST_INT_TYPE                  :: loctmp
-      status = 0
+      status = 1
 
      ! analytic solution
      do i = 1, na
@@ -1441,6 +1441,9 @@ function check_correctness_evp_gen_numeric_residuals_&
          print *,"Result of Frank matrix test: "
          print *,"Eigenvalues differ from analytic solution: maxerr = ",maxerr
        endif
+     else
+         print *,"Result of Frank matrix test: passed"
+       status = 0
      endif
     end function
 

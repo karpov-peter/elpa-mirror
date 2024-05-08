@@ -447,13 +447,11 @@ function elpa_solve_evp_&
    np_cols = obj%mpi_setup%nRanks_comm_cols
    n_pes   = obj%mpi_setup%nRanks_comm_parent
 
-
 #if COMPLEXCASE == 1
    l_rows = local_index(na, my_prow, np_rows, nblk, -1) ! Local rows of a and q
    l_cols = local_index(na, my_pcol, np_cols, nblk, -1) ! Local columns of q
    l_cols_nev = local_index(nev, my_pcol, np_cols, nblk, -1) ! Local columns corresponding to nev
 #endif
-   call obj%timer%stop("mpi_communication")
 
 #ifndef DEVICE_POINTER
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1541,8 +1539,10 @@ function elpa_solve_evp_&
      successGPU = gpu_free(ev_devIntern)
      check_dealloc_gpu("elpa1_template ev_devIntern", successGPU)
 
-     successGPU = gpu_free(q_devIntern)
-     check_dealloc_gpu("elpa1_template q_devIntern", successGPU)
+     if (present(qExtern)) then
+       successGPU = gpu_free(q_devIntern)
+       check_dealloc_gpu("elpa1_template q_devIntern 1", successGPU)
+     endif
 
      ! allocate dummy q_devIntern, if eigenvectors should not be commputed and thus q is NOT present
      if (.not.(obj%eigenvalues_only)) then
@@ -1593,7 +1593,7 @@ function elpa_solve_evp_&
      !check_memcpy_gpu("elpa1_template ev -> ev_devIntern", successGPU)
      if (present(qExtern)) then
        successGPU = gpu_free(q_devIntern)
-       check_dealloc_gpu("elpa1_template q_devIntern", successGPU)
+       check_dealloc_gpu("elpa1_template q_devIntern 2", successGPU)
      endif
 
      
