@@ -199,10 +199,10 @@ subroutine solve_tridi_cpu_&
       l_rows = local_index(na, my_prow, np_rows, nblk, -1) ! Local rows of a and q
       l_cols = local_index(na, my_pcol, np_cols, nblk, -1) ! Local columns of q
 
-      if (.not.(obj%eigenvalues_only)) then
+      !if (.not.(obj%eigenvalues_only)) then
         ! Set Q to 0
         q(1:l_rows, 1:l_cols) = 0.0_rk
-      endif
+      !endif
 
       ! Get the limits of the subdivisons, each subdivison has as many cols
       ! as fit on the respective processor column
