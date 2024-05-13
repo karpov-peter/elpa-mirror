@@ -149,6 +149,7 @@ subroutine solve_tridi_cpu_&
       np_cols = int(np_colsMPI,kind=c_int)
 
 
+      call obj%timer%stop("mpi_communication")
       if (useGPU) then
         ! dirty hack
         num = na * size_of_datatype_real
@@ -161,13 +162,13 @@ subroutine solve_tridi_cpu_&
 #else
         successGPU = gpu_memcpy(int(loc(d(1)),kind=c_intptr_t),  d_dev, &
                               num, gpuMemcpyDeviceToHost)
-        check_memcpy_gpu("tridiag: d_dev", successGPU)
+        check_memcpy_gpu("solve_tridi: d_dev", successGPU)
 #endif
         num = na * size_of_datatype_real
 #ifdef WITH_GPU_STREAMS
         my_stream = obj%gpu_setup%my_stream
         call gpu_memcpy_async_and_stream_synchronize &
-            ("tridiag e_dev -> e", e_dev, 0_c_intptr_t, &
+            ("solve_tridi e_dev -> e", e_dev, 0_c_intptr_t, &
                                                  e(1:na), &
                                  1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
 #else
@@ -175,30 +176,33 @@ subroutine solve_tridi_cpu_&
                               num, gpuMemcpyDeviceToHost)
        check_memcpy_gpu("tridiag: e_dev", successGPU)
 #endif
-        num = ldq*matrixCols * size_of_datatype_real
+        if (.not.(obj%eigenvalues_only)) then
+          num = ldq*matrixCols * size_of_datatype_real
 #ifdef WITH_GPU_STREAMS
-        my_stream = obj%gpu_setup%my_stream
-        call gpu_memcpy_async_and_stream_synchronize &
-            ("tridiag q_dev -> q_vec", q_dev, 0_c_intptr_t, &
+          my_stream = obj%gpu_setup%my_stream
+          call gpu_memcpy_async_and_stream_synchronize &
+            ("solve_tridie q_dev -> q_vec", q_dev, 0_c_intptr_t, &
                                                  q(1:ldq,1:matrixCols), &
                                  1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
 #else
-       successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t),  q_dev, &
+          successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t),  q_dev, &
                               num, gpuMemcpyDeviceToHost)
-       check_memcpy_gpu("tridiag: q_dev", successGPU)
+          check_memcpy_gpu("tridiag: q_dev", successGPU)
 #endif
+        endif ! eigenvalues_only
       endif
 
 
-      call obj%timer%stop("mpi_communication")
 
       success = .true.
 
       l_rows = local_index(na, my_prow, np_rows, nblk, -1) ! Local rows of a and q
       l_cols = local_index(na, my_pcol, np_cols, nblk, -1) ! Local columns of q
 
-      ! Set Q to 0
-      q(1:l_rows, 1:l_cols) = 0.0_rk
+      if (.not.(obj%eigenvalues_only)) then
+        ! Set Q to 0
+        q(1:l_rows, 1:l_cols) = 0.0_rk
+      endif
 
       ! Get the limits of the subdivisons, each subdivison has as many cols
       ! as fit on the respective processor column
@@ -253,6 +257,47 @@ subroutine solve_tridi_cpu_&
       if (np_cols==1) then
         deallocate(limits, stat=istat, errmsg=errorMessage)
         check_deallocate("solve_tridi: limits", istat, errorMessage)
+        if (useGPU) then
+          ! dirty hack
+          num = na * size_of_datatype_real
+#ifdef WITH_GPU_STREAMS
+          my_stream = obj%gpu_setup%my_stream
+          call gpu_memcpy_async_and_stream_synchronize &
+            ("solve_trid d -> d_dev", d_dev, 0_c_intptr_t, &
+                                                 d(1:na), &
+                                  1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
+#else
+          successGPU = gpu_memcpy(d_dev, int(loc(d(1)),kind=c_intptr_t),  &
+                              num, gpuMemcpyDeviceToHost)
+          check_memcpy_gpu("tridiag: d_dev", successGPU)
+#endif
+          num = na * size_of_datatype_real
+#ifdef WITH_GPU_STREAMS
+          my_stream = obj%gpu_setup%my_stream
+          call gpu_memcpy_async_and_stream_synchronize &
+            ("solve_tridi e_dev -> e", e_dev, 0_c_intptr_t, &
+                                                 e(1:na), &
+                                 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
+#else
+         successGPU = gpu_memcpy(e_dev, int(loc(e(1)),kind=c_intptr_t),  &
+                              num, gpuMemcpyHostToDevice)
+         check_memcpy_gpu("tridiag: e_dev", successGPU)
+#endif
+         if (.not.(obj%eigenvalues_only)) then
+           num = ldq*matrixCols * size_of_datatype_real
+#ifdef WITH_GPU_STREAMS
+           my_stream = obj%gpu_setup%my_stream
+           call gpu_memcpy_async_and_stream_synchronize &
+            ("solve_tride q_dev -> q_vec", q_dev, 0_c_intptr_t, &
+                                                 q(1:ldq,1:matrixCols), &
+                                 1, 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
+#else
+           successGPU = gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t),  &
+                              num, gpuMemcpyHostToDevice)
+           check_memcpy_gpu("tridiag: q_dev", successGPU)
+#endif
+          endif ! eigenvalues_only
+        endif
 
         call obj%timer%stop("solve_tridi" // PRECISION_SUFFIX // gpuString)
         return
@@ -324,7 +369,7 @@ subroutine solve_tridi_cpu_&
 #ifdef WITH_GPU_STREAMS
         my_stream = obj%gpu_setup%my_stream
         call gpu_memcpy_async_and_stream_synchronize &
-            ("tridiag d -> d_dev", d_dev, 0_c_intptr_t, &
+            ("solve_trid d -> d_dev", d_dev, 0_c_intptr_t, &
                                                  d(1:na), &
                                   1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
 #else
@@ -336,7 +381,7 @@ subroutine solve_tridi_cpu_&
 #ifdef WITH_GPU_STREAMS
         my_stream = obj%gpu_setup%my_stream
         call gpu_memcpy_async_and_stream_synchronize &
-            ("tridiag e_dev -> e", e_dev, 0_c_intptr_t, &
+            ("solve_tridi e_dev -> e", e_dev, 0_c_intptr_t, &
                                                  e(1:na), &
                                  1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
 #else
@@ -344,18 +389,20 @@ subroutine solve_tridi_cpu_&
                               num, gpuMemcpyHostToDevice)
        check_memcpy_gpu("tridiag: e_dev", successGPU)
 #endif
-        num = ldq*matrixCols * size_of_datatype_real
+        if (.not.(obj%eigenvalues_only)) then
+          num = ldq*matrixCols * size_of_datatype_real
 #ifdef WITH_GPU_STREAMS
-        my_stream = obj%gpu_setup%my_stream
-        call gpu_memcpy_async_and_stream_synchronize &
-            ("tridiag q_dev -> q_vec", q_dev, 0_c_intptr_t, &
+          my_stream = obj%gpu_setup%my_stream
+          call gpu_memcpy_async_and_stream_synchronize &
+            ("solve_tride q_dev -> q_vec", q_dev, 0_c_intptr_t, &
                                                  q(1:ldq,1:matrixCols), &
                                  1, 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
 #else
-       successGPU = gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t),  &
+         successGPU = gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t),  &
                               num, gpuMemcpyHostToDevice)
-       check_memcpy_gpu("tridiag: q_dev", successGPU)
+         check_memcpy_gpu("tridiag: q_dev", successGPU)
 #endif
+        endif ! eigenvalues_only
       endif
 
       call obj%timer%stop("solve_tridi" // PRECISION_SUFFIX // gpuString)

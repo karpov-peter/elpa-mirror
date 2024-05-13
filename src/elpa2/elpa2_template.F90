@@ -2231,6 +2231,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
     endif !do_full_to_band
 
 
+#ifndef DEVICE_POINTER
    ! copy back ev in anycase
    if (useGPU) then
       num = (na) * size_of_real_datatype
@@ -2238,6 +2239,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
                  num, gpuMemcpyDeviceToHost)
       check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
    endif
+#endif /* DEVICE_POINTER */
 
 
 

@@ -1093,9 +1093,11 @@ program test
 #endif /* TEST_SOLVER_2STAGE */
 
 #if !defined(TEST_ALL_LAYOUTS)
+#if defined(TEST_EIGENVECTORS)
 ! print all parameters
      call e%print_settings(error_elpa)
      assert_elpa_ok(error_elpa)
+#endif
 #endif
 
 #ifdef TEST_ALL_KERNELS

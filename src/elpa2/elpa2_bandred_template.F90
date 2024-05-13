@@ -1210,14 +1210,14 @@ max_threads, isSkewsymmetric)
        call gpu_memcpy_async_and_stream_synchronize &
             ("bandred vmrGPU_2d -> vmr_dev", vmr_dev, 0_c_intptr_t, &
                                                  vmrGPU_2d(1:max_l_rows,1:2*n_cols), &
-                                                 1, 1, num, gpuMemcpyHosToDevice, my_stream, .false., .false., .false.)
+                                                 1, 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
        num = max_l_cols*2*n_cols * size_of_datatype
        my_stream = obj%gpu_setup%my_stream
 
        call gpu_memcpy_async_and_stream_synchronize &
             ("bandred umcGPU_2d -> umc_dev", umc_dev, 0_c_intptr_t, &
                                                  umcGPU_2d(1:max_l_cols,1:2*n_cols), &
-                                                 1, 1, num, gpuMemcpyHosToDevice, my_stream, .false., .false., .false.)
+                                                 1, 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
 #else
         successGPU = gpu_memcpy(vmr_dev, int(loc(vmrGPU_2d(1,1)),kind=c_intptr_t), &
                      max_l_rows*2*n_cols*size_of_datatype, gpuMemcpyHostToDevice)

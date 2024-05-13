@@ -2885,10 +2885,6 @@ fi
 #
 ##########################################################################################
 
-use_cuda_streams=no
-use_hip_streams=no
-use_gpu_streams=no
-relied_on_default=no
 AC_MSG_CHECKING(whether GPU streams should be used)
 AC_ARG_ENABLE([gpu-streams],
                [AS_HELP_STRING([--enable-gpu-streams=[[nvidia|amd]]],
@@ -2911,11 +2907,8 @@ AC_ARG_ENABLE([gpu-streams],
                                 fi
 				],
               [relied_on_default=yes
-               use_cuda_streams=no
-               use_hip_streams=no
-	       use_gpu_streams=no
 	       #if test x"$enable_openmp" = x"no"; then
-		 if test x"$enable_cuda_aware_mpi" = x"no"; then
+		 #if test x"$enable_cuda_aware_mpi" = x"no"; then
 	           if test x"$need_nvidia_gpu" = x"yes"; then
                      use_cuda_streams=yes
                      use_gpu_streams=yes
@@ -2924,7 +2917,7 @@ AC_ARG_ENABLE([gpu-streams],
                      use_hip_streams=yes
                      use_gpu_streams=yes
                    fi
-		 fi
+		 #fi
 	       #fi
 	       ])
 AC_MSG_RESULT([${use_gpu_streams}])

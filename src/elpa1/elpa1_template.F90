@@ -143,10 +143,8 @@ function elpa_solve_evp_&
    real(kind=REAL_DATATYPE), pointer                                  :: ev(:)
 
 #ifdef DEVICE_POINTER
-
    type(c_ptr)                                                        :: aDevExtern
    type(c_ptr), optional                                              :: qDevExtern
-
 
 #ifdef REDISTRIBUTE_MATRIX
    MATH_DATATYPE(kind=rck), allocatable                               :: aExtern(:,:)
@@ -268,7 +266,10 @@ function elpa_solve_evp_&
                                                                          allreduce_request2, allreduce_request3, &
                                                                          allreduce_request4, allreduce_request
 
-
+   ! as default do all three steps (this might change at some point)
+   do_tridiag  = .true.
+   do_solve    = .true.
+   do_trans_ev = .true.
    ! to implement a possibiltiy to set this                             
    useNonBlockingCollectivesAll = .false.
 
@@ -312,6 +313,11 @@ function elpa_solve_evp_&
      nev = 1
      obj%eigenvalues_only = .true.
    endif
+
+
+  if (obj%eigenvalues_only) then
+    do_trans_ev = .false.
+  endif
 
 #ifdef ACTIVATE_SKEW
    call obj%timer%start("elpa_solve_skew_evp_&
@@ -897,11 +903,6 @@ function elpa_solve_evp_&
 #endif /* DEVICE_POINTER */
 
    ! start the computations
-   ! as default do all three steps (this might change at some point)
-   do_tridiag  = .true.
-   do_solve    = .true.
-   do_trans_ev = .true.
-
    if (do_tridiag) then
      call obj%autotune_timer%start("full_to_tridi")
      call obj%timer%start("forward")
@@ -993,7 +994,7 @@ function elpa_solve_evp_&
 #endif
         nblk, matrixCols, mpi_comm_all, mpi_comm_rows, mpi_comm_cols, wantDebug, &
                 success, nrThreads)
-     endif
+    endif
 
 #ifdef WITH_NVTX
      call nvtxRangePop()
@@ -1021,46 +1022,44 @@ function elpa_solve_evp_&
        write(error_unit,*) "Error in solve. Aborting..."
        return
      endif
+
+
    endif !do_solve
 
    if (do_trans_ev) then
-     if (obj%eigenvalues_only) then
-       do_trans_ev = .false.
-     else
-       call obj%get("check_pd",check_pd,error)
+     call obj%get("check_pd",check_pd,error)
+     if (error .ne. ELPA_OK) then
+#include "./elpa1_aborting_template.F90"
+     endif
+     if (check_pd .eq. 1) then
+       call obj%get("thres_pd_&
+       &PRECISION&
+       &",thres_pd,error)
        if (error .ne. ELPA_OK) then
+         write(error_unit, *) "ELPA1 Problem setting option for thres_pd_&
+         &PRECISION&
+         &. Aborting..."
 #include "./elpa1_aborting_template.F90"
        endif
-       if (check_pd .eq. 1) then
-         call obj%get("thres_pd_&
-         &PRECISION&
-         &",thres_pd,error)
-         if (error .ne. ELPA_OK) then
-           write(error_unit, *) "ELPA1 Problem setting option for thres_pd_&
-           &PRECISION&
-           &. Aborting..."
-#include "./elpa1_aborting_template.F90"
+       if (do_useGPU_solve_tridi) then
+         num = (na) * size_of_real_datatype
+         successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
+                 num, gpuMemcpyDeviceToHost)
+         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+       endif
+       check_pd = 0
+       do i = 1, na
+         if (ev(i) .gt. thres_pd) then
+           check_pd = check_pd + 1
          endif
-         if (do_useGPU_solve_tridi) then
-           num = (na) * size_of_real_datatype
-           successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
-                   num, gpuMemcpyDeviceToHost)
-           check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
-         endif
-         check_pd = 0
-         do i = 1, na
-           if (ev(i) .gt. thres_pd) then
-             check_pd = check_pd + 1
-           endif
-         enddo
-         if (check_pd .lt. na) then
-           ! not positiv definite => eigenvectors needed
-           do_trans_ev = .true.
-         else
-           do_trans_ev = .false.
-         endif
-       endif ! check_pd
-     endif ! eigenvalues_only
+       enddo
+       if (check_pd .lt. na) then
+         ! not positiv definite => eigenvectors needed
+         do_trans_ev = .true.
+       else
+         do_trans_ev = .false.
+       endif
+     endif ! check_pd
    endif ! do_trans_ev
 
    if (do_trans_ev) then
@@ -1200,40 +1199,7 @@ function elpa_solve_evp_&
        return
      endif
 
-#ifndef DEVICE_POINTER
-     if (useGPU) then
-       ! copy back
-       if (isSkewsymmetric) then
-         num = (matrixRows* 2*matrixCols) * size_of_datatype
-       else
-         num = (matrixRows* matrixCols) * size_of_datatype
-       endif
-       successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t), q_dev, &
-                    num, gpuMemcpyDeviceToHost)
-       check_memcpy_gpu("elpa1_template q_dev -> q", successGPU)
-
-       num = (matrixRows* matrixCols) * size_of_datatype
-       successGPU = gpu_memcpy(int(loc(a(1,1)),kind=c_intptr_t), a_dev, &
-                 num, gpuMemcpyDeviceToHost)
-       check_memcpy_gpu("elpa1_template a_dev -> a", successGPU)
-
-       num = (na) * size_of_real_datatype
-       successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
-                 num, gpuMemcpyDeviceToHost)
-       check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
-     endif
-#endif /* DEVICE_POINTER */
-
-
      if (isSkewsymmetric) then
-             !debug 
-       if (useGPU) then
-       num = (na) * size_of_datatype
-       successGPU = gpu_memcpy(int(loc(tau(1)),kind=c_intptr_t), tau_dev, &
-                 num, gpuMemcpyDeviceToHost)
-       check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
-       endif
-
 
        if (.not.(do_useGPU_trans_ev)) then
          ! Transform imaginary part
@@ -1308,16 +1274,6 @@ function elpa_solve_evp_&
        successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t), q_dev, &
                     num, gpuMemcpyDeviceToHost)
        check_memcpy_gpu("elpa1_template q_dev -> q", successGPU)
-
-       !num = (matrixRows* matrixCols) * size_of_datatype
-       !successGPU = gpu_memcpy(int(loc(a(1,1)),kind=c_intptr_t), a_dev, &
-       !          num, gpuMemcpyDeviceToHost)
-       !check_memcpy_gpu("elpa1_template a_dev -> a", successGPU)
-
-       num = (na) * size_of_real_datatype
-       successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
-                 num, gpuMemcpyDeviceToHost)
-       check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
      endif
 #endif /* DEVICE_POINTER */
 
@@ -1340,26 +1296,16 @@ function elpa_solve_evp_&
    endif ! do_trans_ev
 
 
-
-
-#ifndef DEVICE_POINTER           
-#if COMPLEXCASE == 1
-    !deallocate(q_real, stat=istat, errmsg=errorMessage)
-    !check_deallocate("elpa1_template: q_real", istat, errorMessage)
-#endif
-
-   !deallocate(tau, stat=istat, errmsg=errorMessage)
-   !check_deallocate("elpa1_template: e, tau", istat, errorMessage)
-
-   !if (obj%eigenvalues_only) then
-   !  deallocate(q_dummy, stat=istat, errmsg=errorMessage)
-   !  check_deallocate("elpa1_template: q_dummy", istat, errorMessage)
-   !  if (useGPU) then
-   !    successGPU = gpu_free(q_dev_dummy)
-   !    check_dealloc_gpu("elpa1_template q_dev_dummy", successGPU)
-   !  endif
-   !endif
+#ifndef DEVICE_POINTER
+     if (useGPU) then
+       ! copy back always
+       num = (na) * size_of_real_datatype
+       successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
+                 num, gpuMemcpyDeviceToHost)
+       check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+     endif
 #endif /* DEVICE_POINTER */
+
 
 #ifdef WITH_NVTX
    call nvtxRangePop()
@@ -1373,71 +1319,6 @@ function elpa_solve_evp_&
 #include "../helpers/elpa_redistribute_back_template.F90"
 #endif /* REDISTRIBUTE_MATRIX */
 
-#if defined(DEVICE_POINTER) || defined(REDISTRIBUTE_MATRIX)
-
-!#ifdef DEVICE_POINTER
-!  
-!#if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
-!   !copy qIntern and ev to provided device pointers
-!   if (present(qExtern)) then
-!   successGPU = gpu_memcpy(qExtern, c_loc(qIntern(1,1)), matrixRows*matrixCols*size_of_datatype, &
-!                             gpuMemcpyHostToDevice)
-!   endif
-!   check_memcpy_gpu("elpa1: qIntern -> qExtern", successGPU)
-!   successGPU = gpu_memcpy(evExtern, c_loc(ev(1)), obj%na*size_of_real_datatype, &
-!                             gpuMemcpyHostToDevice)
-!   check_memcpy_gpu("elpa1: ev -> evExtern", successGPU)
-!#endif
-!#endif
-
-
-!#ifndef DEVICE_POINTER
-!#if defined(REDISTRIBUTE_MATRIX)
-!   if (doRedistributeMatrix) then
-!#endif
-!     deallocate(aIntern, stat=istat, errmsg=errorMessage)
-!     check_deallocate("elpa1_template: aIntern", istat, errorMessage)
-!     !deallocate(evIntern)
-!     nullify(evIntern)
-!     if (present(qDevExtern)) then
-!       deallocate(qIntern, stat=istat, errmsg=errorMessage)
-!       check_deallocate("elpa1_template: qIntern", istat, errorMessage)
-!     endif
-!#if defined(REDISTRIBUTE_MATRIX)
-!   endif
-!#endif
-!#endif /* DEVICE_POINTER */
-
-#endif /* defined(DEVICE_POINTER) || defined(REDISTRIBUTE_MATRIX) */
-
-#ifdef WITH_GPU_STREAMS
-   !successGPU = gpu_host_unregister(int(loc(a),kind=c_intptr_t))
-   !check_host_unregister_gpu("elpa1_template: a", successGPU)
-#endif
-
-
-!#if !defined(DEVICE_POINTER) && !defined(REDISTRIBUTE_MATRIX)
-!   nullify(aIntern)
-!   nullify(evIntern)
-!   if (present(qExtern)) then
-!     nullify(qIntern)
-!   endif
-!#endif
- 
-!#ifndef DEVICE_POINTER
-!   deallocate(e, stat=istat, errmsg=errorMessage)
-!   check_deallocate("elpa1_template: e", istat, errorMessage)
-!#endif
-
-!#ifndef DEVICE_POINTER
-!   nullify(ev)
-!   nullify(a)
-!   nullify(q)
-!
-!   nullify(q_actual)
-!#endif
-
-! deallocate block mising!!
 #ifndef DEVICE_POINTER
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
