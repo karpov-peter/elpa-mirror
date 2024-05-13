@@ -1130,6 +1130,7 @@ EXTRA_DIST = \
   src/elpa2/elpa2_symm_matrix_allreduce_real_template.F90 \
   src/elpa2/elpa2_template.F90 \
   src/elpa2/elpa2_aborting_template.F90 \
+  src/elpa2/elpa2_utils_template.F90 \
   src/elpa2/elpa2_trans_ev_band_to_full_template.F90 \
   src/elpa2/elpa2_trans_ev_tridi_to_band_template.F90 \
   src/elpa2/elpa2_tridiag_band_template.F90 \
