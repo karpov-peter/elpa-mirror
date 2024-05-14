@@ -692,7 +692,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    allocate(e(na), stat=istat, errmsg=errorMessage)
-   check_allocate("elpa1_template: e, ", istat, errorMessage)
+   check_allocate("elpa2_template: e, ", istat, errorMessage)
 
    allocate(hh_trans(1:nbw,1:hh_trans_size), stat=istat, errmsg=errorMessage)
    check_allocate("elpa2_template: hh_trans", istat, errorMessage)
@@ -723,13 +723,13 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      q_actual => q(1:matrixRows,1:matrixCols)
    else
      allocate(q_dummy(1:matrixRows,1:matrixCols), stat=istat, errmsg=errorMessage)
-     check_allocate("elpa1_template: q_dummy", istat, errorMessage)
+     check_allocate("elpa2_template: q_dummy", istat, errorMessage)
      q_actual => q_dummy
    endif
 
 #if COMPLEXCASE == 1
    allocate(q_real(l_rows,l_cols), stat=istat, errmsg=errorMessage)
-   check_allocate("elpa1_template: q_real", istat, errorMessage)
+   check_allocate("elpa2_template: q_real", istat, errorMessage)
 #endif /* COMPLEXCASE */
 
 #else /* REDISTRIBUTE_MATRIX */
@@ -755,13 +755,13 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        q_actual => q(1:matrixRows,1:matrixCols)
      else
        allocate(q_dummy(1:matrixRows,1:matrixCols), stat=istat, errmsg=errorMessage)
-       check_allocate("elpa1_template: q_dummy", istat, errorMessage)
+       check_allocate("elpa2_template: q_dummy", istat, errorMessage)
        q_actual => q_dummy
      endif
 
 #if COMPLEXCASE == 1
      allocate(q_real(l_rows,l_cols), stat=istat, errmsg=errorMessage)
-     check_allocate("elpa1_template: q_real", istat, errorMessage)
+     check_allocate("elpa2_template: q_real", istat, errorMessage)
 #endif /* COMPLEXCASE */
 
    else ! doRedistributeMatrix
@@ -784,13 +784,13 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        q_actual => q(1:matrixRows,1:matrixCols)
      else
        allocate(q_dummy(1:matrixRows,1:matrixCols), stat=istat, errmsg=errorMessage)
-       check_allocate("elpa1_template: q_dummy", istat, errorMessage)
+       check_allocate("elpa2_template: q_dummy", istat, errorMessage)
        q_actual => q_dummy
      endif
 
 #if COMPLEXCASE == 1
      allocate(q_real(l_rows,l_cols), stat=istat, errmsg=errorMessage)
-     check_allocate("elpa1_template: q_real", istat, errorMessage)
+     check_allocate("elpa2_template: q_real", istat, errorMessage)
 #endif /* COMPLEXCASE */
    endif ! doRedistributeMatrix
 
@@ -804,27 +804,27 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      if (do_bandred) then
        num = (nbw*nbw*num_blocks) * size_of_datatype
        successGPU = gpu_malloc(tmat_dev, num)
-       check_alloc_gpu("elpa1_template tmat_devIntern", successGPU)
+       check_alloc_gpu("elpa2_template tmat_devIntern", successGPU)
      endif
 
      num = (nbw*hh_trans_size) * size_of_datatype
      successGPU = gpu_malloc(hh_trans_dev, num)
-     check_alloc_gpu("elpa1_template hh_trans_dev", successGPU)
+     check_alloc_gpu("elpa2_template hh_trans_dev", successGPU)
 
 
 #ifndef REDISTRIBUTE_MATRIX
      ! alloc a_devIntern, q_devIntern, ev_devIntern
      num = (matrixRows* matrixCols) * size_of_datatype
      successGPU = gpu_malloc(a_devIntern, num)
-     check_alloc_gpu("elpa1_template a_devIntern", successGPU)
+     check_alloc_gpu("elpa2_template a_devIntern", successGPU)
 
      successGPU = gpu_memcpy(a_devIntern, int(loc(a(1,1)),kind=c_intptr_t), &
                  num, gpuMemcpyHostToDevice)
-     check_memcpy_gpu("elpa1_template a -> a_devIntern", successGPU)
+     check_memcpy_gpu("elpa2_template a -> a_devIntern", successGPU)
 
      num = (na) * size_of_real_datatype
      successGPU = gpu_malloc(ev_devIntern, num)
-     check_alloc_gpu("elpa1_template ev_devIntern", successGPU)
+     check_alloc_gpu("elpa2_template ev_devIntern", successGPU)
 
      if (present(qExtern)) then
        if (isSkewsymmetric) then
@@ -833,7 +833,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
          num = (matrixRows* matrixCols) * size_of_datatype
        endif
        successGPU = gpu_malloc(q_devIntern, num)
-       check_alloc_gpu("elpa1_template q_devIntern", successGPU)
+       check_alloc_gpu("elpa2_template q_devIntern", successGPU)
      endif
 
      ! associate a_dev, q_dev, ev_dev
@@ -849,14 +849,14 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      else
        num = (matrixRows* matrixCols) * size_of_datatype
        successGPU = gpu_malloc(q_dev_dummy, num)
-       check_alloc_gpu("elpa1_template q_dev_dummy", successGPU)
+       check_alloc_gpu("elpa2_template q_dev_dummy", successGPU)
        q_dev_actual = transfer(q_dev_dummy, q_dev_actual)
      endif
 
 #if COMPLEXCASE == 1
      num = (l_rows* l_cols) * size_of_real_datatype
      successGPU = gpu_malloc(q_dev_real, num)
-     check_alloc_gpu("elpa1_template q_dev_real", successGPU)
+     check_alloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
 
 #else /* REDISTRIBUTE_MATRIX */
@@ -869,18 +869,18 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      !! alloc a_devIntern, q_devIntern, ev_devIntern
      !num = (matrixRows* matrixCols) * size_of_datatype
      !successGPU = gpu_malloc(a_devIntern, num)
-     !check_alloc_gpu("elpa1_template a_devIntern", successGPU)
+     !check_alloc_gpu("elpa2_template a_devIntern", successGPU)
 
      !successGPU = gpu_memcpy(a_devIntern, int(loc(a(1,1)),kind=c_intptr_t), &
      !            num, gpuMemcpyHostToDevice)
-     !check_memcpy_gpu("elpa1_template a -> a_devIntern", successGPU)
+     !check_memcpy_gpu("elpa2_template a -> a_devIntern", successGPU)
 
      num = (na) * size_of_real_datatype
      successGPU = gpu_malloc(ev_devIntern, num)
-     check_alloc_gpu("elpa1_template ev_devIntern", successGPU)
+     check_alloc_gpu("elpa2_template ev_devIntern", successGPU)
      !successGPU = gpu_memcpy(ev_devIntern, int(loc(ev(1)),kind=c_intptr_t), &
      !            num, gpuMemcpyHostToDevice)
-     !check_memcpy_gpu("elpa1_template ev -> ev_devIntern", successGPU)
+     !check_memcpy_gpu("elpa2_template ev -> ev_devIntern", successGPU)
      !if (present(qExtern)) then
      !  if (isSkewsymmetric) then
      !    num = (matrixRows* 2*matrixCols) * size_of_datatype
@@ -888,16 +888,16 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      !    num = (matrixRows* matrixCols) * size_of_datatype
      !  endif
      !  successGPU = gpu_malloc(q_devIntern, num)
-     !  check_alloc_gpu("elpa1_template q_devIntern", successGPU)
+     !  check_alloc_gpu("elpa2_template q_devIntern", successGPU)
      !endif
      allocate(aIntern(matrixRows,matrixCols), stat=istat, errmsg=errorMessage)
-     check_allocate("elpa1_template: aIntern", istat, errorMessage)
+     check_allocate("elpa2_template: aIntern", istat, errorMessage)
      if (isSkewsymmetric) then
        allocate(qIntern(matrixRows,2*matrixCols), stat=istat, errmsg=errorMessage)
      else
        allocate(qIntern(matrixRows,matrixCols), stat=istat, errmsg=errorMessage)
      endif
-     check_allocate("elpa1_template: qIntern", istat, errorMessage)
+     check_allocate("elpa2_template: qIntern", istat, errorMessage)
 
      if (isSkewsymmetric) then
        q => qIntern(1:matrixRows,1:2*matrixCols)
@@ -919,32 +919,32 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      else
        num = (matrixRows* matrixCols) * size_of_datatype
        successGPU = gpu_malloc(q_dev_dummy, num)
-       check_alloc_gpu("elpa1_template q_dev_dummy", successGPU)
+       check_alloc_gpu("elpa2_template q_dev_dummy", successGPU)
        q_dev_actual = transfer(q_dev_dummy, q_dev_actual)
      endif
 
 #if COMPLEXCASE == 1
      num = (l_rows* l_cols) * size_of_real_datatype
      successGPU = gpu_malloc(q_dev_real, num)
-     check_alloc_gpu("elpa1_template q_dev_real", successGPU)
+     check_alloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
 
    else ! doRedistributeMatrix
      ! alloc a_devIntern, q_devIntern, ev_devIntern
      num = (matrixRows* matrixCols) * size_of_datatype
      successGPU = gpu_malloc(a_devIntern, num)
-     check_alloc_gpu("elpa1_template a_devIntern", successGPU)
+     check_alloc_gpu("elpa2_template a_devIntern", successGPU)
 
      successGPU = gpu_memcpy(a_devIntern, int(loc(a(1,1)),kind=c_intptr_t), &
                  num, gpuMemcpyHostToDevice)
-     check_memcpy_gpu("elpa1_template a -> a_devIntern", successGPU)
+     check_memcpy_gpu("elpa2_template a -> a_devIntern", successGPU)
 
      num = (na) * size_of_real_datatype
      successGPU = gpu_malloc(ev_devIntern, num)
-     check_alloc_gpu("elpa1_template ev_devIntern", successGPU)
+     check_alloc_gpu("elpa2_template ev_devIntern", successGPU)
      !successGPU = gpu_memcpy(ev_devIntern, int(loc(ev(1)),kind=c_intptr_t), &
      !            num, gpuMemcpyHostToDevice)
-     !check_memcpy_gpu("elpa1_template ev -> ev_devIntern", successGPU)
+     !check_memcpy_gpu("elpa2_template ev -> ev_devIntern", successGPU)
      if (present(qExtern)) then
        if (isSkewsymmetric) then
          num = (matrixRows* 2*matrixCols) * size_of_datatype
@@ -952,7 +952,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
          num = (matrixRows* matrixCols) * size_of_datatype
        endif
        successGPU = gpu_malloc(q_devIntern, num)
-       check_alloc_gpu("elpa1_template q_devIntern", successGPU)
+       check_alloc_gpu("elpa2_template q_devIntern", successGPU)
      endif
 
      ! associate a_dev, q_dev, ev_dev
@@ -968,14 +968,14 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      else
        num = (matrixRows* matrixCols) * size_of_datatype
        successGPU = gpu_malloc(q_dev_dummy, num)
-       check_alloc_gpu("elpa1_template q_dev_dummy", successGPU)
+       check_alloc_gpu("elpa2_template q_dev_dummy", successGPU)
        q_dev_actual = transfer(q_dev_dummy, q_dev_actual)
      endif
 
 #if COMPLEXCASE == 1
      num = (l_rows* l_cols) * size_of_real_datatype
      successGPU = gpu_malloc(q_dev_real, num)
-     check_alloc_gpu("elpa1_template q_dev_real", successGPU)
+     check_alloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
    endif ! doRedistributeMatrix
 
@@ -997,17 +997,17 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
    if (useGPU) then
      num = (na) * size_of_real_datatype
      successGPU = gpu_malloc(e_dev, num)
-     check_alloc_gpu("elpa1_template e_dev", successGPU)
+     check_alloc_gpu("elpa2_template e_dev", successGPU)
 
      if (do_bandred) then
        num = (nbw*nbw*num_blocks) * size_of_datatype
        successGPU = gpu_malloc(tmat_dev, num)
-       check_alloc_gpu("elpa1_template tmat_devIntern", successGPU)
+       check_alloc_gpu("elpa2_template tmat_devIntern", successGPU)
      endif
 
      num = (nbw*hh_trans_size) * size_of_datatype
      successGPU = gpu_malloc(hh_trans_dev, num)
-     check_alloc_gpu("elpa1_template hh_trans_dev", successGPU)
+     check_alloc_gpu("elpa2_template hh_trans_dev", successGPU)
 
 #ifndef REDISTRIBUTE_MATRIX
      ! associate a_dev, q_dev, ev_dev
@@ -1026,14 +1026,14 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      else
        num = (matrixRows* matrixCols) * size_of_datatype
        successGPU = gpu_malloc(q_dev_dummy, num)
-       check_alloc_gpu("elpa1_template q_dev_dummy", successGPU)
+       check_alloc_gpu("elpa2_template q_dev_dummy", successGPU)
        q_dev_actual = transfer(q_dev_dummy, q_dev_actual)
      endif
 
 #if COMPLEXCASE == 1
      num = (l_rows* l_cols) * size_of_real_datatype
      successGPU = gpu_malloc(q_dev_real, num)
-     check_alloc_gpu("elpa1_template q_dev_real", successGPU)
+     check_alloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
 
 #else /* REDISTRIBUTE_MATRIX */
@@ -1053,14 +1053,14 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        else
          num = (matrixRows* matrixCols) * size_of_datatype
          successGPU = gpu_malloc(q_dev_dummy, num)
-         check_alloc_gpu("elpa1_template q_dev_dummy", successGPU)
+         check_alloc_gpu("elpa2_template q_dev_dummy", successGPU)
          q_dev_actual = transfer(q_dev_dummy, q_dev_actual)
        endif
 
 #if COMPLEXCASE == 1
        num = (l_rows* l_cols) * size_of_real_datatype
        successGPU = gpu_malloc(q_dev_real, num)
-       check_alloc_gpu("elpa1_template q_dev_real", successGPU)
+       check_alloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
 
      else ! doRedistributeMatrix
@@ -1080,14 +1080,14 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        else
          num = (matrixRows* matrixCols) * size_of_datatype
          successGPU = gpu_malloc(q_dev_dummy, num)
-         check_alloc_gpu("elpa1_template q_dev_dummy", successGPU)
+         check_alloc_gpu("elpa2_template q_dev_dummy", successGPU)
          q_dev_actual = transfer(q_dev_dummy, q_dev_actual)
        endif
 
 #if COMPLEXCASE == 1
        num = (l_rows* l_cols) * size_of_real_datatype
        successGPU = gpu_malloc(q_dev_real, num)
-       check_alloc_gpu("elpa1_template q_dev_real", successGPU)
+       check_alloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
      endif ! doRedistributeMatrix
 
@@ -1814,7 +1814,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
            num = (na) * size_of_real_datatype
            successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
                    num, gpuMemcpyDeviceToHost)
-           check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+           check_memcpy_gpu("elpa2_template ev_dev -> ev", successGPU)
          endif
          check_pd = 0
          do i = 1, na
@@ -2084,7 +2084,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
          if (do_useGPU_trans_ev_tridi_to_band) then
            num = matrixRows*matrixCols*size_of_datatype
            successGPU = gpu_malloc(q_part2_dev, num)
-           check_alloc_gpu("elpa1_template q_dev", successGPU)
+           check_alloc_gpu("elpa2_template q_dev", successGPU)
            
           ! copy q_part2(1:matrixRows,1:matrixCols) = q(1:matrixRows, matrixCols+1:2*matrixCols)
 #ifdef WITH_GPU_STREAMS
@@ -2225,7 +2225,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
       if (isSkewsymmetric) then
         if (useGPU) then
           successGPU = gpu_free(q_part2_dev)
-          check_dealloc_gpu("elpa1_template q_part2_dev", successGPU)
+          check_dealloc_gpu("elpa2_template q_part2_dev", successGPU)
         endif
       endif
     endif !do_full_to_band
@@ -2237,7 +2237,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
       num = (na) * size_of_real_datatype
       successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
                  num, gpuMemcpyDeviceToHost)
-      check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+      check_memcpy_gpu("elpa2_template ev_dev -> ev", successGPU)
    endif
 #endif /* DEVICE_POINTER */
 
@@ -2279,7 +2279,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    deallocate(e, stat=istat, errmsg=errorMessage)
-   check_deallocate("elpa1_template: e, ", istat, errorMessage)
+   check_deallocate("elpa2_template: e, ", istat, errorMessage)
 
    deallocate(hh_trans, stat=istat, errmsg=errorMessage)
    check_deallocate("elpa2_template: hh_trans", istat, errorMessage)
@@ -2305,13 +2305,13 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
    if (.not.(obj%eigenvalues_only)) then
    else
      deallocate(q_dummy, stat=istat, errmsg=errorMessage)
-     check_deallocate("elpa1_template: q_dummy", istat, errorMessage)
+     check_deallocate("elpa2_template: q_dummy", istat, errorMessage)
    endif
    nullify(q_actual)
 
 #if COMPLEXCASE == 1
    deallocate(q_real, stat=istat, errmsg=errorMessage)
-   check_deallocate("elpa1_template: q_real", istat, errorMessage)
+   check_deallocate("elpa2_template: q_real", istat, errorMessage)
 #endif /* COMPLEXCASE */
 
 #else /* REDISTRIBUTE_MATRIX */
@@ -2329,13 +2329,13 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      if (.not.(obj%eigenvalues_only)) then
      else
        deallocate(q_dummy, stat=istat, errmsg=errorMessage)
-       check_allocate("elpa1_template: q_dummy", istat, errorMessage)
+       check_allocate("elpa2_template: q_dummy", istat, errorMessage)
      endif
      nullify(q_actual)
 
 #if COMPLEXCASE == 1
      deallocate(q_real, stat=istat, errmsg=errorMessage)
-     check_deallocate("elpa1_template: q_real", istat, errorMessage)
+     check_deallocate("elpa2_template: q_real", istat, errorMessage)
 #endif /* COMPLEXCASE */
 
    else ! doRedistributeMatrix
@@ -2352,13 +2352,13 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      if (.not.(obj%eigenvalues_only)) then
      else
        deallocate(q_dummy, stat=istat, errmsg=errorMessage)
-       check_deallocate("elpa1_template: q_dummy", istat, errorMessage)
+       check_deallocate("elpa2_template: q_dummy", istat, errorMessage)
      endif
      nullify(q_actual)
 
 #if COMPLEXCASE == 1
      deallocate(q_real, stat=istat, errmsg=errorMessage)
-     check_deallocate("elpa1_template: q_real", istat, errorMessage)
+     check_deallocate("elpa2_template: q_real", istat, errorMessage)
 #endif /* COMPLEXCASE */
    endif ! doRedistributeMatrix
 
@@ -2370,36 +2370,36 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 
      if (do_bandred) then
        successGPU = gpu_free(tmat_dev)
-       check_dealloc_gpu("elpa1_template tmat_devIntern", successGPU)
+       check_dealloc_gpu("elpa2_template tmat_devIntern", successGPU)
      endif
 
      successGPU = gpu_free(hh_trans_dev)
-     check_dealloc_gpu("elpa1_template hh_trans_dev", successGPU)
+     check_dealloc_gpu("elpa2_template hh_trans_dev", successGPU)
 
 
 #ifndef REDISTRIBUTE_MATRIX
      ! alloc a_devIntern, q_devIntern, ev_devIntern
      successGPU = gpu_free(a_devIntern)
-     check_dealloc_gpu("elpa1_template a_devIntern", successGPU)
+     check_dealloc_gpu("elpa2_template a_devIntern", successGPU)
 
      successGPU = gpu_free(ev_devIntern)
-     check_dealloc_gpu("elpa1_template ev_devIntern", successGPU)
+     check_dealloc_gpu("elpa2_template ev_devIntern", successGPU)
 
      if (present(qExtern)) then
        successGPU = gpu_free(q_devIntern)
-       check_dealloc_gpu("elpa1_template q_devIntern", successGPU)
+       check_dealloc_gpu("elpa2_template q_devIntern", successGPU)
      endif
 
      ! allocate dummy q_devIntern, if eigenvectors should not be commputed and thus q is NOT present
      if (.not.(obj%eigenvalues_only)) then
      else
        successGPU = gpu_free(q_dev_dummy)
-       check_dealloc_gpu("elpa1_template q_dev_dummy", successGPU)
+       check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
      endif
 
 #if COMPLEXCASE == 1
      successGPU = gpu_free(q_dev_real)
-     check_dealloc_gpu("elpa1_template q_dev_real", successGPU)
+     check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
 
 #else /* REDISTRIBUTE_MATRIX */
@@ -2408,11 +2408,11 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
    if (doRedistributeMatrix) then
 
      successGPU = gpu_free(ev_devIntern)
-     check_dealloc_gpu("elpa1_template ev_devIntern", successGPU)
+     check_dealloc_gpu("elpa2_template ev_devIntern", successGPU)
      deallocate(aIntern, stat=istat, errmsg=errorMessage)
-     check_deallocate("elpa1_template: aIntern", istat, errorMessage)
+     check_deallocate("elpa2_template: aIntern", istat, errorMessage)
      deallocate(qIntern, stat=istat, errmsg=errorMessage)
-     check_deallocate("elpa1_template: qIntern", istat, errorMessage)
+     check_deallocate("elpa2_template: qIntern", istat, errorMessage)
 
      nullify(q)
      nullify(a)
@@ -2422,24 +2422,24 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      if (.not.(obj%eigenvalues_only)) then
      else
        successGPU = gpu_free(q_dev_dummy)
-       check_dealloc_gpu("elpa1_template q_dev_dummy", successGPU)
+       check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
      endif
 
 #if COMPLEXCASE == 1
      successGPU = gpu_free(q_dev_real)
-     check_dealloc_gpu("elpa1_template q_dev_real", successGPU)
+     check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
 
    else ! doRedistributeMatrix
      ! alloc a_devIntern, q_devIntern, ev_devIntern
      successGPU = gpu_free(a_devIntern)
-     check_dealloc_gpu("elpa1_template a_devIntern", successGPU)
+     check_dealloc_gpu("elpa2_template a_devIntern", successGPU)
 
      successGPU = gpu_free(ev_devIntern)
-     check_dealloc_gpu("elpa1_template ev_devIntern", successGPU)
+     check_dealloc_gpu("elpa2_template ev_devIntern", successGPU)
      if (present(qExtern)) then
        successGPU = gpu_free(q_devIntern)
-       check_dealloc_gpu("elpa1_template q_devIntern", successGPU)
+       check_dealloc_gpu("elpa2_template q_devIntern", successGPU)
      endif
 
 
@@ -2447,12 +2447,12 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      if (.not.(obj%eigenvalues_only)) then
      else
        successGPU = gpu_free(q_dev_dummy)
-       check_dealloc_gpu("elpa1_template q_dev_dummy", successGPU)
+       check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
      endif
 
 #if COMPLEXCASE == 1
      successGPU = gpu_free(q_dev_real)
-     check_dealloc_gpu("elpa1_template q_dev_real", successGPU)
+     check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
    endif ! doRedistributeMatrix
 
@@ -2473,27 +2473,27 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 
    if (useGPU) then
      successGPU = gpu_free(e_dev)
-     check_dealloc_gpu("elpa1_template e_dev", successGPU)
+     check_dealloc_gpu("elpa2_template e_dev", successGPU)
 
      if (do_bandred) then
        successGPU = gpu_free(tmat_dev)
-       check_dealloc_gpu("elpa1_template tmat_devIntern", successGPU)
+       check_dealloc_gpu("elpa2_template tmat_devIntern", successGPU)
      endif
 
      successGPU = gpu_free(hh_trans_dev)
-     check_dealloc_gpu("elpa1_template hh_trans_dev", successGPU)
+     check_dealloc_gpu("elpa2_template hh_trans_dev", successGPU)
 
 #ifndef REDISTRIBUTE_MATRIX
      ! allocate dummy q_devIntern, if eigenvectors should not be commputed and thus q is NOT present
      if (.not.(obj%eigenvalues_only)) then
      else
        successGPU = gpu_free(q_dev_dummy)
-       check_dealloc_gpu("elpa1_template q_dev_dummy", successGPU)
+       check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
      endif
 
 #if COMPLEXCASE == 1
      successGPU = gpu_free(q_dev_real)
-     check_dealloc_gpu("elpa1_template q_dev_real", successGPU)
+     check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
 
 #else /* REDISTRIBUTE_MATRIX */
@@ -2502,12 +2502,12 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        if (.not.(obj%eigenvalues_only)) then
        else
          successGPU = gpu_free(q_dev_dummy)
-         check_dealloc_gpu("elpa1_template q_dev_dummy", successGPU)
+         check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
        endif
 
 #if COMPLEXCASE == 1
        successGPU = gpu_free(q_dev_real)
-       check_dealloc_gpu("elpa1_template q_dev_real", successGPU)
+       check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
 
      else ! doRedistributeMatrix
@@ -2517,12 +2517,12 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        if (.not.(obj%eigenvalues_only)) then
        else
          successGPU = gpu_free(q_dev_dummy)
-         check_dealloc_gpu("elpa1_template q_dev_dummy", successGPU)
+         check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
        endif
 
 #if COMPLEXCASE == 1
        successGPU = gpu_free(q_dev_real)
-       check_dealloc_gpu("elpa1_template q_dev_real", successGPU)
+       check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
 #endif /* COMPLEXCASE */
      endif ! doRedistributeMatrix
 

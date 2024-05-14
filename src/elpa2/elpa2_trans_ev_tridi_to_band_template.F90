@@ -4974,8 +4974,8 @@ subroutine trans_ev_tridi_to_band_cpu_&
      successGPU = gpu_host_unregister(int(loc(q),kind=c_intptr_t))
      check_host_unregister_gpu("tridi_to_band: q", successGPU)
 
-     successGPU = gpu_host_unregister(int(loc(hh_trans),kind=c_intptr_t))
-     check_host_unregister_gpu("tridi_to_band: hh_trans", successGPU)
+     !successGPU = gpu_host_unregister(int(loc(hh_trans),kind=c_intptr_t))
+     !check_host_unregister_gpu("tridi_to_band: hh_trans", successGPU)
    endif
 
    !successGPU = gpu_host_unregister(int(loc(aIntern),kind=c_intptr_t))
