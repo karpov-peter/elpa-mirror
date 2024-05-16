@@ -2076,11 +2076,13 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 
 #ifndef DEVICE_POINTER
        if (useGPU) then
-         if (.not.(isSkewsymmetric)) then
-           num = (matrixRows* matrixCols) * size_of_datatype
-           successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t), q_dev, &
-                      num, gpuMemcpyDeviceToHost)
-           check_memcpy_gpu("elpa2_template q_dev -> q", successGPU)
+         if (.not.(obj%obj%eigenvalues_only)) then
+           if (.not.(isSkewsymmetric)) then
+             num = (matrixRows* matrixCols) * size_of_datatype
+             successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t), q_dev, &
+                        num, gpuMemcpyDeviceToHost)
+             check_memcpy_gpu("elpa2_template q_dev -> q", successGPU)
+           endif
          endif
        endif
 #endif
