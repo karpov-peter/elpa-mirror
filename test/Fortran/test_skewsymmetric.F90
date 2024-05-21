@@ -306,7 +306,7 @@ program test
 #endif
 
    assert_elpa_ok(e_complex%setup())
-   call e_complex%set("solver", elpa_solver_2stage, error_elpa)
+   call e_complex%set("solver", elpa_solver_1stage, error_elpa)
    assert_elpa_ok(error_elpa)
 
    call e_complex%timer_start("eigenvectors: brute force as complex matrix")
@@ -368,7 +368,7 @@ program test
 #endif
    assert_elpa_ok(e_skewsymmetric%setup())
    
-   call e_skewsymmetric%set("solver", elpa_solver_2stage, error_elpa)
+   call e_skewsymmetric%set("solver", elpa_solver_1stage, error_elpa)
    assert_elpa_ok(error_elpa)
 
    call e_skewsymmetric%timer_start("eigenvectors: skewsymmetric ")

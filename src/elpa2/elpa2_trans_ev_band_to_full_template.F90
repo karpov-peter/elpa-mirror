@@ -146,11 +146,11 @@ subroutine trans_ev_band_to_full_cpu_&
   MATH_DATATYPE(kind=rck)                        :: q_mat(qMatrixRows,matrixCols), tmat(nbw, nbw, numBlocks)
 #else /* TRANS_EV_BAND_GPU */
 #ifdef USE_ASSUMED_SIZE
-  MATH_DATATYPE(kind=rck)                        :: a_mat(matrixRows,*)
-  MATH_DATATYPE(kind=rck)                        :: q_mat(qMatrixRows,*), tmat(nbw,nbw,*)
+  MATH_DATATYPE(kind=rck), intent(in)            :: a_mat(matrixRows,*), tmat(nbw,nbw,*)
+  MATH_DATATYPE(kind=rck)                        :: q_mat(qMatrixRows,*)
 #else
-  MATH_DATATYPE(kind=rck)                        :: a_mat(matrixRows,matrixCols)
-  MATH_DATATYPE(kind=rck)                        :: q_mat(qMatrixRows,matrixCols), tmat(nbw, nbw, numBlocks)
+  MATH_DATATYPE(kind=rck), intent(in)            :: a_mat(matrixRows,matrixCols), tmat(nbw, nbw, numBlocks)
+  MATH_DATATYPE(kind=rck)                        :: q_mat(qMatrixRows,matrixCols)
 #endif
 #endif /* TRANS_EV_BAND_GPU */
 
