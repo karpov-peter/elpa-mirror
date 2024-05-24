@@ -69,29 +69,58 @@ module ELPA2_compute
 
   PRIVATE ! By default, all routines contained are private
 
-  public :: bandred_real_double
+  public :: bandred_cpu_real_double
+  public :: bandred_gpu_real_double
   public :: tridiag_band_real_double
+  !public :: tridiag_band_cpu_real_double
+  !public :: tridiag_band_gpu_real_double
   public :: trans_ev_tridi_to_band_real_double
+  !public :: trans_ev_tridi_to_band_cpu_real_double
+  !public :: trans_ev_tridi_to_band_gpu_real_double
   public :: trans_ev_band_to_full_real_double
+  !public :: trans_ev_band_to_full_cpu_real_double
+  !public :: trans_ev_band_to_full_gpu_real_double
 
 #ifdef WANT_SINGLE_PRECISION_REAL
-  public :: bandred_real_single
+  public :: bandred_cpu_real_single
+  public :: bandred_gpu_real_single
   public :: tridiag_band_real_single
+  !public :: tridiag_band_cpu_real_single
+  !public :: tridiag_band_gpu_real_single
   public :: trans_ev_tridi_to_band_real_single
+  !public :: trans_ev_tridi_to_band_cpu_real_single
+  !public :: trans_ev_tridi_to_band_gpu_real_single
+  !public :: trans_ev_band_to_full_cpu_real_single
   public :: trans_ev_band_to_full_real_single
+  !public :: trans_ev_band_to_full_gpu_real_single
 #endif
 
-  public :: bandred_complex_double
+  public :: bandred_cpu_complex_double
+  public :: bandred_gpu_complex_double
   public :: tridiag_band_complex_double
+  !public :: tridiag_band_cpu_complex_double
+  !public :: tridiag_band_gpu_complex_double
+  !public :: trans_ev_tridi_to_band_cpu_complex_double
   public :: trans_ev_tridi_to_band_complex_double
+  !public :: trans_ev_tridi_to_band_gpu_complex_double
   public :: trans_ev_band_to_full_complex_double
+  !public :: trans_ev_band_to_full_cpu_complex_double
+  !public :: trans_ev_band_to_full_gpu_complex_double
 
 #ifdef WANT_SINGLE_PRECISION_COMPLEX
-  public :: bandred_complex_single
+  public :: bandred_cpu_complex_single
+  public :: bandred_gpu_complex_single
   public :: tridiag_band_complex_single
+  !public :: tridiag_band_cpu_complex_single
+  !public :: tridiag_band_gpu_complex_single
   public :: trans_ev_tridi_to_band_complex_single
+  !public :: trans_ev_tridi_to_band_cpu_complex_single
+  !public :: trans_ev_tridi_to_band_gpu_complex_single
   public :: trans_ev_band_to_full_complex_single
+  !public :: trans_ev_band_to_full_cpu_complex_single
+  !public :: trans_ev_band_to_full_gpu_complex_single
 #endif
+
   public :: band_band_real_double
 !  public :: divide_band
 
