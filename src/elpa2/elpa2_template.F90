@@ -94,6 +94,7 @@
    use cuda_functions
    use hip_functions
    use elpa_gpu
+   use elpa_gpu_util
    use elpa1_gpu
    use mod_check_for_gpu
    use elpa_omp
