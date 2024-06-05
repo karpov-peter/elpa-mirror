@@ -217,10 +217,12 @@
    character(len=1)                                                   :: layoutInternal, layoutExternal
    integer(kind=c_int)                                                :: external_blacs_ctxt
    integer(kind=BLAS_KIND)                                            :: external_blacs_ctxtBLAS
-   integer(kind=BLAS_KIND)                                            :: np_rowsInternal, np_colsInternal, my_prowInternal, my_pcolInternal
+   integer(kind=BLAS_KIND)                                            :: np_rowsInternal, np_colsInternal, my_prowInternal, &
+                                                                         my_pcolInternal
    integer(kind=BLAS_KIND)                                            :: np_rowsExt, np_colsExt, my_prowExt, my_pcolExt
    integer(kind=BLAS_KIND)                                            :: sc_descInternal(1:9), sc_desc(1:9), sc_descExt(1:9)
-   integer(kind=BLAS_KIND)                                            :: na_rowsInternal, na_colsInternal, info_, blacs_ctxtInternal
+   integer(kind=BLAS_KIND)                                            :: na_rowsInternal, na_colsInternal, info_, &
+                                                                         blacs_ctxtInternal
    integer(kind=BLAS_KIND)                                            :: na_rowsExt, na_colsExt
    integer(kind=ik)                                                   :: mpi_comm_rowsInternal, mpi_comm_colsInternal
    integer(kind=MPI_KIND)                                             :: mpi_comm_rowsMPIInternal, mpi_comm_colsMPIInternal
@@ -1104,6 +1106,53 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 
 #endif /* DEVICE_POINTER */
 
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\
+!
+! DEBUG
+
+#ifdef DEVICE_POINTER
+   if (do_bandred) then
+     ! tmat is needed only in full->band and band->full steps, so alocate here
+     ! (not allocated for banded matrix on input)
+     allocate(tmat(nbw,nbw,num_blocks), stat=istat, errmsg=errorMessage)
+     check_allocate("elpa2_template: tmat", istat, errorMessage)
+   endif
+
+        num = na * size_of_real_datatype
+        successGPU = gpu_memcpy(int(loc(ev),kind=c_intptr_t), ev_dev,  &
+                     num, gpuMemcpyDeviceToHost)
+        check_memcpy_gpu("elpa2_template: ev ->  ev_dev", successGPU)
+
+   allocate(hh_trans(1:nbw,1:hh_trans_size), stat=istat, errmsg=errorMessage)
+   check_allocate("elpa2_template: hh_trans", istat, errorMessage)
+
+
+   allocate(a(matrixRows, matrixCols))
+        num = matrixRows*matrixCols * size_of_datatype
+        successGPU = gpu_memcpy(int(loc(a(1,1)),kind=c_intptr_t), a_dev,  &
+                     num, gpuMemcpyDeviceToHost)
+        check_memcpy_gpu("elpa2_template: a ->  a_dev", successGPU)
+
+   allocate(q(matrixRows,matrixCols), stat=istat, errmsg=errorMessage)
+   check_allocate("elpa2_template: q_actual", istat, errorMessage)
+#if COMPLEXCASE == 1
+   allocate(q_real(l_rows,l_cols), stat=istat, errmsg=errorMessage)
+   check_allocate("elpa2_template: q_real", istat, errorMessage)
+#endif
+#if REALCASE == 1
+   q_actual => q(1:matrixRows,1:matrixCols)
+#endif
+
+
+
+#endif
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
 ! no allocate after here
 
 
@@ -1732,9 +1781,11 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 #endif
        if (do_useGPU_solve_tridi) then
          ! temp hack
+#ifndef DEVICE_POINTER     
          num = (na) * size_of_real_datatype
          successGPU = gpu_malloc(ev_dev, num)
          check_alloc_gpu("elpa1_template ev_devIntern", successGPU)
+#endif
 
          num = (na) * size_of_real_datatype
          successGPU = gpu_malloc(e_dev, num)
@@ -1813,19 +1864,21 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
          check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
 #endif
 
-         successGPU = gpu_free(ev_dev)
-         check_dealloc_gpu("elpa1_template q_part2_dev", successGPU)
-
-         successGPU = gpu_free(e_dev)
-         check_dealloc_gpu("elpa1_template q_part2_dev", successGPU)
-#if REALCASE == 1
-         successGPU = gpu_free(q_dev_actual)
-         check_dealloc_gpu("elpa1_template q_part2_dev", successGPU)
-#endif
-#if COMPLEXCASE == 1
-         successGPU = gpu_free(q_dev_real)
-         check_dealloc_gpu("elpa1_template q_part2_dev", successGPU)
-#endif
+!#ifndef DEVICE_POINTER
+!         successGPU = gpu_free(ev_dev)
+!         check_dealloc_gpu("elpa1_template q_part2_dev", successGPU)
+!#endif
+!
+!         successGPU = gpu_free(e_dev)
+!         check_dealloc_gpu("elpa1_template q_part2_dev", successGPU)
+!#if REALCASE == 1
+!         successGPU = gpu_free(q_dev_actual)
+!         check_dealloc_gpu("elpa1_template q_part2_dev", successGPU)
+!#endif
+!#if COMPLEXCASE == 1
+!         successGPU = gpu_free(q_dev_real)
+!         check_dealloc_gpu("elpa1_template q_part2_dev", successGPU)
+!#endif
        else
          call solve_tridi_cpu_&
          &PRECISION &
@@ -2147,113 +2200,368 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      endif ! isSkewSymmetric
 
 
-     !! We can now deallocate the stored householder vectors
-     !deallocate(hh_trans, stat=istat, errmsg=errorMessage)
-     !check_deallocate("elpa2_template: hh_trans", istat, errorMessage)
+!debug!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#ifdef DEVICE_POINTER
+         num = (na) * size_of_real_datatype
+         successGPU = gpu_memcpy(ev_dev, int(loc(ev(1)),kind=c_intptr_t), &
+                 num, gpuMemcpyHostToDevice) 
+         check_memcpy_gpu("elpa1_template ev -> ev_ev", successGPU)
 
-     !! make sure tmat is deallocated when using check_pd
-     !if (allocated(tmat)) then
-     !  deallocate(tmat, stat=istat, errmsg=errorMessage)
-     !  check_deallocate("elpa2_template: tmat", istat, errorMessage)
-     !endif
 
-     !if (obj%eigenvalues_only) then
-     !  deallocate(q_dummy, stat=istat, errmsg=errorMessage)
-     !  check_deallocate("elpa2_template: q_dummy", istat, errorMessage)
-     !endif
+         num = matrixRows*matrixCols * size_of_datatype
+         successGPU = gpu_memcpy(a_dev, int(loc(a(1,1)),kind=c_intptr_t), &
+                 num, gpuMemcpyHostToDevice) 
+         check_memcpy_gpu("elpa1_template a ->a_dev", successGPU)
+
+     if (isSkewsymmetric) then
+         num = matrixRows*matrixCols*2 * size_of_datatype
+      else
+         num = matrixRows*matrixCols * size_of_datatype
+     endif
+
+     print *,"AAAAAAAAAA"
+         successGPU = gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t), &
+                 num, gpuMemcpyHostToDevice) 
+         check_memcpy_gpu("elpa1_template q ->q_dev", successGPU)
+
+#endif
+
 
      ! restore original OpenMP settings
 #ifdef WITH_OPENMP_TRADITIONAL
     call omp_set_num_threads(omp_threads_caller)
 #endif
 
-!#ifdef REDISTRIBUTE_MATRIX
-!   ! redistribute back if necessary
-!   if (doRedistributeMatrix) then
-!
-!     !if (layoutInternal /= layoutExternal) then
-!     !  ! maybe this can be skiped I now the process grid
-!     !  ! and np_rows and np_cols
-!
-!     !  call obj%get("mpi_comm_rows",mpi_comm_rows,error)
-!     !  call mpi_comm_size(int(mpi_comm_rows,kind=MPI_KIND), np_rowsMPI, mpierr)
-!     !  call obj%get("mpi_comm_cols",mpi_comm_cols,error)
-!     !  call mpi_comm_size(int(mpi_comm_cols,kind=MPI_KIND), np_colsMPI, mpierr)
-!
-!     !  np_rows = int(np_rowsMPI,kind=c_int)
-!     !  np_cols = int(np_colsMPI,kind=c_int)
-!
-!     !  ! we get new blacs context and the local process grid coordinates
-!     !  call BLACS_Gridinit(external_blacs_ctxt, layoutInternal, int(np_rows,kind=BLAS_KIND), int(np_cols,kind=BLAS_KIND))
-!     !  call BLACS_Gridinfo(int(external_blacs_ctxt,KIND=BLAS_KIND), np_rows__, &
-!     !                      np_cols__, my_prow__, my_pcol__)
-!
-!     !endif
-!
-!     !call scal_PRECISION_GEMR2D &
-!     !(int(na,kind=BLAS_KIND), int(na,kind=BLAS_KIND), aIntern, 1_BLAS_KIND, 1_BLAS_KIND, sc_desc_, aExtern, &
-!     !1_BLAS_KIND, 1_BLAS_KIND, sc_desc, external_blacs_ctxt)
-!
-!     call scal_PRECISION_GEMR2D &
-!     (int(na,kind=BLAS_KIND), int(na,kind=BLAS_KIND), qIntern, 1_BLAS_KIND, 1_BLAS_KIND, sc_desc_, qExtern, &
-!     1_BLAS_KIND, 1_BLAS_KIND, sc_desc, external_blacs_ctxt)
-!
-!
-!     !clean MPI communicators and blacs grid
-!     !of the internal re-distributed matrix
-!     call mpi_comm_free(mpi_comm_rowsMPI_, mpierr)
-!     call mpi_comm_free(mpi_comm_colsMPI_, mpierr)
-!     call blacs_gridexit(blacs_ctxt_)
-!   endif
-!#endif /* REDISTRIBUTE_MATRIX */
+#ifdef REDISTRIBUTE_MATRIX
+#include "../helpers/elpa_redistribute_back_template.F90"
+#endif /* REDISTRIBUTE_MATRIX */
 
-!#if defined(DEVICE_POINTER) || defined(REDISTRIBUTE_MATRIX)
-!
-!#ifdef DEVICE_POINTER
-!   !copy qIntern and ev to provided device pointers
-!#ifdef WITH_GPU_STREAMS
-!   print *,"elpa2_template: not yet implemented"
-!   stop 77
-!#endif
-!   if (present(qExtern)) then
-!   successGPU = gpu_memcpy(qExtern, c_loc(qIntern(1,1)), obj%local_nrows*obj%local_ncols*size_of_datatype, &
-!                             gpuMemcpyHostToDevice)
-!   endif
-!   check_memcpy_gpu("elpa1: qIntern -> qExtern", successGPU)
-!   successGPU = gpu_memcpy(evExtern, c_loc(ev(1)), obj%na*size_of_real_datatype, &
-!                             gpuMemcpyHostToDevice)
-!   check_memcpy_gpu("elpa1: ev -> evExtern", successGPU)
-!#endif
-!
-!#if defined(REDISTRIBUTE_MATRIX)
-!   if (doRedistributeMatrix) then
-!#endif
-!
-!     deallocate(aIntern)
-!     !deallocate(evIntern)
-!     nullify(evIntern)
-!     if (present(qExtern)) then
-!       deallocate(qIntern)
-!     endif
-!#if defined(REDISTRIBUTE_MATRIX)
-!   endif
-!#endif
-!
-!#endif /* defined(DEVICE_POINTER) || defined(REDISTRIBUTE_MATRIX) */
+print *,"start deallocat"
 
-#if !defined(DEVICE_POINTER) && !defined(REDISTRIBUTE_MATRIX)
+#ifndef DEVICE_POINTER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!
+! no device pointer
+
+
+
+
+
+
+
+
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   deallocate(e, stat=istat, errmsg=errorMessage)
+   check_deallocate("elpa2_template: e, ", istat, errorMessage)
+
+   deallocate(hh_trans, stat=istat, errmsg=errorMessage)
+   check_deallocate("elpa2_template: hh_trans", istat, errorMessage)
+
+   if (do_bandred) then
+     ! tmat is needed only in full->band and band->full steps, so alocate here
+     ! (not allocated for banded matrix on input)
+     deallocate(tmat, stat=istat, errmsg=errorMessage)
+     check_deallocate("elpa2_template: tmat", istat, errorMessage)
+   endif
+#ifndef REDISTRIBUTE_MATRIX
    nullify(aIntern)
-   nullify(evIntern)
+   nullify(a)
    if (present(qExtern)) then
      nullify(qIntern)
+     nullify(q)
    endif
-#endif
 
+
+   nullify(evIntern)
    nullify(ev)
-   nullify(a)
-   nullify(q)
 
-  nullify(q_actual)
+
+
+   ! allocate a dummy q_intern, if eigenvectors should not be commputed and thus q is NOT present
+   if (.not.(obj%eigenvalues_only)) then
+   else
+     deallocate(q_dummy, stat=istat, errmsg=errorMessage)
+     check_deallocate("elpa2_template: q_dummy", istat, errorMessage)
+   endif
+   nullify(q_actual)
+
+#if COMPLEXCASE == 1
+   deallocate(q_real, stat=istat, errmsg=errorMessage)
+   check_deallocate("elpa2_template: q_real", istat, errorMessage)
+#endif /* COMPLEXCASE */
+
+#else /* REDISTRIBUTE_MATRIX */
+
+   if (doRedistributeMatrix) then
+     nullify(a)
+     if (present(qExtern)) then
+       nullify(q)
+     endif
+     ! ev never changes
+     nullify(evIntern)
+     nullify(ev)
+
+     ! allocate a dummy q_intern, if eigenvectors should not be commputed and thus q is NOT present
+     if (.not.(obj%eigenvalues_only)) then
+     else
+       deallocate(q_dummy, stat=istat, errmsg=errorMessage)
+       check_allocate("elpa2_template: q_dummy", istat, errorMessage)
+     endif
+     nullify(q_actual)
+
+#if COMPLEXCASE == 1
+     deallocate(q_real, stat=istat, errmsg=errorMessage)
+     check_deallocate("elpa2_template: q_real", istat, errorMessage)
+#endif /* COMPLEXCASE */
+
+   else ! doRedistributeMatrix
+     nullify(aIntern)
+     nullify(a)
+     if (present(qExtern)) then
+       nullify(qIntern)
+       nullify(q)
+     endif
+     nullify(evIntern)
+     nullify(ev)
+
+     ! allocate a dummy q_intern, if eigenvectors should not be commputed and thus q is NOT present
+     if (.not.(obj%eigenvalues_only)) then
+     else
+       deallocate(q_dummy, stat=istat, errmsg=errorMessage)
+       check_deallocate("elpa2_template: q_dummy", istat, errorMessage)
+     endif
+     nullify(q_actual)
+
+#if COMPLEXCASE == 1
+     deallocate(q_real, stat=istat, errmsg=errorMessage)
+     check_deallocate("elpa2_template: q_real", istat, errorMessage)
+#endif /* COMPLEXCASE */
+   endif ! doRedistributeMatrix
+
+#endif /* REDISTRIBUTE_MATRIX */
+
+   if (useGPU) then
+     successGPU = gpu_free(e_dev)
+     check_dealloc_gpu("elpa2_template e_dev", successGPU)
+
+     if (do_bandred) then
+       successGPU = gpu_free(tmat_dev)
+       check_dealloc_gpu("elpa2_template tmat_devIntern", successGPU)
+     endif
+
+     successGPU = gpu_free(hh_trans_dev)
+     check_dealloc_gpu("elpa2_template hh_trans_dev", successGPU)
+
+
+#ifndef REDISTRIBUTE_MATRIX
+     ! alloc a_devIntern, q_devIntern, ev_devIntern
+     successGPU = gpu_free(a_devIntern)
+     check_dealloc_gpu("elpa2_template a_devIntern", successGPU)
+
+     successGPU = gpu_free(ev_devIntern)
+     check_dealloc_gpu("elpa2_template ev_devIntern", successGPU)
+
+     if (present(qExtern)) then
+       successGPU = gpu_free(q_devIntern)
+       check_dealloc_gpu("elpa2_template q_devIntern", successGPU)
+     endif
+
+     ! allocate dummy q_devIntern, if eigenvectors should not be commputed and thus q is NOT present
+     if (.not.(obj%eigenvalues_only)) then
+     else
+       successGPU = gpu_free(q_dev_dummy)
+       check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
+     endif
+
+#if COMPLEXCASE == 1
+     successGPU = gpu_free(q_dev_real)
+     check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
+#endif /* COMPLEXCASE */
+
+#else /* REDISTRIBUTE_MATRIX */
+
+
+   if (doRedistributeMatrix) then
+
+     successGPU = gpu_free(ev_devIntern)
+     check_dealloc_gpu("elpa2_template ev_devIntern", successGPU)
+     deallocate(aIntern, stat=istat, errmsg=errorMessage)
+     check_deallocate("elpa2_template: aIntern", istat, errorMessage)
+     deallocate(qIntern, stat=istat, errmsg=errorMessage)
+     check_deallocate("elpa2_template: qIntern", istat, errorMessage)
+
+     nullify(q)
+     nullify(a)
+
+
+     ! allocate dummy q_devIntern, if eigenvectors should not be commputed and thus q is NOT present
+     if (.not.(obj%eigenvalues_only)) then
+     else
+       successGPU = gpu_free(q_dev_dummy)
+       check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
+     endif
+
+#if COMPLEXCASE == 1
+     successGPU = gpu_free(q_dev_real)
+     check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
+#endif /* COMPLEXCASE */
+
+   else ! doRedistributeMatrix
+     ! alloc a_devIntern, q_devIntern, ev_devIntern
+     successGPU = gpu_free(a_devIntern)
+     check_dealloc_gpu("elpa2_template a_devIntern", successGPU)
+
+     successGPU = gpu_free(ev_devIntern)
+     check_dealloc_gpu("elpa2_template ev_devIntern", successGPU)
+     if (present(qExtern)) then
+       successGPU = gpu_free(q_devIntern)
+       check_dealloc_gpu("elpa2_template q_devIntern", successGPU)
+     endif
+
+
+     ! allocate dummy q_devIntern, if eigenvectors should not be commputed and thus q is NOT present
+     if (.not.(obj%eigenvalues_only)) then
+     else
+       successGPU = gpu_free(q_dev_dummy)
+       check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
+     endif
+
+#if COMPLEXCASE == 1
+     successGPU = gpu_free(q_dev_real)
+     check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
+#endif /* COMPLEXCASE */
+   endif ! doRedistributeMatrix
+
+#endif /* REDISTRIBUTE_MATRIX */
+   endif ! useGPU
+#else /* DEVICE_POINTER */
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   !
+   ! DEVICE POINTER
+   !
+   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   !
+   deallocate(evIntern, stat=istat, errmsg=errorMessage)
+   check_deallocate("elpa2_template: evIntern", istat, errorMessage)
+   nullify(ev)
+   deallocate(e, stat=istat, errmsg=errorMessage)
+   check_deallocate("elpa2_template: e", istat, errorMessage)
+
+   if (useGPU) then
+     successGPU = gpu_free(e_dev)
+     check_dealloc_gpu("elpa2_template e_dev", successGPU)
+
+     if (do_bandred) then
+       successGPU = gpu_free(tmat_dev)
+       check_dealloc_gpu("elpa2_template tmat_devIntern", successGPU)
+     endif
+
+     successGPU = gpu_free(hh_trans_dev)
+     check_dealloc_gpu("elpa2_template hh_trans_dev", successGPU)
+
+#ifndef REDISTRIBUTE_MATRIX
+     ! allocate dummy q_devIntern, if eigenvectors should not be commputed and thus q is NOT present
+     if (.not.(obj%eigenvalues_only)) then
+     else
+       successGPU = gpu_free(q_dev_dummy)
+       check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
+     endif
+
+#if COMPLEXCASE == 1
+     successGPU = gpu_free(q_dev_real)
+     check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
+#endif /* COMPLEXCASE */
+
+#else /* REDISTRIBUTE_MATRIX */
+     if (doRedistributeMatrix) then
+       ! allocate dummy q_devIntern, if eigenvectors should not be commputed and thus q is NOT present
+       if (.not.(obj%eigenvalues_only)) then
+       else
+         successGPU = gpu_free(q_dev_dummy)
+         check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
+       endif
+
+#if COMPLEXCASE == 1
+       successGPU = gpu_free(q_dev_real)
+       check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
+#endif /* COMPLEXCASE */
+
+     else ! doRedistributeMatrix
+       ! associate a_dev, q_dev, ev_dev
+
+       ! allocate dummy q_devIntern, if eigenvectors should not be commputed and thus q is NOT present
+       if (.not.(obj%eigenvalues_only)) then
+       else
+         successGPU = gpu_free(q_dev_dummy)
+         check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
+       endif
+
+#if COMPLEXCASE == 1
+       successGPU = gpu_free(q_dev_real)
+       check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
+#endif /* COMPLEXCASE */
+     endif ! doRedistributeMatrix
+
+#endif /* REDISTRIBUTE_MATRIX */
+   endif ! useGPU
+
+#endif /* DEVICE_POINTER */
+
+print *,"done deallocat"
 
 #ifdef ACTIVATE_SKEW
      call obj%timer%stop("elpa_solve_skew_evp_&
