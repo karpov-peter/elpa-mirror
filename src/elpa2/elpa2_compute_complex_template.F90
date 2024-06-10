@@ -66,11 +66,11 @@
 
 #include "elpa2_herm_matrix_allreduce_complex_template.F90"
 
-!#undef TRIDIAG_GPU
+#undef TRIDIAG_GPU
 #include "elpa2_tridiag_band_template.F90"
-!#define TRIDIAG_GPU
-!#include "elpa2_tridiag_band_template.F90"
-!#undef TRIDIAG_GPU
+#define TRIDIAG_GPU
+#include "elpa2_tridiag_band_template.F90"
+#undef TRIDIAG_GPU
 
 !#undef TRANS_EV_TRIDI_GPU
 #include "elpa2_trans_ev_tridi_to_band_template.F90"

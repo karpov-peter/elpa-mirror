@@ -651,8 +651,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
     endif  ! matrix not already banded on input
 
     do_useGPU_bandred = do_useGPU
-    do_useGPU_tridiag_band = .false.  ! not yet ported
-    !CHANGE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    do_useGPU_tridiag_band = do_useGPU
     do_useGPU_solve_tridi = do_useGPU
     do_useGPU_trans_ev_tridi_to_band = do_useGPU
     do_useGPU_trans_ev_band_to_full = do_useGPU
@@ -1677,18 +1676,18 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 
 
     if (do_useGPU_bandred) then
-        num = matrixRows*matrixCols * size_of_datatype
-#ifdef WITH_GPU_STREAMS
-        my_stream = obj%gpu_setup%my_stream
-        call gpu_memcpy_async_and_stream_synchronize &
-            ("elpa2_template: a_dev -> a", a_dev, 0_c_intptr_t, &
-                                                 a(1:matrixRows,1:matrixCols), &
-                                                 1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
-#else
-        successGPU = gpu_memcpy(int(loc(a),kind=c_intptr_t), a_dev,  &
-                     num, gpuMemcpyDeviceToHost)
-        check_memcpy_gpu("elpa2_template: a_dev ->  a", successGPU)
-#endif
+!        num = matrixRows*matrixCols * size_of_datatype
+!#ifdef WITH_GPU_STREAMS
+!        my_stream = obj%gpu_setup%my_stream
+!        call gpu_memcpy_async_and_stream_synchronize &
+!            ("elpa2_template: a_dev -> a", a_dev, 0_c_intptr_t, &
+!                                                 a(1:matrixRows,1:matrixCols), &
+!                                                 1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+!#else
+!        successGPU = gpu_memcpy(int(loc(a),kind=c_intptr_t), a_dev,  &
+!                     num, gpuMemcpyDeviceToHost)
+!        check_memcpy_gpu("elpa2_template: a_dev ->  a", successGPU)
+!#endif
         num = (nbw*nbw*num_blocks) * size_of_datatype
 #ifdef WITH_GPU_STREAMS
         my_stream = obj%gpu_setup%my_stream
@@ -1714,13 +1713,25 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 #ifdef HAVE_LIKWID
        call likwid_markerStartRegion("band_to_tridi")
 #endif
-       call tridiag_band_&
-       &MATH_DATATYPE&
-       &_&
-       &PRECISION&
-       (obj, na, nbw, nblk, a, matrixRows, ev, e, matrixCols, hh_trans, mpi_comm_rows, mpi_comm_cols, mpi_comm_all, &
-       do_useGPU_tridiag_band, wantDebug, nrThreads, isSkewsymmetric, success)
-  
+ 
+       if (do_useGPU_tridiag_band) then
+         call tridiag_band_gpu_&
+         &MATH_DATATYPE&
+         &_&
+         &PRECISION&
+         (obj, na, nbw, nblk, hh_trans_size, a_dev, matrixRows, ev_dev, e_dev, matrixCols, hh_trans_dev,  mpi_comm_rows, &
+          mpi_comm_cols, mpi_comm_all, &
+          wantDebug, nrThreads, isSkewsymmetric, success)
+       else
+         call tridiag_band_cpu_&
+         &MATH_DATATYPE&
+         &_&
+         &PRECISION&
+         (obj, na, nbw, nblk, hh_trans_size, a, matrixRows, ev, e, matrixCols, hh_trans, mpi_comm_rows, mpi_comm_cols, &
+         mpi_comm_all, &
+          wantDebug, nrThreads, isSkewsymmetric, success)
+       endif 
+
        if (success) then
          success_int = 0
        else
@@ -1743,17 +1754,152 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 
 #ifdef WITH_MPI
        call obj%timer%start("mpi_communication")
-       if (useNonBlockingCollectivesAll) then
-         call mpi_ibcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), bcast_request1, mpierr)
-         call mpi_ibcast(e, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), bcast_request2, mpierr)
+       if (useGPU) then
+#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL)
+        my_stream = obj%gpu_setup%my_stream
+        ccl_comm_all = obj%gpu_setup%ccl_comm_all
+        successGPU = ccl_group_start()
+        if (.not.successGPU) then
+          print *,"Error in setting up nccl_group_start!"
+          stop
+        endif
+        successGPU = ccl_bcast(ev_dev, ev_dev, &
+                         int(na,kind=c_size_t), &
+#ifdef DOUBLE_PRECISION
+                         cclDouble, &
+#endif
+#ifdef SINGLE_PRECISION
+                         cclFloat, &
+#endif
+                         0_c_int, ccl_comm_all, my_stream)
+        successGPU = ccl_bcast(e_dev, e_dev, &
+                         int(na,kind=c_size_t), &
+#ifdef DOUBLE_PRECISION
+                         cclDouble, &
+#endif
+#ifdef SINGLE_PRECISION
+                         cclFloat, &
+#endif
+                         0_c_int, ccl_comm_all, my_stream)
 
-         call mpi_wait(bcast_request1, MPI_STATUS_IGNORE, mpierr)
-         call mpi_wait(bcast_request2, MPI_STATUS_IGNORE, mpierr)
+
+          if (.not.successGPU) then
+            print *,"Error in nccl_reduce"
+            stop
+          endif
+          successGPU = ccl_group_end()
+          if (.not.successGPU) then
+            print *,"Error in setting up nccl_group_end!"
+            stop
+          endif
+
+
+          ! debug
+         
+         num = (na) * size_of_real_datatype
+         successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
+                 num, gpuMemcpyDeviceToHost) 
+         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+
+         num = (na) * size_of_real_datatype
+         successGPU = gpu_memcpy(int(loc(e(1)),kind=c_intptr_t), e_dev, &
+                 num, gpuMemcpyDeviceToHost) 
+         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+
+#else /* defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) */
+
+         num = na * size_of_real_datatype
+#ifdef WITH_GPU_STREAMS
+        my_stream = obj%gpu_setup%my_stream
+        call gpu_memcpy_async_and_stream_synchronize &
+            ("elpa2_template: ev_dev -> ev", ev_dev, 0_c_intptr_t, &
+                                                 ev(1:na), &
+                                                 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+        call gpu_memcpy_async_and_stream_synchronize &
+            ("elpa2_template: e_dev -> e", e_dev, 0_c_intptr_t, &
+                                                 e(1:na), &
+                                                 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+#else
+         successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_devIntern, &
+                      num, gpuMemcpyDeviceToHost)
+         check_memcpy_gpu("elpa2_template ev_devIntern -> ev", successGPU)
+         successGPU = gpu_memcpy(int(loc(e(1)),kind=c_intptr_t), e_dev, &
+                      num, gpuMemcpyDeviceToHost)
+         check_memcpy_gpu("elpa2_template e_dev -> e", successGPU)
+#endif
+
+         if (useNonBlockingCollectivesAll) then
+           call mpi_ibcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), &
+                   bcast_request1, mpierr)
+           call mpi_ibcast(e, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), &
+                   bcast_request2, mpierr)
+
+           call mpi_wait(bcast_request1, MPI_STATUS_IGNORE, mpierr)
+           call mpi_wait(bcast_request2, MPI_STATUS_IGNORE, mpierr)
+         else
+           call mpi_bcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), mpierr)
+           call mpi_bcast(e, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), mpierr)
+         endif
+         num = na * size_of_real_datatype
+#ifdef WITH_GPU_STREAMS
+        my_stream = obj%gpu_setup%my_stream
+        call gpu_memcpy_async_and_stream_synchronize &
+            ("elpa2_template: ev -> ev_dev", ev_dev, 0_c_intptr_t, &
+                                                 ev(1:na), &
+                                                 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
+        call gpu_memcpy_async_and_stream_synchronize &
+            ("elpa2_template: e -> e_dev", e_dev, 0_c_intptr_t, &
+                                                 e(1:na), &
+                                                 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
+#else
+         successGPU = gpu_memcpy(ev_devIntern, int(loc(ev(1)),kind=c_intptr_t), &
+                      num, gpuMemcpyHostToDevice)
+         check_memcpy_gpu("elpa2_template ev -> ev_devIntern:", successGPU)
+         successGPU = gpu_memcpy(e_dev, int(loc(e(1)),kind=c_intptr_t), &
+                      num, gpuMemcpyHostToDevice)
+         check_memcpy_gpu("elpa2_template e -> e_dev:", successGPU)
+#endif
+#endif /* defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) */
        else
-         call mpi_bcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), mpierr)
-         call mpi_bcast(e, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), mpierr)
+         if (useNonBlockingCollectivesAll) then
+           call mpi_ibcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), &
+                   bcast_request1, mpierr)
+           call mpi_ibcast(e, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), &
+                   bcast_request2, mpierr)
+
+           call mpi_wait(bcast_request1, MPI_STATUS_IGNORE, mpierr)
+           call mpi_wait(bcast_request2, MPI_STATUS_IGNORE, mpierr)
+         else
+           call mpi_bcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), mpierr)
+           call mpi_bcast(e, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), mpierr)
+         endif
        endif
        call obj%timer%stop("mpi_communication")
+#else /* WITH_MPI */
+
+! debug ??
+      if (useGPU) then
+         num = na * size_of_real_datatype
+#ifdef WITH_GPU_STREAMS
+        my_stream = obj%gpu_setup%my_stream
+        call gpu_memcpy_async_and_stream_synchronize &
+            ("elpa2_template: ev_dev -> ev", ev_dev, 0_c_intptr_t, &
+                                                 ev(1:na), &
+                                                 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+        call gpu_memcpy_async_and_stream_synchronize &
+            ("elpa2_template: e_dev -> e", e_dev, 0_c_intptr_t, &
+                                                 e(1:na), &
+                                                 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+#else
+         successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_devIntern, &
+                      num, gpuMemcpyDeviceToHost)
+         check_memcpy_gpu("elpa2_template ev_devIntern -> ev", successGPU)
+         successGPU = gpu_memcpy(int(loc(e(1)),kind=c_intptr_t), e_dev, &
+                      num, gpuMemcpyDeviceToHost)
+         check_memcpy_gpu("elpa2_template e_dev -> e", successGPU)
+#endif
+      endif
+
 #endif /* WITH_MPI */
 
 #ifdef HAVE_LIKWID
@@ -1772,6 +1918,39 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      !check_allocate("elpa2_template: q_real", istat, errorMessage)
 #endif
 
+
+
+       if (do_useGPU_tridiag_band) then
+! debug
+     num = (nbw*hh_trans_size) * size_of_datatype
+#ifdef WITH_GPU_STREAMS
+        my_stream = obj%gpu_setup%my_stream
+        call gpu_memcpy_async_and_stream_synchronize &
+            ("elpa2_template: hh_trans_dev -> hh_trans", hh_trans_dev, 0_c_intptr_t, &
+                                                 hh_trans(1:nbw,1:hh_trans_size), &
+                                                 1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+#else
+        successGPU = gpu_memcpy(int(loc(hh_trans(1,1)),kind=c_intptr_t), hh_trans_dev,  &
+                     num, gpuMemcpyDeviceToHost)
+        check_memcpy_gpu("elpa2_template: hh_trans_dev ->  hh_trans", successGPU)
+#endif
+        num = matrixRows*matrixCols * size_of_datatype
+#ifdef WITH_GPU_STREAMS
+        my_stream = obj%gpu_setup%my_stream
+        call gpu_memcpy_async_and_stream_synchronize &
+            ("elpa2_template: a_dev -> a", a_dev, 0_c_intptr_t, &
+                                                 a(1:matrixRows,1:matrixCols), &
+                                                 1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+#else
+        successGPU = gpu_memcpy(int(loc(a),kind=c_intptr_t), a_dev,  &
+                     num, gpuMemcpyDeviceToHost)
+        check_memcpy_gpu("elpa2_template: a_dev ->  a", successGPU)
+#endif
+
+       endif
+
+
+
      ! Solve tridiagonal system
      if (do_solve_tridi) then
        call obj%autotune_timer%start("solve")
@@ -1781,15 +1960,15 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 #endif
        if (do_useGPU_solve_tridi) then
          ! temp hack
-#ifndef DEVICE_POINTER     
-         num = (na) * size_of_real_datatype
-         successGPU = gpu_malloc(ev_dev, num)
-         check_alloc_gpu("elpa1_template ev_devIntern", successGPU)
-#endif
+!#ifndef DEVICE_POINTER     
+!         num = (na) * size_of_real_datatype
+!         successGPU = gpu_malloc(ev_dev, num)
+!         check_alloc_gpu("elpa1_template ev_devIntern", successGPU)
+!#endif
 
-         num = (na) * size_of_real_datatype
-         successGPU = gpu_malloc(e_dev, num)
-         check_alloc_gpu("elpa1_template e_dev", successGPU)
+!         num = (na) * size_of_real_datatype
+!         successGPU = gpu_malloc(e_dev, num)
+!         check_alloc_gpu("elpa1_template e_dev", successGPU)
 
 
 #if REALCASE == 1
