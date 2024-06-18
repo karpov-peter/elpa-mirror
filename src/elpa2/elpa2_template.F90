@@ -1794,39 +1794,41 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
           endif
 
 
-          ! debug
-         
-         num = (na) * size_of_real_datatype
-         successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
-                 num, gpuMemcpyDeviceToHost) 
-         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+         ! ! debug
+         !
+         !num = (na) * size_of_real_datatype
+         !successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
+         !        num, gpuMemcpyDeviceToHost) 
+         !check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
 
-         num = (na) * size_of_real_datatype
-         successGPU = gpu_memcpy(int(loc(e(1)),kind=c_intptr_t), e_dev, &
-                 num, gpuMemcpyDeviceToHost) 
-         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+         !num = (na) * size_of_real_datatype
+         !successGPU = gpu_memcpy(int(loc(e(1)),kind=c_intptr_t), e_dev, &
+         !        num, gpuMemcpyDeviceToHost) 
+         !check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
 
 #else /* defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) */
 
-         num = na * size_of_real_datatype
+         if (useGPU) then
+           num = na * size_of_real_datatype
 #ifdef WITH_GPU_STREAMS
-        my_stream = obj%gpu_setup%my_stream
-        call gpu_memcpy_async_and_stream_synchronize &
-            ("elpa2_template: ev_dev -> ev", ev_dev, 0_c_intptr_t, &
-                                                 ev(1:na), &
-                                                 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
-        call gpu_memcpy_async_and_stream_synchronize &
-            ("elpa2_template: e_dev -> e", e_dev, 0_c_intptr_t, &
-                                                 e(1:na), &
-                                                 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+           my_stream = obj%gpu_setup%my_stream
+           call gpu_memcpy_async_and_stream_synchronize &
+               ("elpa2_template: ev_dev -> ev", ev_dev, 0_c_intptr_t, &
+                                                    ev(1:na), &
+                                                    1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+           call gpu_memcpy_async_and_stream_synchronize &
+               ("elpa2_template: e_dev -> e", e_dev, 0_c_intptr_t, &
+                                                    e(1:na), &
+                                                    1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
 #else
-         successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_devIntern, &
-                      num, gpuMemcpyDeviceToHost)
-         check_memcpy_gpu("elpa2_template ev_devIntern -> ev", successGPU)
-         successGPU = gpu_memcpy(int(loc(e(1)),kind=c_intptr_t), e_dev, &
-                      num, gpuMemcpyDeviceToHost)
-         check_memcpy_gpu("elpa2_template e_dev -> e", successGPU)
+           successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_devIntern, &
+                        num, gpuMemcpyDeviceToHost)
+           check_memcpy_gpu("elpa2_template ev_devIntern -> ev", successGPU)
+           successGPU = gpu_memcpy(int(loc(e(1)),kind=c_intptr_t), e_dev, &
+                        num, gpuMemcpyDeviceToHost)
+           check_memcpy_gpu("elpa2_template e_dev -> e", successGPU)
 #endif
+         endif
 
          if (useNonBlockingCollectivesAll) then
            call mpi_ibcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), &
@@ -1840,25 +1842,28 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
            call mpi_bcast(ev, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), mpierr)
            call mpi_bcast(e, int(na,kind=MPI_KIND), MPI_REAL_PRECISION, 0_MPI_KIND, int(mpi_comm_all,kind=MPI_KIND), mpierr)
          endif
-         num = na * size_of_real_datatype
+
+         if (useGPU) then
+           num = na * size_of_real_datatype
 #ifdef WITH_GPU_STREAMS
-        my_stream = obj%gpu_setup%my_stream
-        call gpu_memcpy_async_and_stream_synchronize &
-            ("elpa2_template: ev -> ev_dev", ev_dev, 0_c_intptr_t, &
-                                                 ev(1:na), &
-                                                 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
-        call gpu_memcpy_async_and_stream_synchronize &
-            ("elpa2_template: e -> e_dev", e_dev, 0_c_intptr_t, &
-                                                 e(1:na), &
-                                                 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
+           my_stream = obj%gpu_setup%my_stream
+           call gpu_memcpy_async_and_stream_synchronize &
+               ("elpa2_template: ev -> ev_dev", ev_dev, 0_c_intptr_t, &
+                                                    ev(1:na), &
+                                                    1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
+           call gpu_memcpy_async_and_stream_synchronize &
+               ("elpa2_template: e -> e_dev", e_dev, 0_c_intptr_t, &
+                                                    e(1:na), &
+                                                    1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
 #else
-         successGPU = gpu_memcpy(ev_devIntern, int(loc(ev(1)),kind=c_intptr_t), &
-                      num, gpuMemcpyHostToDevice)
-         check_memcpy_gpu("elpa2_template ev -> ev_devIntern:", successGPU)
-         successGPU = gpu_memcpy(e_dev, int(loc(e(1)),kind=c_intptr_t), &
-                      num, gpuMemcpyHostToDevice)
-         check_memcpy_gpu("elpa2_template e -> e_dev:", successGPU)
+           successGPU = gpu_memcpy(ev_devIntern, int(loc(ev(1)),kind=c_intptr_t), &
+                        num, gpuMemcpyHostToDevice)
+           check_memcpy_gpu("elpa2_template ev -> ev_devIntern:", successGPU)
+           successGPU = gpu_memcpy(e_dev, int(loc(e(1)),kind=c_intptr_t), &
+                        num, gpuMemcpyHostToDevice)
+           check_memcpy_gpu("elpa2_template e -> e_dev:", successGPU)
 #endif
+         endif
 #endif /* defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) */
        else
          if (useNonBlockingCollectivesAll) then
@@ -1877,28 +1882,28 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        call obj%timer%stop("mpi_communication")
 #else /* WITH_MPI */
 
-! debug ??
-      if (useGPU) then
-         num = na * size_of_real_datatype
-#ifdef WITH_GPU_STREAMS
-        my_stream = obj%gpu_setup%my_stream
-        call gpu_memcpy_async_and_stream_synchronize &
-            ("elpa2_template: ev_dev -> ev", ev_dev, 0_c_intptr_t, &
-                                                 ev(1:na), &
-                                                 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
-        call gpu_memcpy_async_and_stream_synchronize &
-            ("elpa2_template: e_dev -> e", e_dev, 0_c_intptr_t, &
-                                                 e(1:na), &
-                                                 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
-#else
-         successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_devIntern, &
-                      num, gpuMemcpyDeviceToHost)
-         check_memcpy_gpu("elpa2_template ev_devIntern -> ev", successGPU)
-         successGPU = gpu_memcpy(int(loc(e(1)),kind=c_intptr_t), e_dev, &
-                      num, gpuMemcpyDeviceToHost)
-         check_memcpy_gpu("elpa2_template e_dev -> e", successGPU)
-#endif
-      endif
+!! debug ??
+!      if (useGPU) then
+!         num = na * size_of_real_datatype
+!#ifdef WITH_GPU_STREAMS
+!        my_stream = obj%gpu_setup%my_stream
+!        call gpu_memcpy_async_and_stream_synchronize &
+!            ("elpa2_template: ev_dev -> ev", ev_dev, 0_c_intptr_t, &
+!                                                 ev(1:na), &
+!                                                 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+!        call gpu_memcpy_async_and_stream_synchronize &
+!            ("elpa2_template: e_dev -> e", e_dev, 0_c_intptr_t, &
+!                                                 e(1:na), &
+!                                                 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+!#else
+!         successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_devIntern, &
+!                      num, gpuMemcpyDeviceToHost)
+!         check_memcpy_gpu("elpa2_template ev_devIntern -> ev", successGPU)
+!         successGPU = gpu_memcpy(int(loc(e(1)),kind=c_intptr_t), e_dev, &
+!                      num, gpuMemcpyDeviceToHost)
+!         check_memcpy_gpu("elpa2_template e_dev -> e", successGPU)
+!#endif
+!      endif
 
 #endif /* WITH_MPI */
 
@@ -1971,28 +1976,29 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 !         check_alloc_gpu("elpa1_template e_dev", successGPU)
 
 
-#if REALCASE == 1
-         num = (matrixRows*matrixCols) * size_of_datatype
-         successGPU = gpu_malloc(q_dev_actual, num)
-         check_alloc_gpu("elpa1_template e_dev", successGPU)
-#endif
+!! was this too early to remove?
+!#if REALCASE == 1
+!         num = (matrixRows*matrixCols) * size_of_datatype
+!         successGPU = gpu_malloc(q_dev_actual, num)
+!         check_alloc_gpu("elpa1_template e_dev", successGPU)
+!#endif
+!
+!#if COMPLEXCASE == 1
+!         num = (matrixRows*matrixCols) * size_of_real_datatype
+!         successGPU = gpu_malloc(q_dev_real, num)
+!         check_alloc_gpu("elpa1_template e_dev", successGPU)
+!#endif
 
-#if COMPLEXCASE == 1
-         num = (matrixRows*matrixCols) * size_of_real_datatype
-         successGPU = gpu_malloc(q_dev_real, num)
-         check_alloc_gpu("elpa1_template e_dev", successGPU)
-#endif
 
-
-         num = (na) * size_of_real_datatype
-         successGPU = gpu_memcpy(ev_dev, int(loc(ev(1)),kind=c_intptr_t), &
-                 num, gpuMemcpyHostToDevice) 
-         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
-
-         num = (na) * size_of_real_datatype
-         successGPU = gpu_memcpy(e_dev, int(loc(e(1)),kind=c_intptr_t),  &
-                 num, gpuMemcpyHostToDevice) 
-         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+!         num = (na) * size_of_real_datatype
+!         successGPU = gpu_memcpy(ev_dev, int(loc(ev(1)),kind=c_intptr_t), &
+!                 num, gpuMemcpyHostToDevice) 
+!         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+!
+!         num = (na) * size_of_real_datatype
+!         successGPU = gpu_memcpy(e_dev, int(loc(e(1)),kind=c_intptr_t),  &
+!                 num, gpuMemcpyHostToDevice) 
+!         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
 
 #if REALCASE == 1
          num = (matrixRows*matrixCols) * size_of_datatype
