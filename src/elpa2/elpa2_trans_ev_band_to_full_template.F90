@@ -57,6 +57,8 @@
 #undef CUDA_AWARE_MPI_BAND_TO_FULL
 #endif
 
+#undef CUDA_AWARE_MPI_BAND_TO_FULL
+
 #ifdef CUDA_AWARE_MPI_BAND_TO_FULL
 #define MORE_GPUBLAS
 #else

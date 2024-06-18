@@ -820,6 +820,12 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      successGPU = gpu_malloc(hh_trans_dev, num)
      check_alloc_gpu("elpa2_template hh_trans_dev", successGPU)
 
+     if (isSkewsymmetric) then
+       num = matrixRows*matrixCols*size_of_datatype 
+       successGPU = gpu_malloc(q_part2_dev, num)       
+       check_alloc_gpu("elpa2_template q_dev", successGPU)
+     endif
+
 
 #ifndef REDISTRIBUTE_MATRIX
      ! alloc a_devIntern, q_devIntern, ev_devIntern
@@ -917,7 +923,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 
      ! associate a_dev, q_dev, ev_dev
      a_dev = transfer(a_devIntern, a_dev)
-     ev_dev = transfer(ev_devIntern, a_dev)
+     ev_dev = transfer(ev_devIntern, ev_dev)
      if (present(qExtern)) then
        q_dev = transfer(q_devIntern, q_dev)
      endif
@@ -966,7 +972,7 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 
      ! associate a_dev, q_dev, ev_dev
      a_dev = transfer(a_devIntern, a_dev)
-     ev_dev = transfer(ev_devIntern, a_dev)
+     ev_dev = transfer(ev_devIntern, ev_dev)
      if (present(qExtern)) then
        q_dev = transfer(q_devIntern, q_dev)
      endif
@@ -1018,11 +1024,17 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      successGPU = gpu_malloc(hh_trans_dev, num)
      check_alloc_gpu("elpa2_template hh_trans_dev", successGPU)
 
+     if (isSkewsymmetric) then
+       num = matrixRows*matrixCols*size_of_datatype 
+       successGPU = gpu_malloc(q_part2_dev, num)       
+       check_alloc_gpu("elpa2_template q_dev", successGPU)
+     endif
+
 #ifndef REDISTRIBUTE_MATRIX
      ! associate a_dev, q_dev, ev_dev
      a_devIntern = transfer(aDevExtern, a_devIntern)
      a_dev = transfer(a_devIntern, a_dev)
-     ev_dev = transfer(evDevExtern, a_dev)
+     ev_dev = transfer(evDevExtern, ev_dev)
      ev_devIntern = transfer(evDevExtern, ev_devIntern)
      if (present(qDevExtern)) then
        q_dev = transfer(qDevExtern, q_dev)
@@ -1076,8 +1088,8 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        ! associate a_dev, q_dev, ev_dev
        a_devIntern = transfer(aDevExtern, a_devIntern)
        a_dev = transfer(a_devIntern, a_dev)
-       ev_dev = transfer(evDevExtern, a_dev)
-       ev_devIntern = transfer(evDevExtern, a_devIntern)
+       ev_dev = transfer(evDevExtern, ev_dev)
+       ev_devIntern = transfer(evDevExtern, ev_devIntern)
        if (present(qDevExtern)) then
          q_devIntern = transfer(qDevExtern, q_devIntern)
          q_dev = transfer(q_devIntern, q_dev)
@@ -1927,18 +1939,18 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 
        if (do_useGPU_tridiag_band) then
 ! debug
-     num = (nbw*hh_trans_size) * size_of_datatype
-#ifdef WITH_GPU_STREAMS
-        my_stream = obj%gpu_setup%my_stream
-        call gpu_memcpy_async_and_stream_synchronize &
-            ("elpa2_template: hh_trans_dev -> hh_trans", hh_trans_dev, 0_c_intptr_t, &
-                                                 hh_trans(1:nbw,1:hh_trans_size), &
-                                                 1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
-#else
-        successGPU = gpu_memcpy(int(loc(hh_trans(1,1)),kind=c_intptr_t), hh_trans_dev,  &
-                     num, gpuMemcpyDeviceToHost)
-        check_memcpy_gpu("elpa2_template: hh_trans_dev ->  hh_trans", successGPU)
-#endif
+!     num = (nbw*hh_trans_size) * size_of_datatype
+!#ifdef WITH_GPU_STREAMS
+!        my_stream = obj%gpu_setup%my_stream
+!        call gpu_memcpy_async_and_stream_synchronize &
+!            ("elpa2_template: hh_trans_dev -> hh_trans", hh_trans_dev, 0_c_intptr_t, &
+!                                                 hh_trans(1:nbw,1:hh_trans_size), &
+!                                                 1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+!#else
+!        successGPU = gpu_memcpy(int(loc(hh_trans(1,1)),kind=c_intptr_t), hh_trans_dev,  &
+!                     num, gpuMemcpyDeviceToHost)
+!        check_memcpy_gpu("elpa2_template: hh_trans_dev ->  hh_trans", successGPU)
+!#endif
         num = matrixRows*matrixCols * size_of_datatype
 #ifdef WITH_GPU_STREAMS
         my_stream = obj%gpu_setup%my_stream
@@ -2035,19 +2047,22 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
          successGPU = gpu_memcpy(int(loc(e(1)),kind=c_intptr_t), e_dev, &
                  num, gpuMemcpyDeviceToHost) 
          check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
-#if REALCASE == 1
-         num = (matrixRows*matrixCols) * size_of_datatype
-         successGPU = gpu_memcpy(int(loc(q_actual(1,1)),kind=c_intptr_t), q_dev_actual, &
-                 num, gpuMemcpyDeviceToHost) 
-         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
-#endif
+!#if REALCASE == 1
+!         num = (matrixRows*matrixCols) * size_of_datatype
+!         successGPU = gpu_memcpy(int(loc(q_actual(1,1)),kind=c_intptr_t), q_dev_actual, &
+!                 num, gpuMemcpyDeviceToHost) 
+!         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+!#endif
+!
+!#if COMPLEXCASE == 1
+!         num = (matrixRows*matrixCols) * size_of_real_datatype
+!         successGPU = gpu_memcpy(int(loc(q_real(1,1)),kind=c_intptr_t), q_dev_real, &
+!                 num, gpuMemcpyDeviceToHost) 
+!         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+!#endif
 
-#if COMPLEXCASE == 1
-         num = (matrixRows*matrixCols) * size_of_real_datatype
-         successGPU = gpu_memcpy(int(loc(q_real(1,1)),kind=c_intptr_t), q_dev_real, &
-                 num, gpuMemcpyDeviceToHost) 
-         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
-#endif
+
+
 
 !#ifndef DEVICE_POINTER
 !         successGPU = gpu_free(ev_dev)
@@ -2109,11 +2124,30 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
      !deallocate(e, stat=istat, errmsg=errorMessage)
      !check_deallocate("elpa2_template: e", istat, errorMessage)
 
+     ! debug
+     if (useGPU) then
+#if REALCASE == 1
+         num = (matrixRows*matrixCols) * size_of_datatype
+         successGPU = gpu_memcpy(int(loc(q_actual(1,1)),kind=c_intptr_t), q_dev_actual, &
+                 num, gpuMemcpyDeviceToHost) 
+         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+#endif
+
+#if COMPLEXCASE == 1
+         num = (matrixRows*matrixCols) * size_of_real_datatype
+         successGPU = gpu_memcpy(int(loc(q_real(1,1)),kind=c_intptr_t), q_dev_real, &
+                 num, gpuMemcpyDeviceToHost) 
+         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+#endif
+     endif
+
+
+
      if (obj%eigenvalues_only) then
        do_trans_to_band = .false.
        do_trans_to_full = .false.
      else
-       call obj%get("check_pd",check_pd,error)
+       call obj%get("check_pd", check_pd, error)
        if (error .ne. ELPA_OK) then
          write(error_unit,*) "Problem getting option for check_pd. Aborting..."
 #include "./elpa2_aborting_template.F90"
@@ -2127,6 +2161,23 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
             &PRECISION&
             &. Aborting..."
 #include "./elpa2_aborting_template.F90"
+         endif
+
+         if (useGPU) then
+
+         num = (na) * size_of_real_datatype
+#ifdef WITH_GPU_STREAMS
+         my_stream = obj%gpu_setup%my_stream
+         call gpu_memcpy_async_and_stream_synchronize &
+            ("elpa2_template: ev_dev -> ev", ev_dev, 0_c_intptr_t, &
+                                                 ev(1:na), &
+                                                 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+#else
+         successGPU = gpu_memcpy(int(loc(ev(1)),kind=c_intptr_t), ev_dev, &
+                 num, gpuMemcpyDeviceToHost) 
+         check_memcpy_gpu("elpa1_template ev_dev -> ev", successGPU)
+#endif
+
          endif
 
          check_pd = 0
@@ -2149,20 +2200,89 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 #if COMPLEXCASE == 1
      if (do_trans_to_band) then
        ! q must be given thats why from here on we can use q and not q_actual
-       q(1:l_rows,1:l_cols_nev) = q_real(1:l_rows,1:l_cols_nev)
+       if (useGPU) then
+#ifdef WITH_GPU_STREAMS
+         my_stream = obj%gpu_setup%my_stream
+         call GPU_COPY_REAL_PART_TO_Q_PRECISION_COMPLEX(q_dev, q_dev_real, matrixRows, l_rows, l_cols_nev, my_stream)
+#else
+         call GPU_COPY_REAL_PART_TO_Q_PRECISION_COMPLEX(q_dev, q_dev_real, matrixRows, l_rows, l_cols_nev)
+#endif
+       else !useGPU
+         ! q must be given thats why from here on we can use q and not q_actual
+         q(1:l_rows,1:l_cols_nev) = q_real(1:l_rows,1:l_cols_nev)
+       endif
+     endif
+#endif /* COMPLEXCASE */
+
+
+     ! remove this once zero kernel works
+     if (isSkewsymmetric) then
+       if (useGPU) then
+         num = matrixRows*matrixCols*2 * size_of_datatype
+         successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t), q_dev, &
+                 num, gpuMemcpyDeviceToHost) 
+         check_memcpy_gpu("elpa1_template q_dev ->q", successGPU)
+
+         q(1:matrixRows, matrixCols+1:2*matrixCols) = 0.0
+
+         successGPU = gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t), &
+                 num, gpuMemcpyHostToDevice) 
+         check_memcpy_gpu("elpa1_template q ->q_dev", successGPU)
+       endif
      endif
 
-     !! make sure q_real is deallocated when using check_pd
-     !if (allocated(q_real)) then
-     !  deallocate(q_real, stat=istat, errmsg=errorMessage)
-     !  check_deallocate("elpa2_template: q_real", istat, errorMessage)
-     !endif
-#endif
 
-       if (isSkewsymmetric) then
-       ! Extra transformation step for skew-symmetric matrix. Multiplication with diagonal complex matrix D.
-       ! This makes the eigenvectors complex.
-       ! For now real part of eigenvectors is generated in first half of q, imaginary part in second part.
+     if (isSkewsymmetric) then
+       if (useGPU) then
+!#ifdef WITH_GPU_STREAMS
+!         my_stream = obj%gpu_setup%my_stream
+!         call GPU_ZERO_SKEWSYMMETRIC_Q_PRECISION_REAL(q_dev, matrixRows, matrixCols, my_stream)
+!#else
+!         call GPU_ZERO_SKEWSYMMETRIC_Q_PRECISION_REAL(q_dev, matrixRows, matrixCols)
+!#endif
+         do i = 1, matrixRows
+           global_index = np_rows*nblk*((i-1)/nblk) + MOD(i-1,nblk) + MOD(np_rows+my_prow-0, np_rows)*nblk + 1
+           if (mod(global_index-1,4) .eq. 0) then
+             ! do nothing
+           end if
+           if (mod(global_index-1,4) .eq. 1) then
+             negative_or_positive = 1
+#ifdef WITH_GPU_STREAMS
+             my_stream = obj%gpu_setup%my_stream
+             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, &
+                     matrixCols, negative_or_positive, my_stream)
+#else
+             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, &
+                     matrixCols, negative_or_positive)
+#endif 
+           end if
+           if (mod(global_index-1,4) .eq. 2) then
+             negative_or_positive = -1
+#ifdef WITH_GPU_STREAMS
+             my_stream = obj%gpu_setup%my_stream
+             call GPU_COPY_SKEWSYMMETRIC_FIRST_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, &
+                     matrixCols, negative_or_positive, my_stream)
+#else
+             call GPU_COPY_SKEWSYMMETRIC_FIRST_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, &
+                     matrixCols, negative_or_positive)
+#endif
+           end if
+           if (mod(global_index-1,4) .eq. 3) then
+             negative_or_positive = -1
+#ifdef WITH_GPU_STREAMS
+             my_stream = obj%gpu_setup%my_stream
+             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, matrixCols, &
+                          negative_or_positive, my_stream)
+#else
+             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, matrixCols, &
+                          negative_or_positive)
+#endif
+           end if
+         enddo
+       else ! useGPU
+         ! Extra transformation step for skew-symmetric matrix. Multiplication with diagonal complex matrix D.
+         ! This makes the eigenvectors complex.
+         ! For now real part of eigenvectors is generated in first half of q, imaginary part in second part.
          q(1:matrixRows, matrixCols+1:2*matrixCols) = 0.0
          do i = 1, matrixRows
 !          global_index = indxl2g(i, nblk, my_prow, 0, np_rows)
@@ -2182,7 +2302,10 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
               q(i,1:matrixCols) = 0
            end if
          end do
-       endif
+       endif ! useGPU
+     endif ! isSkew
+
+
 
 #ifdef WITH_SYCL_GPU_VERSION
      if (obj%gpu_setup%syclCPU) then
@@ -2194,6 +2317,22 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 #endif
        ! Backtransform stage 1
      if (do_trans_to_band) then
+
+
+!! debug
+!     if (useGPU) then
+!     if (isSkewsymmetric) then
+!         num = matrixRows*matrixCols*2 * size_of_datatype
+!      else
+!         num = matrixRows*matrixCols * size_of_datatype
+!     endif
+!
+!         successGPU = gpu_memcpy(q_dev, int(loc(q(1,1)),kind=c_intptr_t), &
+!                 num, gpuMemcpyHostToDevice) 
+!         check_memcpy_gpu("elpa1_template q ->q_dev", successGPU)
+!
+!     endif
+
 
        !debug
 !#if defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
@@ -2213,14 +2352,25 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        call likwid_markerStartRegion("tridi_to_band")
 #endif
        ! In the skew-symmetric case this transforms the real part
-       call trans_ev_tridi_to_band_&
-       &MATH_DATATYPE&
-       &_&
-       &PRECISION &
-       (obj, na, nev, nblk, nbw, q, &
-       matrixRows, matrixCols, hh_trans, my_pe, mpi_comm_rows, mpi_comm_cols, &
-       wantDebug, do_useGPU_trans_ev_tridi_to_band, &
-       nrThreads, success=success, kernel=kernel)
+       if (do_useGPU_trans_ev_tridi_to_band) then
+         call trans_ev_tridi_to_band_gpu_&
+         &MATH_DATATYPE&
+         &_&
+         &PRECISION &
+         (obj, na, nev, nblk, nbw, q_dev, &
+         matrixRows, matrixCols, hh_trans_dev, hh_trans_size, my_pe, mpi_comm_rows, mpi_comm_cols, &
+         wantDebug,  &
+         nrThreads, success=success, kernel=kernel)
+       else
+         call trans_ev_tridi_to_band_cpu_&
+         &MATH_DATATYPE&
+         &_&
+         &PRECISION &
+         (obj, na, nev, nblk, nbw, q, &
+         matrixRows, matrixCols, hh_trans, hh_trans_size, my_pe, mpi_comm_rows, mpi_comm_cols, &
+         wantDebug,  &
+         nrThreads, success=success, kernel=kernel)
+       endif
 #ifdef HAVE_LIKWID
        call likwid_markerStopRegion("tridi_to_band")
 #endif
@@ -2249,6 +2399,135 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        endif
 
      endif ! do_trans_to_band
+
+
+     !! debug
+     !if (useGPU) then
+     !if (isSkewsymmetric) then
+     !    num = matrixRows*matrixCols*2 * size_of_datatype
+     ! else
+     !    num = matrixRows*matrixCols * size_of_datatype
+     !endif
+
+     !    successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t), q_dev, &
+     !            num, gpuMemcpyDeviceToHost) 
+     !    check_memcpy_gpu("elpa1_template q ->q_dev", successGPU)
+
+     !endif
+
+
+!     ! debug
+!     if (isSkewsymmetric) then
+!     if (useGPU) then
+!     num = (nbw*hh_trans_size) * size_of_datatype
+!#ifdef WITH_GPU_STREAMS
+!        my_stream = obj%gpu_setup%my_stream
+!        call gpu_memcpy_async_and_stream_synchronize &
+!            ("elpa2_template: hh_trans_dev -> hh_trans", hh_trans_dev, 0_c_intptr_t, &
+!                                                 hh_trans(1:nbw,1:hh_trans_size), &
+!                                                 1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+!#else
+!        successGPU = gpu_memcpy(int(loc(hh_trans(1,1)),kind=c_intptr_t), hh_trans_dev,  &
+!                     num, gpuMemcpyDeviceToHost)
+!        check_memcpy_gpu("elpa2_template: hh_trans_dev ->  hh_trans", successGPU)
+!#endif
+!     endif
+!     endif
+
+
+     !skew symmetric imaginary part for tridi_to_band and band_to_full
+     if (isSkewsymmetric) then
+       if (do_trans_to_band) then
+         call obj%autotune_timer%start("tridi_to_band")
+         call obj%timer%start("skew_tridi_to_band")
+         ! Transform imaginary part
+         ! Transformation of real and imaginary part could also be one call of trans_ev_tridi acting on the n x 2n matrix.
+         if (do_useGPU_trans_ev_tridi_to_band) then
+   
+#ifdef WITH_GPU_STREAMS
+           my_stream = obj%gpu_setup%my_stream
+           call GPU_GET_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, q_part2_dev, matrixRows, matrixCols, &
+                                                                my_stream)
+#else      
+           call GPU_GET_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, q_part2_dev, matrixRows, matrixCols)
+#endif   
+           call trans_ev_tridi_to_band_gpu_&
+           &MATH_DATATYPE&
+           &_&
+           &PRECISION &
+           (obj, na, nev, nblk, nbw, q_part2_dev, &
+           matrixRows, matrixCols, hh_trans_dev, hh_trans_size, my_pe, mpi_comm_rows, mpi_comm_cols, &
+           wantDebug, &
+           nrThreads, success=success, kernel=kernel)
+         else
+           call trans_ev_tridi_to_band_cpu_&
+           &MATH_DATATYPE&
+           &_&
+           &PRECISION &
+           (obj, na, nev, nblk, nbw, q(1:matrixRows, matrixCols+1:2*matrixCols), &
+           matrixRows, matrixCols, hh_trans, hh_trans_size, my_pe, mpi_comm_rows, mpi_comm_cols, &
+           wantDebug, &
+           nrThreads, success=success, kernel=kernel)
+         endif
+         call obj%timer%stop("skew_tridi_to_band")
+         call obj%autotune_timer%stop("tridi_to_band")
+
+         if (success) then
+           success_int = 0
+         else
+           success_int = 1
+         endif
+
+#ifdef WITH_MPI
+         if (useNonBlockingCollectivesAll) then
+           call mpi_iallreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), &
+           allreduce_request7, mpierr)
+           call mpi_wait(allreduce_request7, MPI_STATUS_IGNORE, mpierr)
+         else
+           call mpi_allreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), mpierr)
+         endif
+#endif
+         if (success_int .eq. 1) then
+          write(error_unit,*) "Error in trans_ev_tridi_to_band (imaginary part). Aborting..."
+          return
+         endif
+       endif ! do_trans_tridi_to_band
+     endif ! isSkewSymmetric
+
+     ! debug
+     if (isSkewsymmetric) then
+       if (do_trans_to_band) then
+         if (do_useGPU_trans_ev_tridi_to_band) then
+#ifdef WITH_GPU_STREAMS
+           my_stream = obj%gpu_setup%my_stream
+           call GPU_PUT_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, q_part2_dev, matrixRows, matrixCols, &
+                                                                 my_stream)
+#else
+           call GPU_PUT_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, q_part2_dev, matrixRows, matrixCols)
+#endif
+
+
+         endif
+       endif
+     endif
+
+
+     ! debug
+     if (do_trans_to_band) then
+       if (do_useGPU_trans_ev_tridi_to_band) then
+         if (isSkewsymmetric) then
+           num = matrixRows*matrixCols*2 * size_of_datatype
+         else
+           num = matrixRows*matrixCols * size_of_datatype
+         endif
+
+         successGPU = gpu_memcpy(int(loc(q(1,1)),kind=c_intptr_t), q_dev, &
+                 num, gpuMemcpyDeviceToHost) 
+         check_memcpy_gpu("elpa1_template q ->q_dev", successGPU)
+       endif
+     endif
+
+
 
      ! the array q (currently) always resides on host even when using GPU
 
@@ -2299,46 +2578,8 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
 ! #endif
 
 
-     !skew symmetric imaginary part for tridi_to_band and band_to_full
+
      if (isSkewsymmetric) then
-       if (do_trans_to_band) then
-         call obj%autotune_timer%start("tridi_to_band")
-         call obj%timer%start("skew_tridi_to_band")
-         ! Transform imaginary part
-         ! Transformation of real and imaginary part could also be one call of trans_ev_tridi acting on the n x 2n matrix.
-         call trans_ev_tridi_to_band_&
-         &MATH_DATATYPE&
-         &_&
-         &PRECISION &
-         (obj, na, nev, nblk, nbw, q(1:matrixRows, matrixCols+1:2*matrixCols), &
-         matrixRows, matrixCols, hh_trans, my_pe, mpi_comm_rows, mpi_comm_cols, &
-         wantDebug, do_useGPU_trans_ev_tridi_to_band, &
-         nrThreads, success=success, kernel=kernel)
-
-         call obj%timer%stop("skew_tridi_to_band")
-         call obj%autotune_timer%stop("tridi_to_band")
-
-         if (success) then
-           success_int = 0
-         else
-           success_int = 1
-         endif
-
-#ifdef WITH_MPI
-         if (useNonBlockingCollectivesAll) then
-           call mpi_iallreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), &
-           allreduce_request7, mpierr)
-           call mpi_wait(allreduce_request7, MPI_STATUS_IGNORE, mpierr)
-         else
-           call mpi_allreduce(mpi_in_place, success_int, 1_MPI_KIND, MPI_INTEGER, MPI_MAX, int(mpi_comm_all,kind=MPI_KIND), mpierr)
-         endif
-#endif
-         if (success_int .eq. 1) then
-          write(error_unit,*) "Error in trans_ev_tridi_to_band (imaginary part). Aborting..."
-          return
-         endif
-       endif ! do_trans_tridi_to_band
-
        if (do_trans_to_full) then
        call obj%autotune_timer%start("band_to_full")
        call obj%timer%start("band_to_full")
@@ -2612,6 +2853,11 @@ print *,"start deallocat"
        check_dealloc_gpu("elpa2_template q_dev_dummy", successGPU)
      endif
 
+     if (isSkewsymmetric) then
+       successGPU = gpu_free(q_part2_dev)
+       check_dealloc_gpu("elpa2_template q_part2_dev", successGPU)
+     endif
+
 #if COMPLEXCASE == 1
      successGPU = gpu_free(q_dev_real)
      check_dealloc_gpu("elpa2_template q_dev_real", successGPU)
@@ -2697,6 +2943,11 @@ print *,"start deallocat"
 
      successGPU = gpu_free(hh_trans_dev)
      check_dealloc_gpu("elpa2_template hh_trans_dev", successGPU)
+
+     if (isSkewsymmetric) then
+       successGPU = gpu_free(q_part2_dev)
+       check_dealloc_gpu("elpa2_template q_part2_dev", successGPU)
+     endif
 
 #ifndef REDISTRIBUTE_MATRIX
      ! allocate dummy q_devIntern, if eigenvectors should not be commputed and thus q is NOT present
