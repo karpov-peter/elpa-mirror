@@ -85,11 +85,11 @@
 #include "elpa2_trans_ev_tridi_to_band_template.F90"
 #undef TRANS_EV_TRIDI_GPU
 
-!#undef TRANS_EV_BAND_GPU 
+#undef TRANS_EV_BAND_GPU 
 #include "elpa2_trans_ev_band_to_full_template.F90"
-!#define TRANS_EV_BAND_GPU 
-!#include "elpa2_trans_ev_band_to_full_template.F90"
-!#undef TRANS_EV_BAND_GPU 
+#define TRANS_EV_BAND_GPU 
+#include "elpa2_trans_ev_band_to_full_template.F90"
+#undef TRANS_EV_BAND_GPU 
 
 
     subroutine band_band_real_&
