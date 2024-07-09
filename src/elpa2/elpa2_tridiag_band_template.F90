@@ -51,13 +51,24 @@
 
 #include "../general/sanity.F90"
 
-subroutine tridiag_band_&
+
+#ifdef TRIDIAG_GPU
+subroutine tridiag_band_gpu_&
   &MATH_DATATYPE&
   &_&
   &PRECISION &
-  (obj, na, nb, nblk, a_mat, lda, d, e, matrixCols, &
-  hh_trans, mpi_comm_rows, mpi_comm_cols, mpi_comm_all, useGPU, wantDebug, nrThreads, isSkewsymmetric, &
+  (obj, na, nb, nblk, hh_trans_size, a_dev, matrixRows, d_dev, e_dev, matrixCols, &
+  hh_trans_dev, mpi_comm_rows, mpi_comm_cols, mpi_comm_all, wantDebug, nrThreads, isSkewsymmetric, &
   success)
+#else
+subroutine tridiag_band_cpu_&
+  &MATH_DATATYPE&
+  &_&
+  &PRECISION &
+  (obj, na, nb, nblk, hh_trans_size, a_mat, matrixRows, d, e, matrixCols, &
+  hh_trans, mpi_comm_rows, mpi_comm_cols, mpi_comm_all, wantDebug, nrThreads, isSkewsymmetric, &
+  success)
+#endif
   !-------------------------------------------------------------------------------
   ! tridiag_band_real/complex:
   ! Reduces a real symmetric band matrix to tridiagonal form
@@ -68,9 +79,9 @@ subroutine tridiag_band_&
   !
   !  nblk        blocksize of cyclic distribution, must be the same in both directions!
   !
-  !  a_mat(lda,matrixCols)    Distributed system matrix reduced to banded form in the upper diagonal
+  !  a_mat(matrixRows,matrixCols)    Distributed system matrix reduced to banded form in the upper diagonal
   !
-  !  lda         Leading dimension of a
+  !  matrixRows         Leading dimension of a
   !  matrixCols  local columns of matrix a
   !
   ! hh_trans : housholder vectors
@@ -96,19 +107,28 @@ subroutine tridiag_band_&
   use elpa_blas_interfaces
   use elpa_skewsymmetric_blas
   use elpa_gpu
+  use elpa_gpu_util
   implicit none
 #include "../general/precision_kinds.F90"
   class(elpa_abstract_impl_t), intent(inout)   :: obj
-  logical, intent(in)                          :: useGPU, wantDebug
+  logical, intent(in)                          :: wantDebug
+  logical                                      :: useGPU
   logical, intent(in)                          :: isSkewsymmetric
-  integer(kind=ik), intent(in)                 :: na, nb, nblk, lda, matrixCols, mpi_comm_rows, mpi_comm_cols, mpi_comm_all
+  integer(kind=ik), intent(in)                 :: na, nb, nblk, matrixRows, matrixCols, mpi_comm_rows, mpi_comm_cols, mpi_comm_all
+  integer(kind=ik), intent(in)                 :: hh_trans_size
+#ifdef TRIDIAG_GPU
+  MATH_DATATYPE(kind=rck)                      :: a_mat(matrixRows,matrixCols)
+  real(kind=rk)                                :: d(na), e(na) ! set only on PE 0
+  MATH_DATATYPE(kind=rck)                      :: hh_trans(1:nb,1:hh_trans_size)
+#else /* TRIDIAG_GPU */
 #ifdef USE_ASSUMED_SIZE
-  MATH_DATATYPE(kind=rck), intent(in)         :: a_mat(lda,*)
+  MATH_DATATYPE(kind=rck), intent(in)         :: a_mat(matrixRows,*)
 #else
-  MATH_DATATYPE(kind=rck), intent(in)         :: a_mat(lda,matrixCols)
+  MATH_DATATYPE(kind=rck), intent(in)         :: a_mat(matrixRows,matrixCols)
 #endif
   real(kind=rk), intent(out)        :: d(na), e(na) ! set only on PE 0
-  MATH_DATATYPE(kind=rck), intent(out), allocatable   :: hh_trans(:,:)
+  MATH_DATATYPE(kind=rck), intent(out)        :: hh_trans(1:nb,1:hh_trans_size)
+#endif /* TRIDIAG_GPU */
 
   real(kind=rk)                     :: vnorm2
   MATH_DATATYPE(kind=rck)                     :: hv(nb), tau, x, h(nb), ab_s(1+nb), hv_s(nb), hv_new(nb), tau_new, hf
@@ -122,6 +142,7 @@ subroutine tridiag_band_&
   integer(kind=MPI_KIND)                       :: ireq_ab, ireq_hv
   integer(kind=ik)                             :: na_s, nx, num_hh_vecs, num_chunks, local_size, max_blk_size, n_off
   integer(kind=ik), intent(in)                 :: nrThreads
+  integer(kind=ik)                             :: num_hh_vecsSave
 #ifdef WITH_OPENMP_TRADITIONAL
   integer(kind=ik)                             :: max_threads, my_thread, my_block_s, my_block_e, iter
 #ifdef WITH_MPI
@@ -145,7 +166,18 @@ subroutine tridiag_band_&
    integer(kind=MPI_KIND)                      :: allreduce_request1, allreduce_request2
    logical                                     :: useNonBlockingCollectivesAll
    integer(kind=c_int)                         :: non_blocking_collectives, error
-   logical                                     :: success
+   logical                                     :: success, successGPU
+
+   integer(kind=c_intptr_t)                    :: a_dev, d_dev, e_dev, hh_trans_dev
+   integer(kind=c_intptr_t)                    :: num, my_stream
+   integer(kind=c_intptr_t), parameter           :: size_of_datatype = size_of_&
+                                                                      &PRECISION&
+                                                                      &_&
+                                                                      &MATH_DATATYPE
+   integer(kind=c_intptr_t), parameter           :: size_of_datatype_real = size_of_&
+                                                                      &PRECISION&
+                                                                      &_real
+
 
    success = .true.
   if(useGPU) then
@@ -153,6 +185,11 @@ subroutine tridiag_band_&
   else
     gpuString = ""
   endif
+
+  useGPU = .false.
+#ifdef TRIDIAG_GPU
+  useGPU = .true.
+#endif
 
   call obj%timer%start("tridiag_band_&
   &MATH_DATATYPE&
@@ -171,6 +208,23 @@ subroutine tridiag_band_&
     success = .false.
     return
   endif
+
+  if (useGPU) then
+    num = matrixRows * matrixCols * size_of_datatype
+#ifdef WITH_GPU_STREAMS
+    my_stream = obj%gpu_setup%my_stream
+    call gpu_memcpy_async_and_stream_synchronize &
+            ("tridiag a_dev -> a_mat", a_dev, 0_c_intptr_t, &
+                                                 a_mat(1:matrixRows,1:matrixCols), &
+                                                 1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+#else
+    successGPU = gpu_memcpy(int(loc(a_mat(1,1)),kind=c_intptr_t), a_dev, &
+                              num, gpuMemcpyDeviceToHost)
+    check_memcpy_gpu("tridiag: a_dev", successGPU)
+#endif
+  endif
+
+
 
   if (non_blocking_collectives .eq. 1) then
     useNonBlockingCollectivesAll = .true.
@@ -273,7 +327,7 @@ subroutine tridiag_band_&
   &MATH_DATATYPE&
   &_&
   &PRECISION&
-  &(obj,a_mat, lda, na, nblk, nb, matrixCols, mpi_comm_rows, mpi_comm_cols, mpi_comm_all, ab, &
+  &(obj,a_mat, matrixRows, na, nblk, nb, matrixCols, mpi_comm_rows, mpi_comm_cols, mpi_comm_all, ab, &
    success)
   if (.not.(success)) then
     write(error_unit,*) "Error in redist_band. Aborting..."
@@ -303,11 +357,15 @@ subroutine tridiag_band_&
     endif
     nx = nx - nb
   enddo
+  num_hh_vecsSave = num_hh_vecs
 
+
+  if (hh_trans_size .ne. num_hh_vecs) then
+    print *,"hh_trans_size=",hh_trans_size,"num_hh_vecs=",num_hh_vecs
+    print *,"elpa2 tridiag: this should never happen"
+    stop
+  endif
   ! Allocate space for HH vectors
-
-  allocate(hh_trans(nb,num_hh_vecs), stat=istat, errmsg=errorMessage)
-  check_allocate("tridiag_band: hh_trans", istat, errorMessage)
 
   ! Allocate and init MPI requests
 
@@ -1258,6 +1316,67 @@ endif
   deallocate(global_id, stat=istat, errmsg=errorMessage)
   check_deallocate("tridiag_band: global_id", istat, errorMessage)
 
+
+  if (useGPU) then
+    num = matrixRows * matrixCols * size_of_datatype
+#ifdef WITH_GPU_STREAMS
+    my_stream = obj%gpu_setup%my_stream
+    call gpu_memcpy_async_and_stream_synchronize &
+            ("tridiag_band a_mat -> a_dev", a_dev, 0_c_intptr_t, &
+                                                 a_mat(1:matrixRows,1:matrixCols), &
+                                                 1, 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
+#else
+    successGPU = gpu_memcpy(a_dev, int(loc(a_mat(1,1)),kind=c_intptr_t), &
+                              num, gpuMemcpyHostToDevice)
+    check_memcpy_gpu("tridiag_band: a -> a_dev", successGPU)
+#endif
+
+    num = na * size_of_datatype_real
+#ifdef WITH_GPU_STREAMS
+    my_stream = obj%gpu_setup%my_stream
+    call gpu_memcpy_async_and_stream_synchronize &
+            ("tridiag_band d -> d_dev", d_dev, 0_c_intptr_t, &
+                                                 d(1:na), &
+                                                 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
+#else
+    successGPU = gpu_memcpy(d_dev, int(loc(d(1)),kind=c_intptr_t), &
+                              num, gpuMemcpyHostToDevice)
+    check_memcpy_gpu("tridiag_band: d -> d_dev", successGPU)
+#endif
+
+    num = na * size_of_datatype_real
+#ifdef WITH_GPU_STREAMS
+    my_stream = obj%gpu_setup%my_stream
+    call gpu_memcpy_async_and_stream_synchronize &
+            ("tridiag_band e -> e_dev", e_dev, 0_c_intptr_t, &
+                                                 e(1:na), &
+                                                 1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
+#else
+    successGPU = gpu_memcpy(e_dev, int(loc(e(1)),kind=c_intptr_t), &
+                              num, gpuMemcpyHostToDevice)
+    check_memcpy_gpu("tridiag_band: e -> e_dev", successGPU)
+#endif
+
+
+    num = nb * num_hh_vecsSave * size_of_datatype
+    !print *,"malloc"
+    !successGPU = gpu_malloc(hh_trans_dev, num)
+    !check_alloc_gpu("tridiag_band hh_trans_dev", successGPU)
+#ifdef WITH_GPU_STREAMS
+    my_stream = obj%gpu_setup%my_stream
+    call gpu_memcpy_async_and_stream_synchronize &
+            ("tridiag_band hh_trans -> hh_trans_dev", hh_trans_dev, 0_c_intptr_t, &
+                                                 hh_trans(1:nb,1:num_hh_vecsSave), &
+                                                 1,1, num, gpuMemcpyHostToDevice, my_stream, .false., .false., .false.)
+#else
+    successGPU = gpu_memcpy(hh_trans_dev, int(loc(hh_trans(1,1)),kind=c_intptr_t), &
+                              num, gpuMemcpyHostToDevice)
+    check_memcpy_gpu("tridiag_band: hh_trans -> hh_trans_dev", successGPU)
+#endif
+
+  endif
+
+
   call obj%timer%stop("tridiag_band_&
   &MATH_DATATYPE&
   &" // &
@@ -1265,11 +1384,5 @@ endif
   gpuString)
 
   ! intel compiler bug makes these ifdefs necessary
-#if REALCASE == 1
-end subroutine tridiag_band_real_&
-#endif
-#if COMPLEXCASE == 1
-end subroutine tridiag_band_complex_&
-#endif
-&PRECISION
+end
 

@@ -3853,7 +3853,7 @@ if test x"${enable_python}" = x"yes"; then
         AS_IF([test -z "$PYTHON_INCLUDE"], [
           AS_IF([test -z "$PYTHON_CONFIG"], [
             AC_PATH_PROGS([PYTHON_CONFIG],
-                          [python$PYTHON_VERSION-config python-config],
+                          [python$PYTHON_VERSION-config python3.10-config python-config],
                           [no],
                           [`dirname $PYTHON`])
             AS_IF([test "$PYTHON_CONFIG" = no], [AC_MSG_ERROR([cannot find python-config for $PYTHON.])])

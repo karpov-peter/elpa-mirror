@@ -63,19 +63,33 @@
 #undef MORE_GPUBLAS
 #endif
 
-subroutine trans_ev_band_to_full_&
+#ifdef TRANS_EV_BAND_GPU
+subroutine trans_ev_band_to_full_gpu_&
     &MATH_DATATYPE&
     &_&
     &PRECISION &
-    (obj, na, nqc, nblk, nbw, a_mat, lda, tmat, q_mat, &
-     ldq, matrixCols, numBlocks, mpi_comm_rows, mpi_comm_cols, useGPU, &
+    (obj, na, nqc, nblk, nbw, a_dev, matrixRows, tmat_dev, q_dev, &
+     qMatrixRows, matrixCols, numBlocks, mpi_comm_rows, mpi_comm_cols, &
 #if REALCASE == 1
      useQr, success)
 #endif
 #if COMPLEXCASE == 1
      success)
 #endif
-
+#else /* TRANS_EV_BAND_GPU */
+subroutine trans_ev_band_to_full_cpu_&
+    &MATH_DATATYPE&
+    &_&
+    &PRECISION &
+    (obj, na, nqc, nblk, nbw, a_mat, matrixRows, tmat, q_mat, &
+     qMatrixRows, matrixCols, numBlocks, mpi_comm_rows, mpi_comm_cols, &
+#if REALCASE == 1
+     useQr, success)
+#endif
+#if COMPLEXCASE == 1
+     success)
+#endif
+#endif /* TRANS_EV_BAND_GPU */
 !-------------------------------------------------------------------------------
 !  trans_ev_band_to_full_real/complex:
 !  Transforms the eigenvectors of a band matrix back to the eigenvectors of the original matrix
@@ -90,10 +104,10 @@ subroutine trans_ev_band_to_full_&
 !
 !  nbw         semi bandwith
 !
-!  a_mat(lda,matrixCols)    Matrix containing the Householder vectors (i.e. matrix a_mat after bandred_real/complex)
+!  a_mat(matrixRows,matrixCols)    Matrix containing the Householder vectors (i.e. matrix a_mat after bandred_real/complex)
 !              Distribution is like in Scalapack.
 !
-!  lda         Leading dimension of a_mat
+!  matrixRows         Leading dimension of a_mat
 !  matrixCols  local columns of matrix a_mat and q_mat
 !
 !  tmat(nbw,nbw,numBlocks) Factors returned by bandred_real/complex
@@ -102,7 +116,7 @@ subroutine trans_ev_band_to_full_&
 !              On output: Transformed eigenvectors
 !              Distribution is like in Scalapack.
 !
-!  ldq         Leading dimension of q_mat
+!  qMatrixRows         Leading dimension of q_mat
 !
 !  mpi_comm_rows
 !  mpi_comm_cols
@@ -114,23 +128,31 @@ subroutine trans_ev_band_to_full_&
   use, intrinsic :: iso_c_binding
   use elpa_abstract_impl
   use elpa_blas_interfaces
+#ifdef WITH_GPU_STREAMS
+  use elpa_gpu_util
+#endif
 
   implicit none
 #include "../general/precision_kinds.F90"
   class(elpa_abstract_impl_t), intent(inout)     :: obj
-  logical, intent(in)                            :: useGPU
+  logical                                        :: useGPU
 #if REALCASE == 1
   logical, intent(in)                            :: useQR
 #endif
-  integer(kind=ik)                               :: na, nqc, lda, ldq, nblk, nbw, matrixCols, numBlocks, mpi_comm_rows, &
-                                                    mpi_comm_cols
+  integer(kind=ik), intent(in)                   :: na, nqc, matrixRows, qMatrixRows, nblk, nbw, matrixCols, numBlocks, &
+                                                    mpi_comm_rows, mpi_comm_cols
+#ifdef TRANS_EV_BAND_GPU
+  MATH_DATATYPE(kind=rck)                        :: a_mat(matrixRows,matrixCols)
+  MATH_DATATYPE(kind=rck)                        :: q_mat(qMatrixRows,matrixCols), tmat(nbw, nbw, numBlocks)
+#else /* TRANS_EV_BAND_GPU */
 #ifdef USE_ASSUMED_SIZE
-  MATH_DATATYPE(kind=rck)                        :: a_mat(lda,*)
-  MATH_DATATYPE(kind=rck)                        :: q_mat(ldq,*), tmat(nbw,nbw,*)
+  MATH_DATATYPE(kind=rck), intent(in)            :: a_mat(matrixRows,*), tmat(nbw,nbw,*)
+  MATH_DATATYPE(kind=rck)                        :: q_mat(qMatrixRows,*)
 #else
-  MATH_DATATYPE(kind=rck)                        :: a_mat(lda,matrixCols)
-  MATH_DATATYPE(kind=rck)                        :: q_mat(ldq,matrixCols), tmat(nbw, nbw, numBlocks)
+  MATH_DATATYPE(kind=rck), intent(in)            :: a_mat(matrixRows,matrixCols), tmat(nbw, nbw, numBlocks)
+  MATH_DATATYPE(kind=rck)                        :: q_mat(qMatrixRows,matrixCols)
 #endif
+#endif /* TRANS_EV_BAND_GPU */
 
   integer(kind=ik)                               :: my_prow, my_pcol, np_rows, np_cols
   integer(kind=MPI_KIND)                         :: my_prowMPI, my_pcolMPI, np_rowsMPI, np_colsMPI, mpierr
@@ -198,7 +220,14 @@ subroutine trans_ev_band_to_full_&
   integer(kind=ik)                               :: nblocks, bc_counter
   integer(kind=c_intptr_t)                       :: gpuHandle, my_stream
 
+  integer(kind=c_intptr_t)                       :: a_dev, tmat_dev
+  integer(kind=c_intptr_t)                       :: num
+
   success = .true.
+  useGPU = .false.
+#ifdef TRANS_EV_BAND_GPU
+  useGPU = .true.
+#endif
 
   if(useGPU) then
     gpuString = "_gpu"
@@ -292,38 +321,43 @@ subroutine trans_ev_band_to_full_&
   cwy_blocking = blocking_factor * nbw
 
   if (useGPU) then
-    ! copy q_mat to q_dev
-    successGPU = gpu_malloc(q_dev,ldq*matrixCols*size_of_datatype)
-    check_alloc_gpu("trans_ev_band_to_full: q_dev", successGPU)
-#if defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
-    if (gpu_vendor() /= OPENMP_OFFLOAD_GPU .and. gpu_vendor() /= SYCL_GPU) then
-#endif
-      successGPU = gpu_host_register(int(loc(q_mat),kind=c_intptr_t),&
-                    ldq*matrixCols*size_of_datatype, gpuHostRegisterDefault)
-      check_host_register_gpu("trans_ev_band_to_full: q_mat", successGPU)
-#if defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
-    endif
-#endif
-
+    ! remove eventually
+    num = matrixRows*matrixCols* size_of_datatype
 #ifdef WITH_GPU_STREAMS
     my_stream = obj%gpu_setup%my_stream
-    successGPU = gpu_stream_synchronize(my_stream)
-    check_stream_synchronize_gpu("trans_ev_band_to_full: q_mat -> q_dev", successGPU)
-
-    successGPU = gpu_memcpy_async(q_dev,int(loc(q_mat),kind=c_intptr_t),&
-                  ldq*matrixCols*size_of_datatype, gpuMemcpyHostToDevice, my_stream)
-    check_memcpy_gpu("trans_ev_band_to_full: q_mat -> q_dev", successGPU)
-
-    successGPU = gpu_stream_synchronize(my_stream)
-    check_stream_synchronize_gpu("trans_ev_band_to_full: q_mat -> q_dev", successGPU)
-    ! synchronize streamPerThread; maybe not neccessary
-    successGPU = gpu_stream_synchronize()
-    check_stream_synchronize_gpu("trans_ev_band_to_full: q_mat -> q_dev", successGPU)
+    call gpu_memcpy_async_and_stream_synchronize &
+    ("trans_ev_band_to_full: a_dev to a_mat", a_dev, 0_c_intptr_t, &
+       a_mat(1:matrixRows,1:matrixCols), &
+       1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .true., .false.)
 #else
-    successGPU = gpu_memcpy(q_dev,int(loc(q_mat),kind=c_intptr_t),&
-                  ldq*matrixCols*size_of_datatype, gpuMemcpyHostToDevice)
-    check_memcpy_gpu("trans_ev_band_to_full: q_mat -> q_dev", successGPU)
+    successGPU = gpu_memcpy(int(loc(a_mat),kind=c_intptr_t), a_dev, &
+                  num, gpuMemcpyDeviceToHost)
+    check_memcpy_gpu("trans_ev_band_to_full: a_dev -> a_mat", successGPU)
 #endif
+    num = nbw*nbw*numBlocks* size_of_datatype
+#ifdef WITH_GPU_STREAMS
+    my_stream = obj%gpu_setup%my_stream
+    call gpu_memcpy_async_and_stream_synchronize &
+    ("trans_ev_band_to_full: tmat_dev to tmat", tmat_dev, 0_c_intptr_t, &
+       tmat(1:nbw, 1:nbw, 1:numBlocks), &
+       1, 1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .true., .false.)
+#else
+    successGPU = gpu_memcpy(int(loc(tmat),kind=c_intptr_t), tmat_dev, &
+                  num, gpuMemcpyDeviceToHost)
+    check_memcpy_gpu("trans_ev_band_to_full: tmat_dev -> tmat", successGPU)
+#endif
+
+
+!!!    ! copy q_mat to q_dev
+!#if defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
+!    if (gpu_vendor() /= OPENMP_OFFLOAD_GPU .and. gpu_vendor() /= SYCL_GPU) then
+!#endif
+!      successGPU = gpu_host_register(int(loc(q_mat),kind=c_intptr_t),&
+!                    qMatrixRows*matrixCols*size_of_datatype, gpuHostRegisterDefault)
+!      check_host_register_gpu("trans_ev_band_to_full: q_mat", successGPU)
+!#if defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
+!    endif
+!#endif
 
 #if defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
     if (gpu_vendor() /= OPENMP_OFFLOAD_GPU .and. gpu_vendor() /= SYCL_GPU) then
@@ -585,6 +619,8 @@ subroutine trans_ev_band_to_full_&
       l_rows = local_index(nrow-1, my_prow, np_rows, nblk, -1) ! row length for bcast
       l_colh = local_index(ncol , my_pcol, np_cols, nblk, -1) ! HV local column number
 
+
+      ! need a kernel for this
       if (my_pcol==pcol(ncol, nblk, np_cols)) hvb(nb+1:nb+l_rows) = a_mat(1:l_rows,l_colh)
 
       nb = nb+l_rows
@@ -646,18 +682,13 @@ subroutine trans_ev_band_to_full_&
 
 #ifdef WITH_GPU_STREAMS
           my_stream = obj%gpu_setup%my_stream
-          successGPU = gpu_stream_synchronize(my_stream)
-          check_stream_synchronize_gpu("trans_ev_band_to_full: hvm -> hvm_dev", successGPU)
 
-          successGPU = gpu_memcpy_async(hvm_dev, int(loc(hvm),kind=c_intptr_t), &
-                          max_local_rows*cwy_blocking*size_of_datatype, gpuMemcpyHostToDevice, my_stream)
-          check_memcpy_gpu("trans_ev_band_to_full: hvm -> hvm_dev", successGPU)
+          num = nbw*nbw*numBlocks* size_of_datatype
 
-          successGPU = gpu_stream_synchronize(my_stream)
-          check_stream_synchronize_gpu("trans_ev_band_to_full: hvm -> hvm_dev", successGPU)
-          ! synchronize streamPerThread; maybe not neccessary
-          successGPU = gpu_stream_synchronize()
-          check_stream_synchronize_gpu("trans_ev_band_to_full: hvm -> hvm_dev", successGPU)
+          call gpu_memcpy_async_and_stream_synchronize &
+          ("trans_ev_band_to_full: hvm to hvm_dev", hvm_dev, 0_c_intptr_t, &
+             hvm(1:max_local_rows,1:cwy_blocking), &
+             1, 1, num, gpuMemcpyHostToDevice, my_stream, .false., .true., .false.)
 #else
           successGPU = gpu_memcpy(hvm_dev, int(loc(hvm),kind=c_intptr_t), &
                           max_local_rows*cwy_blocking*size_of_datatype, gpuMemcpyHostToDevice)
@@ -713,18 +744,11 @@ subroutine trans_ev_band_to_full_&
 #ifdef MORE_GPUBLAS
 #ifdef WITH_GPU_STREAMS
           my_stream = obj%gpu_setup%my_stream
-          successGPU = gpu_stream_synchronize(my_stream)
-          check_stream_synchronize_gpu("trans_ev_band_to_full: t_tmp_dev -> t_tmp", successGPU)
-
-          successGPU = gpu_memcpy_async(int(loc(t_tmp),kind=c_intptr_t), &
-                                  t_tmp_dev, cwy_blocking*nbw*size_of_datatype, gpuMemcpyDeviceToHost, my_stream)
-          check_memcpy_gpu("trans_ev_band_to_full: t_tmp_dev -> t_tmp", successGPU)
-
-          successGPU = gpu_stream_synchronize(my_stream)
-          check_stream_synchronize_gpu("trans_ev_band_to_full: t_tmp_dev -> t_tmp", successGPU)
-          ! synchronize streamPerThread; maybe not neccessary
-          successGPU = gpu_stream_synchronize()
-          check_stream_synchronize_gpu("trans_ev_band_to_full: t_tmp_dev -> t_tmp", successGPU)
+          num = cwy_blocking*nbw* size_of_datatype
+          call gpu_memcpy_async_and_stream_synchronize &
+          ("trans_ev_band_to_full: t_tmp_dev to t_tmp", t_tmp_dev, 0_c_intptr_t, &
+             t_tmp(1:cwy_blocking,1:nbw), &
+             1, 1, num, gpuMemcpyDeviceToHost, my_stream, .false., .true., .false.)
 #else
           successGPU = gpu_memcpy(int(loc(t_tmp),kind=c_intptr_t), &
                                   t_tmp_dev, cwy_blocking*nbw*size_of_datatype, gpuMemcpyDeviceToHost)
@@ -740,22 +764,15 @@ subroutine trans_ev_band_to_full_&
 #ifdef MORE_GPUBLAS
 #ifdef WITH_GPU_STREAMS
           my_stream = obj%gpu_setup%my_stream
-          successGPU = gpu_stream_synchronize(my_stream)
-          check_stream_synchronize_gpu("trans_ev_band_to_full: t_tmp -> t_tmp_dev", successGPU)
-
-          successGPU = gpu_memcpy_async(t_tmp_dev, int(loc(t_tmp2),kind=c_intptr_t), &
-                                  cwy_blocking*nbw*size_of_datatype, gpuMemcpyHostToDevice, my_stream)
-          check_memcpy_gpu("trans_ev_band_to_full: t_tmp -> t_tmp_dev", successGPU)
-
-          successGPU = gpu_stream_synchronize(my_stream)
-          check_stream_synchronize_gpu("trans_ev_band_to_full: t_tmp -> t_tmp_dev", successGPU)
-          ! synchronize streamPerThread; maybe not neccessary
-          successGPU = gpu_stream_synchronize()
-          check_stream_synchronize_gpu("trans_ev_band_to_full: t_tmp -> t_tmp_dev", successGPU)
+          num = cwy_blocking*nbw* size_of_datatype
+          call gpu_memcpy_async_and_stream_synchronize &
+          ("trans_ev_band_to_full: t_tmp2 to t_tmp_dev", t_tmp_dev, 0_c_intptr_t, &
+             t_tmp2(1:cwy_blocking,1:nbw), &
+             1, 1, num, gpuMemcpyHostToDevice, my_stream, .false., .true., .false.)
 #else
           successGPU = gpu_memcpy(t_tmp_dev, int(loc(t_tmp2),kind=c_intptr_t), &
                                   cwy_blocking*nbw*size_of_datatype, gpuMemcpyHostToDevice)
-          check_memcpy_gpu("trans_ev_band_to_full: t_tmp -> t_tmp_dev", successGPU)
+          check_memcpy_gpu("trans_ev_band_to_full: t_tmp2 -> t_tmp_dev", successGPU)
 #endif
 #endif /* MORE_GPUBLAS */
 
@@ -867,18 +884,11 @@ subroutine trans_ev_band_to_full_&
 #ifdef MORE_GPUBLAS
 #ifdef WITH_GPU_STREAMS
           my_stream = obj%gpu_setup%my_stream
-          successGPU = gpu_stream_synchronize(my_stream)
-          check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
-
-          successGPU = gpu_memcpy_async(tmat_complete_dev, int(loc(tmat_complete),kind=c_intptr_t), &
-                          cwy_blocking*cwy_blocking*size_of_datatype, gpuMemcpyHostToDevice, my_stream)
-          check_memcpy_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
-
-          successGPU = gpu_stream_synchronize(my_stream)
-          check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
-          ! synchronize streamPerThread; maybe not neccessary
-          successGPU = gpu_stream_synchronize()
-          check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
+          num = cwy_blocking*cwy_blocking* size_of_datatype
+          call gpu_memcpy_async_and_stream_synchronize &
+          ("trans_ev_band_to_full: 1: tmat_complete -> tmat_complete_dev", tmat_complete_dev, 0_c_intptr_t, &
+          tmat_complete(1:cwy_blocking,1:cwy_blocking), &
+          1, 1, num, gpuMemcpyHostToDevice, my_stream, .false., .true., .false.)
 #else
           successGPU = gpu_memcpy(tmat_complete_dev, int(loc(tmat_complete),kind=c_intptr_t), &
                           cwy_blocking*cwy_blocking*size_of_datatype, gpuMemcpyHostToDevice)
@@ -1061,7 +1071,7 @@ subroutine trans_ev_band_to_full_&
         gpuHandle = obj%gpu_setup%gpublasHandleArray(0)
         call gpublas_PRECISION_GEMM(BLAS_TRANS_OR_CONJ, 'N', &
                                      n_cols, l_cols, l_rows, ONE, hvm_dev, max_local_rows, &
-                                     q_dev, ldq , ZERO, tmp_dev, n_cols, gpuHandle)
+                                     q_dev, qMatrixRows , ZERO, tmp_dev, n_cols, gpuHandle)
         call obj%timer%stop("gpublas")
 
 #ifdef WITH_MPI
@@ -1069,19 +1079,11 @@ subroutine trans_ev_band_to_full_&
         ! copy data from device to host for a later MPI_ALLREDUCE
 #ifdef WITH_GPU_STREAMS  
         my_stream = obj%gpu_setup%my_stream
-        successGPU = gpu_stream_synchronize(my_stream)
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-
-        successGPU = gpu_memcpy_async(int(loc(tmp1),kind=c_intptr_t), &
-                      tmp_dev, l_cols*n_cols*size_of_datatype, gpuMemcpyDeviceToHost, my_stream)
-        check_memcpy_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-
-        successGPU = gpu_stream_synchronize(my_stream)
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-        ! synchronize streamPerThread; maybe not neccessary
-        successGPU = gpu_stream_synchronize()
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-
+        num = l_cols*n_cols* size_of_datatype
+        call gpu_memcpy_async_and_stream_synchronize &
+        ("trans_ev_band_to_full: tmp_dev -> tmp1", tmp_dev, 0_c_intptr_t, &
+        tmp1(1:max_local_cols*cwy_blocking), &
+        1, num, gpuMemcpyDeviceToHost, my_stream, .false., .true., .false.)
 #else
         successGPU = gpu_memcpy(int(loc(tmp1),kind=c_intptr_t), &
                       tmp_dev, l_cols*n_cols*size_of_datatype, gpuMemcpyDeviceToHost)
@@ -1097,7 +1099,7 @@ subroutine trans_ev_band_to_full_&
         call obj%timer%start("blas")
         call PRECISION_GEMM(BLAS_TRANS_OR_CONJ, 'N', &
                             int(n_cols,kind=BLAS_KIND), int(l_cols,kind=BLAS_KIND), int(l_rows,kind=BLAS_KIND), ONE, &
-                            hvm, int(ubound(hvm,dim=1),kind=BLAS_KIND), q_mat, int(ldq,kind=BLAS_KIND), ZERO, tmp1, &
+                            hvm, int(ubound(hvm,dim=1),kind=BLAS_KIND), q_mat, int(qMatrixRows,kind=BLAS_KIND), ZERO, tmp1, &
                            int(n_cols,kind=BLAS_KIND))
         call obj%timer%stop("blas")
       endif ! useGPU
@@ -1146,18 +1148,11 @@ subroutine trans_ev_band_to_full_&
 #ifndef MORE_GPUBLAS
 #ifdef WITH_GPU_STREAMS
       my_stream = obj%gpu_setup%my_stream
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-
-      successGPU = gpu_memcpy_async(int(loc(tmp1),kind=c_intptr_t), &
-                   tmp_dev, l_cols*n_cols*size_of_datatype, gpuMemcpyDeviceToHost, my_stream)
-      check_memcpy_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-      ! synchronize streamPerThread; maybe not neccessary
-      successGPU = gpu_stream_synchronize()
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
+      num = l_cols*n_cols* size_of_datatype
+      call gpu_memcpy_async_and_stream_synchronize &
+        ("trans_ev_band_to_full: tmp_dev -> tmp1", tmp_dev, 0_c_intptr_t, &
+        tmp1(1:max_local_cols*cwy_blocking), &
+        1, num, gpuMemcpyDeviceToHost, my_stream, .false., .true., .false.)
 #else
       successGPU = gpu_memcpy(int(loc(tmp1),kind=c_intptr_t), &
                    tmp_dev, l_cols*n_cols*size_of_datatype, gpuMemcpyDeviceToHost)
@@ -1183,18 +1178,11 @@ subroutine trans_ev_band_to_full_&
 #ifdef MORE_GPUBLAS
 #ifdef WITH_GPU_STREAMS  
       my_stream = obj%gpu_setup%my_stream
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-
-      successGPU = gpu_memcpy_async(int(loc(tmp1),kind=c_intptr_t), &
-                              tmp_dev, l_cols*n_cols*size_of_datatype, gpuMemcpyDeviceToHost, my_stream)
-      check_memcpy_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-      ! synchronize streamPerThread; maybe not neccessary
-      successGPU = gpu_stream_synchronize()
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
+      num = l_cols*n_cols* size_of_datatype
+      call gpu_memcpy_async_and_stream_synchronize &
+        ("trans_ev_band_to_full: tmp_dev -> tmp1", tmp_dev, 0_c_intptr_t, &
+        tmp1(1:max_local_cols*cwy_blocking), &
+        1, num, gpuMemcpyDeviceToHost, my_stream, .false., .true., .false.)
 #else
       successGPU = gpu_memcpy(int(loc(tmp1),kind=c_intptr_t), &
                               tmp_dev, l_cols*n_cols*size_of_datatype, gpuMemcpyDeviceToHost)
@@ -1210,18 +1198,11 @@ subroutine trans_ev_band_to_full_&
 #ifdef MORE_GPUBLAS
 #ifdef WITH_GPU_STREAMS
       my_stream = obj%gpu_setup%my_stream
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
-
-      successGPU = gpu_memcpy_async(tmp_dev, int(loc(tmp2),kind=c_intptr_t), &
-                              l_cols*n_cols*size_of_datatype, gpuMemcpyHostToDevice, my_stream)
-      check_memcpy_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
-
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
-      ! synchronize streamPerThread; maybe not neccessary
-      successGPU = gpu_stream_synchronize()
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
+      num = l_cols*n_cols* size_of_datatype
+      call gpu_memcpy_async_and_stream_synchronize &
+        ("trans_ev_band_to_full: tmp2 -> tmp_dev", tmp_dev, 0_c_intptr_t, &
+        tmp2(1:max_local_cols*cwy_blocking), &
+        1, num, gpuMemcpyHostToDevice, my_stream, .false., .true., .false.)
 #else
       successGPU = gpu_memcpy(tmp_dev, int(loc(tmp2),kind=c_intptr_t), &
                               l_cols*n_cols*size_of_datatype, gpuMemcpyHostToDevice)
@@ -1263,18 +1244,11 @@ subroutine trans_ev_band_to_full_&
 #ifdef MORE_GPUBLAS
 #ifdef WITH_GPU_STREAMS
       my_stream = obj%gpu_setup%my_stream
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-
-      successGPU = gpu_memcpy_async(int(loc(tmp1),kind=c_intptr_t), &
-                              tmp_dev, l_cols*n_cols*size_of_datatype, gpuMemcpyDeviceToHost, my_stream)
-      check_memcpy_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-      ! synchronize streamPerThread; maybe not neccessary
-      successGPU = gpu_stream_synchronize()
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
+      num = l_cols*n_cols* size_of_datatype
+      call gpu_memcpy_async_and_stream_synchronize &
+        ("trans_ev_band_to_full: tmp_dev -> tmp1", tmp_dev, 0_c_intptr_t, &
+        tmp1(1:max_local_cols*cwy_blocking), &
+        1, num, gpuMemcpyDeviceToHost, my_stream, .false., .true., .false.)
 #else
       successGPU = gpu_memcpy(int(loc(tmp1),kind=c_intptr_t), &
                               tmp_dev, l_cols*n_cols*size_of_datatype, gpuMemcpyDeviceToHost)
@@ -1290,22 +1264,15 @@ subroutine trans_ev_band_to_full_&
 #ifdef MORE_GPUBLAS
 #ifdef WITH_GPU_STREAMS
       my_stream = obj%gpu_setup%my_stream
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
-
-      successGPU = gpu_memcpy_async(tmp_dev, int(loc(tmp2),kind=c_intptr_t), &
-                              l_cols*n_cols*size_of_datatype, gpuMemcpyHostToDevice, my_stream)
-      check_memcpy_gpu("trans_ev_band_to_full: tmp_dev -> tmp1", successGPU)
-
-      successGPU = gpu_stream_synchronize(my_stream)
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
-      ! synchronize streamPerThread; maybe not neccessary
-      successGPU = gpu_stream_synchronize()
-      check_stream_synchronize_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
+      num = l_cols*n_cols* size_of_datatype
+      call gpu_memcpy_async_and_stream_synchronize &
+        ("trans_ev_band_to_full: tmp2 -> tmp_dev", tmp_dev, 0_c_intptr_t, &
+        tmp2(1:max_local_cols*cwy_blocking), &
+        1, num, gpuMemcpyHostToDevice, my_stream, .false., .true., .false.)
 #else
       successGPU = gpu_memcpy(tmp_dev, int(loc(tmp2),kind=c_intptr_t), &
                               l_cols*n_cols*size_of_datatype, gpuMemcpyHostToDevice)
-      check_memcpy_gpu("trans_ev_band_to_full: tmp_dev -> tmp2", successGPU)
+      check_memcpy_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
 #endif
 #endif /* MORE_GPUBLAS */
 
@@ -1341,18 +1308,11 @@ subroutine trans_ev_band_to_full_&
 #ifndef MORE_GPUBLAS
 #ifdef WITH_GPU_STREAMS
         my_stream = obj%gpu_setup%my_stream
-        successGPU = gpu_stream_synchronize(my_stream)
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
-
-        successGPU = gpu_memcpy_async(tmp_dev, int(loc(tmp2),kind=c_intptr_t), &
-                      l_cols*n_cols*size_of_datatype, gpuMemcpyHostToDevice, my_stream)
-        check_memcpy_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
-
-        successGPU = gpu_stream_synchronize(my_stream)
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
-        ! synchronize streamPerThread; maybe not neccessary
-        successGPU = gpu_stream_synchronize()
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmp2 -> tmp_dev", successGPU)
+        num = l_cols*n_cols* size_of_datatype
+        call gpu_memcpy_async_and_stream_synchronize &
+        ("trans_ev_band_to_full: tmp2 -> tmp_dev", tmp_dev, 0_c_intptr_t, &
+        tmp2(1:max_local_cols*cwy_blocking), &
+        1, num, gpuMemcpyHostToDevice, my_stream, .false., .true., .false.)
 #else
         successGPU = gpu_memcpy(tmp_dev, int(loc(tmp2),kind=c_intptr_t), &
                       l_cols*n_cols*size_of_datatype, gpuMemcpyHostToDevice)
@@ -1363,18 +1323,11 @@ subroutine trans_ev_band_to_full_&
         ! needed: as long as not device to device copy
 #ifdef WITH_GPU_STREAMS
         my_stream = obj%gpu_setup%my_stream
-        successGPU = gpu_stream_synchronize(my_stream)
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
-
-        successGPU = gpu_memcpy_async(tmat_complete_dev, int(loc(tmat_complete),kind=c_intptr_t), &
-                      cwy_blocking*cwy_blocking*size_of_datatype, gpuMemcpyHostToDevice, my_stream)
-        check_memcpy_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
-
-        successGPU = gpu_stream_synchronize(my_stream)
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
-        ! synchronize streamPerThread; maybe not neccessary
-        successGPU = gpu_stream_synchronize()
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
+        num = cwy_blocking*cwy_blocking* size_of_datatype
+        call gpu_memcpy_async_and_stream_synchronize &
+        ("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", tmat_complete_dev, 0_c_intptr_t, &
+        tmat_complete(1:cwy_blocking,1:cwy_blocking), &
+        1, 1, num, gpuMemcpyHostToDevice, my_stream, .false., .true., .false.)
 #else
         successGPU = gpu_memcpy(tmat_complete_dev, int(loc(tmat_complete),kind=c_intptr_t), &
                       cwy_blocking*cwy_blocking*size_of_datatype, gpuMemcpyHostToDevice)
@@ -1386,7 +1339,7 @@ subroutine trans_ev_band_to_full_&
         call gpublas_PRECISION_TRMM('L', 'U', BLAS_TRANS_OR_CONJ, 'N', &
                                  n_cols, l_cols, ONE, tmat_complete_dev, cwy_blocking, tmp_dev, n_cols, gpuHandle)
         call gpublas_PRECISION_GEMM('N', 'N', l_rows, l_cols, n_cols, -ONE, hvm_dev, max_local_rows, tmp_dev, &
-                                   n_cols, ONE, q_dev, ldq, gpuHandle)
+                                   n_cols, ONE, q_dev, qMatrixRows, gpuHandle)
         call obj%timer%stop("gpublas")
       else ! useGPU
         call obj%timer%start("blas")
@@ -1396,7 +1349,7 @@ subroutine trans_ev_band_to_full_&
         call PRECISION_GEMM('N', 'N', int(l_rows,kind=BLAS_KIND), int(l_cols,kind=BLAS_KIND), &
                             int(n_cols,kind=BLAS_KIND), -ONE, hvm, &
                             int(ubound(hvm,dim=1),kind=BLAS_KIND), tmp2, int(n_cols,kind=BLAS_KIND), ONE, &
-                            q_mat, int(ldq,kind=BLAS_KIND))
+                            q_mat, int(qMatrixRows,kind=BLAS_KIND))
         call obj%timer%stop("blas")
       endif ! useGPU
 
@@ -1407,18 +1360,11 @@ subroutine trans_ev_band_to_full_&
         ! needed as long as not device to device copy
 #ifdef WITH_GPU_STREAMS
         my_stream = obj%gpu_setup%my_stream
-        successGPU = gpu_stream_synchronize(my_stream)
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
-
-        successGPU = gpu_memcpy_async(tmat_complete_dev, int(loc(tmat_complete),kind=c_intptr_t), &
-                      cwy_blocking*cwy_blocking*size_of_datatype, gpuMemcpyHostToDevice, my_stream)
-        check_memcpy_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
-
-        successGPU = gpu_stream_synchronize(my_stream)
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
-        ! synchronize streamPerThread; maybe not neccessary
-        successGPU = gpu_stream_synchronize()
-        check_stream_synchronize_gpu("trans_ev_band_to_full: tmat_complete -> tmat_complete_dev", successGPU)
+        num = cwy_blocking*cwy_blocking* size_of_datatype
+        call gpu_memcpy_async_and_stream_synchronize &
+        ("trans_ev_band_to_full: tmat_complete to tmat_complete_dev", tmat_complete_dev, 0_c_intptr_t, &
+        tmat_complete(1:cwy_blocking,1:cwy_blocking), &
+        1, 1, num, gpuMemcpyHostToDevice, my_stream, .false., .true., .false.)
 #else
         successGPU = gpu_memcpy(tmat_complete_dev, int(loc(tmat_complete),kind=c_intptr_t), &
                       cwy_blocking*cwy_blocking*size_of_datatype, gpuMemcpyHostToDevice)
@@ -1431,7 +1377,7 @@ subroutine trans_ev_band_to_full_&
                                    n_cols, l_cols, ONE, tmat_complete_dev, cwy_blocking, &
                                    tmp_dev, n_cols, gpuHandle)
         call gpublas_PRECISION_GEMM('N', 'N', l_rows, l_cols, n_cols, &
-                                    -ONE, hvm_dev, max_local_rows, tmp_dev, n_cols, ONE, q_dev, ldq, gpuHandle)
+                                    -ONE, hvm_dev, max_local_rows, tmp_dev, n_cols, ONE, q_dev, qMatrixRows, gpuHandle)
         call obj%timer%stop("gpublas")
       else ! useGPU
         call obj%timer%start("blas")
@@ -1441,7 +1387,7 @@ subroutine trans_ev_band_to_full_&
                             tmp1, int(n_cols,kind=BLAS_KIND))
         call PRECISION_GEMM('N', 'N', int(l_rows,kind=BLAS_KIND), int(l_cols,kind=BLAS_KIND), int(n_cols,kind=BLAS_KIND), &
                             -ONE, hvm, int(ubound(hvm,dim=1),kind=BLAS_KIND), tmp1, int(n_cols,kind=BLAS_KIND), ONE, q_mat, &
-                            int(ldq,kind=BLAS_KIND))
+                            int(qMatrixRows,kind=BLAS_KIND))
         call obj%timer%stop("blas")
       endif ! useGPU
     endif
@@ -1466,35 +1412,13 @@ subroutine trans_ev_band_to_full_&
     successGPU = gpu_free(tmat_complete_dev)
     check_dealloc_gpu("trans_ev_band_to_full: tmat_complete_dev", successGPU)
 
-    ! final transfer of q_dev
-#ifdef WITH_GPU_STREAMS
-    my_stream = obj%gpu_setup%my_stream
-    successGPU = gpu_stream_synchronize(my_stream)
-    check_stream_synchronize_gpu("trans_ev_band_to_full: q_dev -> q_mat", successGPU)
-
-    successGPU = gpu_memcpy_async(int(loc(q_mat),kind=c_intptr_t), q_dev, ldq*matrixCols*size_of_datatype, &
-                  gpuMemcpyDeviceToHost, my_stream)
-    check_memcpy_gpu("trans_ev_band_to_full: q_dev -> q_mat", successGPU)
-
-    successGPU = gpu_stream_synchronize(my_stream)
-    check_stream_synchronize_gpu("trans_ev_band_to_full: q_dev -> q_mat", successGPU)
-    ! synchronize streamPerThread; maybe not neccessary
-    successGPU = gpu_stream_synchronize()
-    check_stream_synchronize_gpu("trans_ev_band_to_full: q_dev -> q_mat", successGPU)
-#else
-    successGPU = gpu_memcpy(int(loc(q_mat),kind=c_intptr_t), q_dev, ldq*matrixCols*size_of_datatype, &
-                  gpuMemcpyDeviceToHost)
-    check_memcpy_gpu("trans_ev_band_to_full: q_dev -> q_mat", successGPU)
-#endif
-
-    successGPU = gpu_free(q_dev)
-    check_dealloc_gpu("trans_ev_band_to_full: q_dev", successGPU)
+!    ! final transfer of q_dev
 
 #if defined(WITH_OPENMP_OFFLOAD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
     if (gpu_vendor() /= OPENMP_OFFLOAD_GPU .and. gpu_vendor() /= SYCL_GPU) then
 #endif
-      successGPU = gpu_host_unregister(int(loc(q_mat),kind=c_intptr_t))
-      check_host_unregister_gpu("trans_ev_band_to_full: q_mat", successGPU)
+      !successGPU = gpu_host_unregister(int(loc(q_mat),kind=c_intptr_t))
+      !check_host_unregister_gpu("trans_ev_band_to_full: q_mat", successGPU)
       nullify(tmp1)
       nullify(tmp2)
       nullify(hvm)
@@ -1583,8 +1507,4 @@ subroutine trans_ev_band_to_full_&
   &PRECISION_SUFFIX //&
   gpuString)
 
-end subroutine trans_ev_band_to_full_&
-&MATH_DATATYPE&
-    &_&
-    &PRECISION
-
+end
