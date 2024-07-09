@@ -26,7 +26,7 @@ AM_SILENT_RULES([yes])
 #    by the current interface, as they are ABI compatible (e.g. only new symbols
 #    were added by the new interface)
 #
-AC_SUBST([ELPA_SO_VERSION], [21:2:2])
+AC_SUBST([ELPA_SO_VERSION], [21:3:3])
 
 # AC_DEFINE_SUBST(NAME, VALUE, DESCRIPTION)
 # -----------------------------------------
@@ -40,17 +40,17 @@ AX_BUILD_DATE_EPOCH(ELPA_BUILDTIME)
 # API Version
 AC_DEFINE([EARLIEST_API_VERSION], [20170403], [Earliest supported ELPA API version])
 print_earliest_api_version=20170403
-AC_DEFINE_SUBST(CURRENT_API_VERSION, 20241103, "Current ELPA API version")
-print_current_api_version=20241103
+AC_DEFINE_SUBST(CURRENT_API_VERSION, 20241105, "Current ELPA API version")
+print_current_api_version=20241105
 # Autotune Version
 AC_DEFINE([EARLIEST_AUTOTUNE_VERSION], [20171201], [Earliest ELPA API version, which supports autotuning])
 print_earliest_autotune_version=20171201
-AC_DEFINE([CURRENT_AUTOTUNE_VERSION], [20241103], [Current ELPA autotune version])
-print_current_autotune_version=20241103
-AC_DEFINE([CURRENT_AUTOTUNE_VERSION], [20241103], [Current ELPA autotune version])
-AC_DEFINE_SUBST(CURRENT_AUTOTUNE_VERSION, 20241103, "Current ELPA autotune version")
+AC_DEFINE([CURRENT_AUTOTUNE_VERSION], [20241105], [Current ELPA autotune version])
+print_current_autotune_version=20241105
+AC_DEFINE([CURRENT_AUTOTUNE_VERSION], [20241105], [Current ELPA autotune version])
+AC_DEFINE_SUBST(CURRENT_AUTOTUNE_VERSION, 20241105, "Current ELPA autotune version")
 AC_DEFINE_UNQUOTED([ELPA_BUILDTIME], [$ELPA_BUILDTIME], ["Time of build"])
-AX_COMPARE_VERSION([$ELPA_BUILDTIME], [gt], [1725776247],[old_elpa_version=yes],[old_elpa_version=no])
+AX_COMPARE_VERSION([$ELPA_BUILDTIME], [gt], [1732082353],[old_elpa_version=yes],[old_elpa_version=no])
 
 AX_CHECK_GNU_MAKE()
 if test x$_cv_gnu_make_command = x ; then
@@ -2735,6 +2735,23 @@ if test x"${need_amd_gpu}" = x"yes" ; then
   if test x"${hipcc_found}" = x"no" ; then
     AC_MSG_ERROR([hipcc not found; try to set the hip-path or disable AMD GPU support])
   fi
+  AC_MSG_CHECKING(how to querry GPU memory types)
+  AC_LANG_PUSH([C++])
+  AC_COMPILE_IFELSE([AC_LANG_SOURCE([
+    #include <hip/hip_runtime.h>
+    int main(int argc, char **argv) {
+    hipPointerAttribute_t attributes;
+    if (attributes.memoryType==hipMemoryTypeDevice) return 1;
+    }
+  ])],
+  [can_compile_memory_type=yes],
+  [can_compile_memory_type=no]
+  )
+  AC_LANG_POP([C++])
+  AC_MSG_RESULT([${can_compile_memory_type}])
+  if test x"${can_compile_memory_type}" = x"yes"; then
+      AC_DEFINE([HAVE_OLD_HIP_TYPESTRUCTURE],[1],[old hip memory type structure])
+  fi
 
   if test x"${use_hipblas}" = x"yes"; then
     #dnl check whether we find marshalling hipblas
@@ -3904,6 +3921,58 @@ if test x"${enable_python_tests}" = x"yes"; then
           AC_MSG_ERROR([pytest not found.])
         fi
 fi
+
+
+
+#AC_ARG_WITH([mpi], 
+#	    [AS_HELP_STRING([--with-mpi=[[yes|no]]], 
+#	                    [compile with MPI. Default: yes])],
+#	         	    [
+#			     with_mpi_specified=yes
+#			     if test x"$withval" = x"auto"; then
+#			       correct_mpi_argument=yes
+#			     fi
+#			     if test x"$withval" = x"yes"; then
+#			       correct_mpi_argument=yes
+#			     fi
+#			     if test x"$withval" = x"no"; then
+#                               correct_mpi_argument=yes
+#                             fi],
+#			     [with_mpi=yes])
+
+AC_MSG_CHECKING(whether which test programms should be build) 
+AC_ARG_WITH([test-programs],
+              [AS_HELP_STRING([--with-test-programs=[[all|gpu|cpu]]],
+                               [build the test programs for cpu, gpu or all (default all)])],
+                               [if test x"$withval" = x"all"; then
+				  build_cpu_tests=yes
+				  build_gpu_tests=yes
+				fi
+				if test x"$withval" = x"cpu"; then
+				  build_cpu_tests=yes
+				  build_gpu_tests=no
+				fi
+				if test x"$withval" = x"gpu"; then
+				  build_cpu_tests=no
+				  build_gpu_tests=yes
+                                fi
+				if test x"$withval" = x"yes"; then
+				  build_cpu_tests=yes
+				  build_gpu_tests=yes
+                                fi
+				if test x"$withval" = x"no"; then
+				  build_cpu_tests=no
+				  build_gpu_tests=no
+                                fi],
+              [build_cpu_tests=yes
+	       build_gpu_tests=yes])
+AC_MSG_RESULT([${withval}])
+AM_CONDITIONAL([BUILD_CPU_TESTS],[test x"$build_cpu_tests" = x"yes"])
+AM_CONDITIONAL([BUILD_GPU_TESTS],[test x"$build_gpu_tests" = x"yes"])
+
+
+
+
 AC_OUTPUT
 
 echo ""
@@ -3968,9 +4037,9 @@ fi
 
 #echo " "
 #echo "***********************************************************************"
-#echo "*  This is the first release candidate of ELPA 2024.03.001.rc1        *"
+#echo "*  This is the first release candidate of ELPA 2024.05.001.rc1        *"
 #echo "*  There might be still some changes until the final release of       *"
-#echo "*  ELPA 2024.03.001                                                   *"
+#echo "*  ELPA 2024.05.001                                                   *"
 #echo "***********************************************************************"
 #echo " "
 

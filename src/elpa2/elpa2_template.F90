@@ -1974,9 +1974,9 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        if (useGPU) then
 #ifdef WITH_GPU_STREAMS
          my_stream = obj%gpu_setup%my_stream
-         call GPU_COPY_REAL_PART_TO_Q_PRECISION_COMPLEX(q_dev, q_dev_real, matrixRows, l_rows, l_cols_nev, my_stream)
+         call GPU_COPY_REAL_PART_TO_Q_PRECISION(q_dev, q_dev_real, matrixRows, l_rows, l_cols_nev, my_stream)
 #else
-         call GPU_COPY_REAL_PART_TO_Q_PRECISION_COMPLEX(q_dev, q_dev_real, matrixRows, l_rows, l_cols_nev)
+         call GPU_COPY_REAL_PART_TO_Q_PRECISION(q_dev, q_dev_real, matrixRows, l_rows, l_cols_nev)
 #endif
        else !useGPU
          ! q must be given thats why from here on we can use q and not q_actual
@@ -2007,9 +2007,9 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
        if (useGPU) then
 !#ifdef WITH_GPU_STREAMS
 !         my_stream = obj%gpu_setup%my_stream
-!         call GPU_ZERO_SKEWSYMMETRIC_Q_PRECISION_REAL(q_dev, matrixRows, matrixCols, my_stream)
+!         call GPU_ZERO_SKEWSYMMETRIC_Q_PRECISION(q_dev, matrixRows, matrixCols, my_stream)
 !#else
-!         call GPU_ZERO_SKEWSYMMETRIC_Q_PRECISION_REAL(q_dev, matrixRows, matrixCols)
+!         call GPU_ZERO_SKEWSYMMETRIC_Q_PRECISION(q_dev, matrixRows, matrixCols)
 !#endif
          do i = 1, matrixRows
            global_index = np_rows*nblk*((i-1)/nblk) + MOD(i-1,nblk) + MOD(np_rows+my_prow-0, np_rows)*nblk + 1
@@ -2020,10 +2020,10 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
              negative_or_positive = 1
 #ifdef WITH_GPU_STREAMS
              my_stream = obj%gpu_setup%my_stream
-             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, &
+             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION(q_dev, i, matrixRows, &
                      matrixCols, negative_or_positive, my_stream)
 #else
-             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, &
+             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION(q_dev, i, matrixRows, &
                      matrixCols, negative_or_positive)
 #endif 
            end if
@@ -2031,10 +2031,10 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
              negative_or_positive = -1
 #ifdef WITH_GPU_STREAMS
              my_stream = obj%gpu_setup%my_stream
-             call GPU_COPY_SKEWSYMMETRIC_FIRST_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, &
+             call GPU_COPY_SKEWSYMMETRIC_FIRST_HALF_Q_PRECISION(q_dev, i, matrixRows, &
                      matrixCols, negative_or_positive, my_stream)
 #else
-             call GPU_COPY_SKEWSYMMETRIC_FIRST_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, &
+             call GPU_COPY_SKEWSYMMETRIC_FIRST_HALF_Q_PRECISION(q_dev, i, matrixRows, &
                      matrixCols, negative_or_positive)
 #endif
            end if
@@ -2042,10 +2042,10 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
              negative_or_positive = -1
 #ifdef WITH_GPU_STREAMS
              my_stream = obj%gpu_setup%my_stream
-             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, matrixCols, &
+             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION(q_dev, i, matrixRows, matrixCols, &
                           negative_or_positive, my_stream)
 #else
-             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, i, matrixRows, matrixCols, &
+             call GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION(q_dev, i, matrixRows, matrixCols, &
                           negative_or_positive)
 #endif
            end if
@@ -2230,10 +2230,10 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
    
 #ifdef WITH_GPU_STREAMS
            my_stream = obj%gpu_setup%my_stream
-           call GPU_GET_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, q_part2_dev, matrixRows, matrixCols, &
+           call GPU_GET_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION(q_dev, q_part2_dev, matrixRows, matrixCols, &
                                                                 my_stream)
 #else      
-           call GPU_GET_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, q_part2_dev, matrixRows, matrixCols)
+           call GPU_GET_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION(q_dev, q_part2_dev, matrixRows, matrixCols)
 #endif   
            call trans_ev_tridi_to_band_gpu_&
            &MATH_DATATYPE&
@@ -2340,10 +2340,10 @@ integer(kind=c_intptr_t)                           :: ccl_comm_all
          if (useGPU) then
 #ifdef WITH_GPU_STREAMS
            my_stream = obj%gpu_setup%my_stream
-           call GPU_PUT_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, q_part2_dev, matrixRows, matrixCols, &
+           call GPU_PUT_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION(q_dev, q_part2_dev, matrixRows, matrixCols, &
                                                                  my_stream)
 #else
-           call GPU_PUT_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION_REAL(q_dev, q_part2_dev, matrixRows, matrixCols)
+           call GPU_PUT_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION(q_dev, q_part2_dev, matrixRows, matrixCols)
 #endif
          endif
        endif ! do_trans_to_full
