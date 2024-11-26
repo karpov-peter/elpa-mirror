@@ -117,8 +117,9 @@
        num = 1 * size_of_int
        successGPU = gpu_malloc(info_dev, num)
        check_alloc_gpu("solve_tridi_single info_dev: ", successGPU)
-
-       call GPU_CONSTRUCT_TRIDI_MATRIX_PRECISION (q_dev, d_dev, e_dev, nlen, ldq)
+       
+       my_stream = obj%gpu_setup%my_stream ! PETERDEBUG: new
+       call GPU_CONSTRUCT_TRIDI_MATRIX_PRECISION (q_dev, d_dev, e_dev, nlen, ldq, my_stream)
 
      endif
 #endif
@@ -323,7 +324,8 @@
 
 
      if (useGPU) then
-       call GPU_CHECK_MONOTONY_PRECISION (d_dev, q_dev, qtmp_dev, nlen, ldq)
+       my_stream = obj%gpu_setup%my_stream
+       call GPU_CHECK_MONOTONY_PRECISION (d_dev, q_dev, qtmp_dev, nlen, ldq, my_stream)
      else
        do i=1,nlen-1
          if (d(i+1)<d(i)) then

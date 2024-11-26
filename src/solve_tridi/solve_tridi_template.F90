@@ -87,14 +87,20 @@ subroutine solve_tridi_cpu_&
       class(elpa_abstract_impl_t), intent(inout) :: obj
       integer(kind=ik), intent(in)               :: na, nev, ldq, nblk, matrixCols, &
                                                     mpi_comm_all, mpi_comm_rows, mpi_comm_cols
+      ! class(elpa_abstract_impl_t):: obj ! PETERDEBUG
+      ! integer(kind=ik)               :: na, nev, ldq, nblk, matrixCols, &
+      !                                         mpi_comm_all, mpi_comm_rows, mpi_comm_cols
 
       integer(kind=c_intptr_t)                   :: d_dev, e_dev, q_dev
 #ifndef SOLVE_TRIDI_GPU_BUILD
       real(kind=REAL_DATATYPE), intent(inout)    :: d(na), e(na)
+      ! real(kind=REAL_DATATYPE) :: d(na), e(na) ! PETERDEBUG
 #ifdef USE_ASSUMED_SIZE
       real(kind=REAL_DATATYPE), intent(inout)    :: q(ldq,*)
+      ! real(kind=REAL_DATATYPE)   :: q(ldq,*) ! PETERDEBUG
 #else
       real(kind=REAL_DATATYPE), intent(inout)    :: q(ldq,matrixCols)
+      !real(kind=REAL_DATATYPE)  :: q(ldq,matrixCols) ! PETERDEBUG
 #endif
 #else /* SOLVE_TRIDI_GPU_BUILD */
       real(kind=REAL_DATATYPE)                   :: d(na), e(na)
@@ -103,6 +109,7 @@ subroutine solve_tridi_cpu_&
 
       logical, intent(in)                        :: wantDebug
       logical, intent(out)                       :: success
+      ! logical                      :: success ! PETERDEBUG
 
       integer(kind=ik)                           :: i, j, n, np, nc, nev1, l_cols, l_rows
       integer(kind=ik)                           :: my_prow, my_pcol, np_rows, np_cols
@@ -125,6 +132,8 @@ subroutine solve_tridi_cpu_&
       integer(kind=c_intptr_t)                   :: gpuHandle, my_stream
       type(c_ptr)                                :: limits_dev
       logical                                    :: successGPU
+
+      ! print *, "HERE11" ! PETERDEBUG: clean up after debugging
 
       useGPU = .false.
 #ifdef SOLVE_TRIDI_GPU_BUILD
@@ -256,6 +265,7 @@ subroutine solve_tridi_cpu_&
         nev1 = MIN(nev,l_cols)
       endif
 
+      ! print *,"nc=", nc, "myid=", obj%mpi_setup%myRank_comm_parent ! PETERDEBUG: cleaup after debugging
 
       if (useGPU) then
         call solve_tridi_col_gpu_&
@@ -362,24 +372,41 @@ subroutine solve_tridi_cpu_&
         call gpu_memcpy_async_and_stream_synchronize &
             ("solve_tridi e_dev -> e", e_dev, 0_c_intptr_t, &
                                                  e(1:na), &
-                                  1, num, gpuMemcpyDeviceToHost, my_stream, .false., .false., .false.)
+                                  1, num, gpuMemcpyDeviceToHost, my_stream, .false., .true., .false.) ! PETERDEBUG: add sync
 #else
         successGPU = gpu_memcpy(int(loc(e(1)),kind=c_intptr_t),  e_dev, &
                               num, gpuMemcpyDeviceToHost)
-        check_memcpy_gpu("solve_tridi: 1: d_dev", successGPU)
+        check_memcpy_gpu("solve_tridi: 1: e_dev", successGPU)
 #endif
       endif
 
 
 
-      ! Recursively merge sub problems
+      ! Recursively merge sub problems ! PETERDEBUG: only useGPU differs
+      ! call obj%set("nvidia-gpu", 0, istat)
+      ! print *, "HERE switch off nvidia-gpu"
+      
+      ! print *, "q:", q(1:ldq,1:matrixCols)
+      ! print *, "d:", d
+      ! print *, "e:", e
+
       call merge_recursive_&
            &PRECISION &
            (obj, 0, np_cols, ldq, matrixCols, nblk, &
            l_col, p_col, l_col_bc, p_col_bc, limits, &
            np_cols, na, q, d, e, &
            mpi_comm_all, mpi_comm_rows, mpi_comm_cols,&
-           useGPU, wantDebug, success, max_threads)
+           useGPU, wantDebug, success, max_threads) ! PETERDEBUG
+           !.false., wantDebug, success, max_threads) ! PETERDEBUG
+      ! if (useGPU) then
+      !   call obj%set("nvidia-gpu", 1, istat)
+      ! endif
+
+      ! print *, ""
+      ! print *, "After merge_recursive"
+      ! print *, "q:", q(1:ldq,1:matrixCols)
+      ! print *, "d:", d
+      ! print *, "e:", e
 
       if (.not.(success)) then
         call obj%timer%stop("solve_tridi" // PRECISION_SUFFIX // gpuString)
