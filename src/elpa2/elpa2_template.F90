@@ -691,10 +691,10 @@
      &MATH_DATATYPE&
      &_2stage_&
      &PRECISION&
-     &")
+     &") ! "
      success = .true.
      return
-   endif
+   endif 
 
    if (nev == 0) then
      nev = 1
@@ -1354,6 +1354,10 @@
          check_dealloc_gpu("elpa1_template q_part2_dev", successGPU)
 #endif
        else
+         print *, "ELPA: na=", na, "nev=", nev
+         print *, "rank=", my_pe, "ev=", ev
+         print *, "rank=", my_pe, "e=", e
+         
          call solve_tridi_cpu_&
          &PRECISION &
          (obj, na, nev, ev, e, &
