@@ -20,10 +20,52 @@ subroutine check_monotony_&
   success = .true.
   do i=1,n-1
     if (d(i+1)<d(i)) then
-      if (wantDebug) write(error_unit,'(a,a,i8,2g25.17)') 'ELPA1_check_monotony: Monotony error on ',text,i,d(i),d(i+1)
+      !if (wantDebug) write(error_unit,'(a,a,i8,2g25.17)') 'ELPA1_check_monotony: Monotony error on ',text,i,d(i),d(i+1)
+      write(error_unit,'(a,a,i8,2g25.17)') 'ELPA1_check_monotony: Monotony error on ',text,i,d(i),d(i+1)
       success = .false.
+      
       return
     endif
   enddo
 end subroutine check_monotony_&
         &PRECISION
+
+subroutine check_monotony_strict_&
+                          &PRECISION&
+                          &(obj, n,d,text, wantDebug, success, myid)
+  ! This is a test routine for checking if the eigenvalues are monotonically increasing.
+  ! It is for debug purposes only, an error should never be triggered!
+  use precision
+  use ELPA_utilities
+  use elpa_abstract_impl
+  implicit none
+
+  class(elpa_abstract_impl_t), intent(inout) :: obj
+  integer(kind=ik)              :: n
+  real(kind=REAL_DATATYPE)      :: d(n)
+  character*(*)                 :: text
+
+  integer(kind=ik)              :: i
+  logical, intent(in)           :: wantDebug
+  logical, intent(out)          :: success
+
+  integer, parameter :: out_unit=20
+  character(len = 1024) :: filename
+  integer(kind=c_int)                         :: myid
+  
+  success = .true.
+  do i=1,n-1
+    if (d(i+1)<=d(i)) then
+      !if (wantDebug) write(error_unit,'(a,a,i8,2g25.17)') 'ELPA1_check_monotony: Monotony error on ',text,i,d(i),d(i+1)
+      write(error_unit,'(a,a,i8,2g25.17)') 'ELPA1_check_monotony: Monotony error on ',text,i,d(i),d(i+1)
+      success = .false.
+      
+      write(filename, "(A,I0.2,A)")  "elpa_output_d_check_monotony-", myid, ".txt"
+      open(unit=out_unit, file=trim(filename), action="write",status="replace")
+      write(out_unit, *) d
+      close(out_unit)
+
+      return
+    endif
+  enddo
+end subroutine

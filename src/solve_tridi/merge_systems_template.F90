@@ -174,7 +174,14 @@
       logical                                      :: useCCL
 #ifdef WITH_OPENMP_TRADITIONAL
       integer(kind=ik)                            :: my_thread
+#endif
 
+      integer(kind=c_int)                         :: myid
+      logical                                     :: issue_warning
+      integer, parameter :: out_unit=20
+      character(len = 1024) :: filename
+
+#ifdef WITH_OPENMP_TRADITIONAL
       allocate(z_p(na,0:max_threads-1), stat=istat, errmsg=errorMessage)
       check_allocate("merge_systems: z_p",istat, errorMessage)
 #endif
@@ -192,6 +199,8 @@
       np_rows = int(np_rowsMPI,kind=c_int)
       my_pcol = int(my_pcolMPI,kind=c_int)
       np_cols = int(np_colsMPI,kind=c_int)
+
+      myid    = obj%mpi_setup%myRank_comm_parent
 
       call obj%timer%stop("mpi_communication")
 
@@ -441,9 +450,9 @@
 
       enddo ! do i=1,na
 
-      call check_monotony_&
+      call check_monotony_strict_&
       &PRECISION&
-      &(obj, na1,d1,'Sorted1', wantDebug, success)
+      &(obj, na1,d1,'Sorted1', wantDebug, success, myid)
       if (.not.(success)) then
         call obj%timer%stop("merge_systems" // PRECISION_SUFFIX)
         return
@@ -524,6 +533,8 @@
 !        my_thread = omp_get_thread_num()
 !!$OMP DO
 !#endif
+        print *, "EPS=", EPS
+
         DO i = my_proc+1, na1, n_procs ! work distributed over all processors
           call obj%timer%start("lapack_laed4")
           call PRECISION_LAED4(int(na1,kind=BLAS_KIND), int(i,kind=BLAS_KIND), d1, z1, delta, &
@@ -546,12 +557,42 @@
 !            if (i/=j)  z_p(j,my_thread) = z_p(j,my_thread)*( delta(j) / (d1(j)-d1(i)) )
 !          enddo
 !          z_p(i,my_thread) = z_p(i,my_thread)*delta(i)
-!#else
+!#else    
+          issue_warning = .false.
+
           do j=1,na1
-            if (i/=j)  z(j) = z(j)*( delta(j) / (d1(j)-d1(i)) )
+            if (i/=j) then
+              if (abs(d1(j)-d1(i)) < 10.0_rk*EPS) then
+                write(error_unit,*) "Warning: merge_systems: d1(j)-d1(i) < 10*eps; i=",i," j=",j,&
+                                    " d1(i)=",d1(i)," d1(j)=",d1(j), "d1(i)-d1(j)=",d1(i)-d1(j), &
+                                    "delta(j)=",delta(j), "z(i)=",z(j)
+                issue_warning = .true.
+                z(j) = z(j)*( delta(j) / EPS )
+              else
+                z(j) = z(j)*( delta(j) / (d1(j)-d1(i)) )
+              endif
+            endif
           enddo
           z(i) = z(i)*delta(i)
 !#endif
+
+          if (issue_warning) then
+            write(filename, "(A,I0.2,A)")  "elpa_output_d1-", myid, ".txt"
+            open(unit=out_unit, file=trim(filename), action="write",status="replace")
+            write(out_unit, *) d1
+            close(out_unit)
+
+            write(filename, "(A,I0.2,A)")  "elpa_output_delta-", myid, ".txt"
+            open(unit=out_unit, file=trim(filename), action="write",status="replace")
+            write(out_unit, *) delta
+            close(out_unit)
+
+            write(filename, "(A,I0.2,A)")  "elpa_output_z-", myid, ".txt"
+            open(unit=out_unit, file=trim(filename), action="write",status="replace")
+            write(out_unit, *) z
+            close(out_unit)
+          endif
+
           ! store dbase/ddiff
 
           if (i<na1) then

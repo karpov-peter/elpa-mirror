@@ -259,6 +259,10 @@
 
    integer(kind=c_intptr_t)                                           :: num
    integer(kind=c_intptr_t)                                           :: e_dev, ev_dev, q_dev_real, q_dev_actual
+
+   integer, parameter :: out_unit=20
+   character(len = 1024) :: filename
+
 #if REALCASE == 1
 #undef GPU_KERNEL
 #undef GPU_KERNEL2
@@ -1354,10 +1358,20 @@
          check_dealloc_gpu("elpa1_template q_part2_dev", successGPU)
 #endif
        else
-         print *, "ELPA: na=", na, "nev=", nev
-         print *, "rank=", my_pe, "ev=", ev
-         print *, "rank=", my_pe, "e=", e
+        !  print *, "ELPA: na=", na, "nev=", nev
+        !  print *, "rank=", my_pe, "ev=", ev
+        !  print *, "rank=", my_pe, "e=", e
+
+         write(filename, "(A,I0.2,A)")  "elpa_output_ev-", my_pe, ".txt"
+         open(unit=out_unit, file=trim(filename), action="write",status="replace")
+         write(out_unit, *) ev
+         close(out_unit)
          
+         write(filename, "(A,I0.2,A)")  "elpa_output_e-", my_pe, ".txt"
+         open(unit=out_unit, file=trim(filename), action="write",status="replace")
+         write(out_unit, *) e
+         close(out_unit)
+
          call solve_tridi_cpu_&
          &PRECISION &
          (obj, na, nev, ev, e, &

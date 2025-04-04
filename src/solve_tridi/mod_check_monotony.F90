@@ -6,8 +6,10 @@ module check_monotony
   private
 
   public :: check_monotony_double
+  public :: check_monotony_strict_double
 #if defined(WANT_SINGLE_PRECISION_REAL) || defined(WANT_SINGLE_PRECISION_COMPLEX)
   public :: check_monotony_single
+  public :: check_monotony_strict_single
 #endif
 
   contains
