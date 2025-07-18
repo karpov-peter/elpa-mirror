@@ -195,14 +195,19 @@ DeviceSelection& SyclState::getDefaultDeviceHandle() {
 }
 
 #ifdef WITH_ONEAPI_ONECCL
-std::optional<cclKvsHandle> SyclState::retrieveKvs(void *kvsAddress) {
+std::optional<cclKvsHandle> SyclState::retrieveKvs(std::string kvsAddress) {
   if (kvsMap.find(kvsAddress) != kvsMap.end()) {
     return kvsMap[kvsAddress];
   }
   return std::nullopt;
 }
 
-void SyclState::registerKvs(void *kvsAddr, cclKvsHandle kvs) {
+void SyclState::registerKvs(std::string kvsAddr, cclKvsHandle kvs) {
+  //if (kvsMap.find(kvsAddr) != kvsMap.end()) {
+  //  std::cerr << "[%%%] Warning: KVS with address " << kvsAddr << " already registered. Overwriting." << std::endl;
+  //} else {
+  //  std::cout << "[%%%] Registering KVS with address " << kvsAddr << std::endl;
+  //}
   kvsMap.insert({kvsAddr, kvs});
 }
 
@@ -270,8 +275,10 @@ bool DeviceSelection::isCpuDevice() {
 
 #ifdef WITH_ONEAPI_ONECCL
 ccl::communicator* DeviceSelection::initCclCommunicator(int nRanks, int myRank, cclKvsHandle kvs) {
-  this->cclComms.emplace_back(ccl::create_communicator(nRanks, myRank, this->cclDevice, this->cclContext, kvs));
-  return &(cclComms.back());
+  ccl::communicator *commAddr = new ccl::communicator(ccl::create_communicator(nRanks, myRank, this->cclDevice, this->cclContext, kvs));
+  //std::cout << "[%%%] CCL Communicator created for rank " << myRank << " of " << nRanks
+  //          << " with address: " << std::hex << reinterpret_cast<std::intptr_t>(commAddr) << std::dec << std::endl;
+  return commAddr;
 }
 #endif
 
@@ -304,7 +311,7 @@ ccl::stream* QueueData::getCclStreamRef() {
 
 QueueData* sycl_be::getQueueDataOrDefault(QueueData *handle) {
 #ifdef WITH_GPU_STREAMS
-  return (handle == nullptr) ? &(SyclState::defaultState().getDefaultDeviceHandle().defaultQueueHandle) : handle;
+  return (handle == nullptr) ? SyclState::defaultState().getDefaultDeviceHandle().getDefaultQueueRef() : handle;
 #else 
   return SyclState::defaultState().getDefaultDeviceHandle().getDefaultQueueRef();
 #endif

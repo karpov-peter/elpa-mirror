@@ -35,46 +35,48 @@ extern "C" {
 
   /**
    * Create a main Key-Value Store to create a oneCCL communicator.
-   * Only call from Rank 0!
+   * Only call from a single "root" rank of your future communicator!
    */
-  int onecclGetUniqueIdFromC(void *kvsAddress) {
-    #ifdef WITH_MPI
-      int rank = 0;
-      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-      if (rank != 0) {
-        return 1;
-      }
-    #endif
+  int onecclGetUniqueIdFromC(char *kvsAddress) {
+    int rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     ccl::shared_ptr_class<ccl::kvs> kvs;
-    ccl::kvs::address_type tmpAddr;
     kvs = ccl::create_main_kvs();
-
-    tmpAddr = kvs->get_address();
+    ccl::kvs::address_type tmpAddr = kvs->get_address();
+    // std::cerr << "[%%%] onecclGetUniqueIdFromC called from rank " << rank << ", addr: "  << tmpAddr.data() << std::endl;
     std::memcpy(kvsAddress, tmpAddr.data(), tmpAddr.max_size());
-    // So that we can retrieve the KVS later and it doesn't get deconstructed.
-    SyclState::defaultState().registerKvs(kvsAddress, kvs);
+    std::string kvsAddrStr(kvsAddress);
+    // So that we can retrieve the KVS later and it doesn't get deconstructed. The Fortran Layer only knows about the address string. 
+    SyclState::defaultState().registerKvs(kvsAddrStr, kvs);
     return 1;
   }
 
 
-  int onecclCommInitRankFromC(ccl::communicator **onecclComm, int nRanks, void *kvsAddress, int myRank) {
+  int onecclCommInitRankFromC(ccl::communicator **onecclComm, int nRanks, char *kvsAddress, int myRank) {
     SyclState &ss = SyclState::defaultState();
-    std::optional<cclKvsHandle> kvsOpt = ss.retrieveKvs(kvsAddress);
+
+    std::string kvsAddrStr(kvsAddress);
+    //std::cerr << "[%%%] onecclCommInitRankFromC called from rank " << myRank << " for nRanks " << nRanks <<", addr: "  << kvsAddrStr << std::endl;
+    std::optional<cclKvsHandle> kvsOpt = ss.retrieveKvs(kvsAddrStr);
     cclKvsHandle kvs;
     if (!kvsOpt.has_value()) {
-      kvs = ccl::create_kvs(*static_cast<ccl::kvs::address_type *>(kvsAddress));
-      ss.registerKvs(kvsAddress, kvs);
+      ccl::kvs::address_type kvsAddr;
+      std::memcpy(kvsAddr.data(), kvsAddress, kvsAddr.max_size());
+      kvs = ccl::create_kvs(kvsAddr);
+      ss.registerKvs(kvsAddrStr, kvs);
     } else {
       kvs = kvsOpt.value();
     }
     // oneCCL doesn't return an opaque pointer to the communicator, but an interface object instead.
     *onecclComm = ss.getDefaultDeviceHandle().initCclCommunicator(nRanks, myRank, kvs);
+    std::cout << "[%%%] CCL Communicator created for rank " << myRank << " of " << nRanks
+              << " with address: " << std::hex << reinterpret_cast<std::intptr_t>(*onecclComm) << std::dec << "(" << (*onecclComm)->rank() << "/" << (*onecclComm)->size() << ")" << std::endl;
 
     return 1;
   }
 
-  int onecclCommDestroyFromC(ccl::communicator *onecclComm, QueueData *qd) {
-    QueueData *qData = getQueueDataOrDefault(qd);
+  int onecclCommDestroyFromC(ccl::communicator *onecclComm, QueueData *) {
+    delete onecclComm;
     return 1;
   }
 
@@ -161,7 +163,16 @@ extern "C" {
 
     try {
       auto attributes = ccl::create_operation_attr<ccl::allreduce_attr>();
-      ccl::allreduce(sendbuff, recvbuff, count, onecclDatatype, onecclOp, *onecclComm, qData->cclStream, attributes).wait();
+      auto &comm = *onecclComm;
+      auto &stream = qData->cclStream;
+      std::cout << "[%%%] onecclAllReduce called with count " << count
+            << ", datatype " << static_cast<int>(onecclDatatype)
+            << ", op " << static_cast<int>(onecclOp)
+            << ", sendbuff: " << std::hex << reinterpret_cast<uintptr_t>(sendbuff) << std::dec
+            << ", recvbuff: " << std::hex << reinterpret_cast<uintptr_t>(recvbuff) << std::dec
+            << ", comm: " << comm.rank() << "/" << comm.size()
+            << ", stream: " << &stream << std::endl;
+      ccl::allreduce(sendbuff, recvbuff, count, onecclDatatype, onecclOp, comm, stream, attributes).wait();
     } catch (const ccl::exception &e) {
       errormessage("Error in onecclAllReduce: %s\n", e.what());
       return 0;
@@ -186,17 +197,10 @@ extern "C" {
     return 1;
   }
 
-  int onecclBroadcastFromC(const void* sendbuff, void* recvbuff, size_t count, ccl::datatype onecclDatatype, int root, ccl::communicator *onecclComm, QueueData *qd) {
-    QueueData *qData = getQueueDataOrDefault(qd);
+  int onecclBroadcastFromC(void* sendbuff, void* recvbuff, size_t count, ccl::datatype onecclDatatype, int root, ccl::communicator *onecclComm, QueueData *qd) {
     try {
-      std::vector<ccl::event> deps;
-      if (sendbuff != recvbuff && root == onecclComm->rank()) {
-        auto q = qData->queue;
-        auto e = q.memcpy(recvbuff, sendbuff, count * onecclSizeForDatatypeFromC(onecclDatatype));
-        deps.push_back(ccl::create_event(e));
-      }
-      auto attr = ccl::create_operation_attr<ccl::broadcast_attr>();
-      ccl::broadcast(recvbuff, count, onecclDatatype, root, *onecclComm, attr, deps).wait();
+      QueueData *qData = getQueueDataOrDefault(qd);
+      ccl::broadcast(sendbuff, recvbuff, count, onecclDatatype, root, *onecclComm, qData->cclStream).wait();
     } catch (const ccl::exception &e) {
       errormessage("Error in onecclBroadcast: %s\n", e.what());
       return 0;

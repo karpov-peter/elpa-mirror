@@ -93,7 +93,6 @@ struct DeviceSelection {
 #ifdef WITH_ONEAPI_ONECCL
   ccl::device cclDevice;
   ccl::context cclContext;
-  std::vector<ccl::communicator> cclComms;
 #endif  
   QueueData defaultQueueHandle;
   std::vector<QueueData> queueHandles;
@@ -114,7 +113,7 @@ class SyclState {
   static std::optional<SyclState> _staticState;
 
 #ifdef WITH_ONEAPI_ONECCL
-  std::unordered_map<void *, cclKvsHandle> kvsMap;
+  std::unordered_map<std::string, cclKvsHandle> kvsMap;
 #endif
   bool isManagingOnlyL0Gpus;
   public:
@@ -139,8 +138,8 @@ class SyclState {
   static bool initialize(bool onlyL0Gpus = false, bool isDebugEnabled = false);
 
 #ifdef WITH_ONEAPI_ONECCL
-  void registerKvs(void *kvsAddr, cclKvsHandle kvs);
-  std::optional<cclKvsHandle> retrieveKvs(void *kvsAddress);
+  void registerKvs(std::string kvsAddress, cclKvsHandle kvs);
+  std::optional<cclKvsHandle> retrieveKvs(std::string kvsAddress);
   void teardownCclStack();
 #endif
 };

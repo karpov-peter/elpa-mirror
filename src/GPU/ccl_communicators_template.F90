@@ -44,6 +44,13 @@
 ! This file was written by A. Marek, MPCDF
 #endif
 
+#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL)
+  #define CCL_UNIQUE_ID_SIZE 128
+#elif defined(WITH_ONEAPI_ONECCL)
+  #define CCL_UNIQUE_ID_SIZE 256
+#endif
+
+
 #if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL)
             ! mpi_comm_all
             if (myid .eq. 0) then
@@ -53,22 +60,20 @@
                 stop 1
               endif
             endif
-          
-            !broadcast id currently not possible
             call mpi_comm_size(mpi_comm_all, nprocs, mpierr)
-            call MPI_Bcast(ncclId, 128, MPI_BYTE, 0, mpi_comm_all, mpierr)
+            call MPI_Bcast(ncclId, CCL_UNIQUE_ID_SIZE, MPI_BYTE, 0, mpi_comm_all, mpierr)
             if (mpierr .ne. MPI_SUCCESS) then
               write(error_unit,*) "Error when sending unique id"
               stop 1
             endif
 #ifndef WITH_ONEAPI_ONECCL
             success = ccl_group_start()
-#endif
             if (.not.success) then
               write(error_unit,*) "Error in setting up ccl_group_start!"
               stop 1
             endif
-
+#endif
+            
 #if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL)
             success = ccl_comm_init_rank(ccl_comm_all, nprocs, ncclId, myid)
             if (.not.success) then
@@ -78,9 +83,12 @@
 #endif
 #ifndef WITH_ONEAPI_ONECCL
             success = ccl_group_end()
-#endif
             if (.not.success) then
               write(error_unit,*) "Error in setting up ccl_group_end 1!"
+              stop 1
+            endif
+#endif
+            if (.not.success) then
               write(error_unit,*) "Check if number of GPUs is equal to number of MPI ranks"
               stop 1
             endif
@@ -94,7 +102,6 @@
               write(error_unit,*) "Problem getting option for mpi_comm_rows. Aborting..."
               stop 1
             endif
-
             call mpi_comm_rank(mpi_comm_rows, myid_rows, mpierr)
             if (myid_rows .eq. 0) then
               success = ccl_get_unique_id(ncclId)
@@ -104,18 +111,18 @@
               endif
             endif
             call mpi_comm_size(mpi_comm_rows, nprows, mpierr)
-            call MPI_Bcast(ncclId, 128, MPI_BYTE, 0, mpi_comm_rows, mpierr)
+            call MPI_Bcast(ncclId, CCL_UNIQUE_ID_SIZE, MPI_BYTE, 0, mpi_comm_rows, mpierr)
             if (mpierr .ne. MPI_SUCCESS) then
               write(error_unit,*) "Error when sending unique id for rows"
               stop 1
             endif
 #ifndef WITH_ONEAPI_ONECCL
             success = ccl_group_start()
-#endif
             if (.not.success) then
               write(error_unit,*) "Error in setting up ccl_group_start!"
               stop 1
             endif
+#endif
 
 #if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL)
             success = ccl_comm_init_rank(ccl_comm_rows, nprows, ncclId, myid_rows)
@@ -124,17 +131,15 @@
               stop 1
             endif
 #endif
-
 #ifndef WITH_ONEAPI_ONECCL
             success = ccl_group_end()
-#endif
             if (.not.success) then
               write(error_unit,*) "Error in setting up ccl_group_end 2!"
               stop 1
             endif
+#endif
 
             OBJECT%gpu_setup%ccl_comm_rows = ccl_comm_rows
-
 
             ! mpi_comm_cols
             call OBJECT%get("mpi_comm_cols",mpi_comm_cols, error)
@@ -153,20 +158,18 @@
 #endif
             endif
             call mpi_comm_size(mpi_comm_cols, npcols, mpierr)
-            call MPI_Bcast(ncclId, 128, MPI_BYTE, 0, mpi_comm_cols, mpierr)
+            call MPI_Bcast(ncclId, CCL_UNIQUE_ID_SIZE, MPI_BYTE, 0, mpi_comm_cols, mpierr)
             if (mpierr .ne. MPI_SUCCESS) then
               write(error_unit,*) "Error when sending unique id for cols"
               stop 1
             endif
-
 #ifndef WITH_ONEAPI_ONECCL
             success = ccl_group_start()
-#endif
             if (.not.success) then
               write(error_unit,*) "Error in setting up ccl_group_start!"
               stop 1
             endif
-
+#endif
 #if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL)
             success = ccl_comm_init_rank(ccl_comm_cols, npcols, ncclId, myid_cols)
             if (.not.success) then
@@ -176,11 +179,11 @@
 #endif
 #ifndef WITH_ONEAPI_ONECCL
             success = ccl_group_end()
-#endif
             if (.not.success) then
               write(error_unit,*) "Error in setting up ccl_group_end 3!"
               stop 1
             endif
+#endif
             OBJECT%gpu_setup%ccl_comm_cols = ccl_comm_cols
 
 
@@ -196,19 +199,18 @@
 #endif
             endif
             call mpi_comm_size(mpi_comm_self, npself, mpierr)
-            call MPI_Bcast(ncclId, 128, MPI_BYTE, 0, mpi_comm_self, mpierr)
+            call MPI_Bcast(ncclId, CCL_UNIQUE_ID_SIZE, MPI_BYTE, 0, mpi_comm_self, mpierr)
             if (mpierr .ne. MPI_SUCCESS) then
               write(error_unit,*) "Error when sending unique id for self"
               stop 1
             endif
-
 #ifndef WITH_ONEAPI_ONECCL
             success = ccl_group_start()
-#endif
             if (.not.success) then
               write(error_unit,*) "Error in setting up ccl_group_start!"
               stop 1
             endif
+#endif
 
 #if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL)
             success = ccl_comm_init_rank(ccl_comm_self, npself, ncclId, myid_self)
@@ -219,11 +221,13 @@
 #endif
 #ifndef WITH_ONEAPI_ONECCL
             success = ccl_group_end()
-#endif
             if (.not.success) then
               write(error_unit,*) "Error in setting up ccl_group_end 3!"
               stop 1
             endif
+#endif
             OBJECT%gpu_setup%ccl_comm_self = ccl_comm_self
 
 #endif /* defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL) */
+
+#undef CCL_UNIQUE_ID_SIZE

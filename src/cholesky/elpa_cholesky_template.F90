@@ -46,7 +46,7 @@
 #include "../general/error_checking.inc"
 
 #undef USE_CCL_CHOLESKY
-#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL)
+#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL)
 #define USE_CCL_CHOLESKY
 #endif
 

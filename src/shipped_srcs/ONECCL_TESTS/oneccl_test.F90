@@ -105,7 +105,7 @@ contains
     integer(kind=c_intptr_t), intent(out) :: ccl_comm
     integer(kind=c_intptr_t), intent(out) :: my_stream
     
-    type(onecclUniqueId), intent(inout) :: ccl_unique_id_val
+    type(ncclUniqueId), intent(inout) :: ccl_unique_id_val
     integer(kind=c_int) :: my_rank, my_gpu
     integer(kind=c_int) :: n_local_ranks, n_ranks, n_local_gpus, ierr, ok
     integer :: mpi_local_comm
@@ -398,9 +398,9 @@ contains
     use mpi
     implicit none
 
-    integer(kind=c_intptr_t), intent(in) :: ccl_comm
+    integer(kind=c_intptr_t), intent(in), value :: ccl_comm
     integer(kind=c_intptr_t), intent(in), value :: num_elements
-    integer(kind=c_intptr_t), intent(in) :: onecclStream
+    integer(kind=c_intptr_t), intent(in), value :: onecclStream
 
     integer(kind=c_size_t) :: num_ccl_elements
     integer(kind=c_int) :: n_ranks, my_rank, ierr
@@ -425,8 +425,7 @@ contains
 
     ok = gpu_malloc(original_data_gpu, num_elements * c_double); NOT_OK_OUCH
     ok = gpu_malloc(result_data_gpu, num_elements * c_double); NOT_OK_OUCH
-    ok = gpu_memcpy(original_data_gpu, int(loc(original_data),c_intptr_t), num_elements * c_double, gpuMemcpyHostToDevice)
-    NOT_OK_OUCH
+    ok = gpu_memcpy(original_data_gpu, int(loc(original_data),c_intptr_t), num_elements * c_double, gpuMemcpyHostToDevice); NOT_OK_OUCH
 
     do destination_rank = 0, n_ranks-1
       ok = gpu_memset(result_data_gpu, 0, num_elements * c_double); NOT_OK_OUCH
@@ -440,11 +439,17 @@ contains
       NOT_OK_OUCH
 
       ok = gpu_memcpy(loc(result_data), result_data_gpu, num_elements * c_double, gpuMemcpyDeviceToHost); NOT_OK_OUCH
-      is_correct = (result_data(1) == 1000.0 + destination_rank)
+      ok = gpu_DeviceSynchronize(); NOT_OK_OUCH
+      do i = 1, num_elements
+        is_correct = (ABS(result_data(i) - (1000.0 + destination_rank)) < 1.0e-5)
+        if (.not. is_correct) then
+          print *, "  -> Result element", i, "INCORRECT on rank ", my_rank, "? -", "expected", (1000.0 + destination_rank), "got", result_data(i)
+          exit
+        end if
+      end do
       if (my_rank == 0) then
         print *, "  -> Result correct on rank 0? -", is_correct
       elseif (.not. is_correct) then
-        print *, "  -> Result INCORRECT on rank ", my_rank, "? -", "expected", (1000.0 + destination_rank), "got", result_data(1)
 
       endif
       call mpi_barrier(mpi_comm_world, ierr)

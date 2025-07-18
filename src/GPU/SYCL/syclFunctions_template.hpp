@@ -222,6 +222,7 @@ static oneapi::mkl::side sideFromChar(char c) {
         break;
       case 8: 
         *value =  dev.get_info<sid::max_compute_units>();
+        std::cout << "SYCL: Max compute units: " << *value << std::endl;
         break;
       default: 
         *value =  0;

@@ -882,6 +882,12 @@ libelpatest@SUFFIX@_la_SOURCES += \
   test/shared/GPU/SYCL/test_syclFunctions.cpp
 endif
 
+if WITH_SYCL_GPU_VERSION
+libelpatest@SUFFIX@_la_SOURCES += \
+  test/shared/test_oneccl_init_wrapper.F90 \
+  test/shared/test_oneccl_init.cpp
+endif
+
 
 
 

@@ -1001,7 +1001,7 @@ subroutine trans_ev_cpu_&
     !  successGPU = gpu_host_unregister(int(loc(q_mat),kind=c_intptr_t))
     !  check_host_unregister_gpu("trans_ev: q_mat", successGPU)
     !endif
-
+  if (.not. useCCL) then
     if (gpu_vendor() /= OPENMP_OFFLOAD_GPU) then
       successGPU = gpu_free_host(hvm1_host)
       check_host_dealloc_gpu("trans_ev: hvm1_host", successGPU)
@@ -1020,6 +1020,7 @@ subroutine trans_ev_cpu_&
       deallocate(tmat)
       deallocate(tmp)
     endif
+  endif
 #endif
     !deallocate(hvm1, stat=istat, errmsg=errorMessage)
     !if (istat .ne. 0) then
