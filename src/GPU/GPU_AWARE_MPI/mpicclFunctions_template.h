@@ -1,0 +1,510 @@
+#define errormessage(x, ...) do { fprintf(stderr, "%s:%d " x, __FILE__, __LINE__, __VA_ARGS__ ); } while (0)
+
+#ifdef DEBUG_CUDA
+#define debugmessage(x, ...) do { fprintf(stderr, "%s:%d " x, __FILE__, __LINE__, __VA_ARGS__ ); } while (0)
+#else
+#define debugmessage(x, ...)
+#endif
+
+#include <mpi.h>
+
+typedef MPI_Comm mpicclComm_t;
+
+// typedef struct {
+//     MPI_Comm comm;
+// } mpicclUniqueId;
+
+typedef struct {
+    intptr_t internal[16];
+} ncclUniqueId;
+
+#ifdef WITH_GPU_AWARE_MPICCL
+extern "C" {
+
+int mpicclGroupStartFromC() {
+  // int mpicclError;
+
+  // mpicclError = ncclGroupStart();
+  // if (mpicclError != ncclSuccess) {
+  //   if (mpicclError == ncclUnhandledCudaError) {
+  //     errormessage("Error in ncclGroupStart: %s\n", "ncclUnhandledCudaError");
+  //   } else if (mpicclError == ncclSystemError) {
+  //     errormessage("Error in ncclGroupStart: %s\n", "ncclSystemError");
+  //   } else if (mpicclError == ncclInternalError) {
+  //     errormessage("Error in ncclGroupStart: %s\n", "ncclInternalError");
+  //   } else if (mpicclError == ncclInvalidArgument) {
+  //     errormessage("Error in ncclGroupStart: %s\n", "ncclInvalidArguments");
+  //   } else if (mpicclError == ncclInvalidUsage) {
+  //     errormessage("Error in ncclGroupStart: %s\n", "ncclInvalidUsage");
+  //   } else if (ncclNumResults) {
+  //     errormessage("Error in ncclGroupStart: %s\n", "ncclNumResults");
+  //   } else {
+  //     errormessage("Error in ncclGroupStart: %s\n", "unknown error");
+  //   }
+  //   return 0;
+  // }
+  return 1;
+}
+
+int mpicclGroupEndFromC() {
+  // int mpicclError;
+
+  // mpicclError = ncclGroupEnd();
+  // if (mpicclError != ncclSuccess) {
+  //   if (mpicclError == ncclUnhandledCudaError) {
+  //     errormessage("Error in ncclGroupEnd: %s\n", "ncclUnhandledCudaError");
+  //   } else if (mpicclError == ncclSystemError) {
+  //     errormessage("Error in ncclGroupEnd: %s\n", "ncclSystemError");
+  //   } else if (mpicclError == ncclInternalError) {
+  //     errormessage("Error in ncclGroupEnd: %s\n", "ncclInternalError");
+  //   } else if (mpicclError == ncclInvalidArgument) {
+  //     errormessage("Error in ncclGroupEnd: %s\n", "ncclInvalidArguments");
+  //   } else if (mpicclError == ncclInvalidUsage) {
+  //     errormessage("Error in ncclGroupEnd: %s\n", "ncclInvalidUsage");
+  //   } else if (ncclNumResults) {
+  //     errormessage("Error in ncclGroupEnd: %s\n", "ncclNumResults");
+  //   } else {
+  //     errormessage("Error in ncclGroupEnd: %s\n", "unknown error");
+  //   }
+  //   return 0;
+  // }
+  return 1;
+}
+
+
+int mpicclGetUniqueIdFromC(ncclUniqueId *mpicclID)
+{
+  // int mpicclError;
+
+  // mpicclError = MPI_Comm_dup(MPI_COMM_WORLD, &mpicclID->comm);
+
+  // if (mpicclError != MPI_SUCCESS) {
+  //   if (mpicclError == MPI_ERR_COMM) {
+  //     errormessage("Error in mpicclGetUniqueId: %s\n", "MPI_ERR_COMM");
+  //   } else {
+  //     errormessage("Error in mpicclGetUniqueId: %s\n", "unknown error");
+  //   }
+  //   return 0;
+  // }
+
+  return 1;
+}
+
+int mpicclCommInitRankFromC(mpicclComm_t *mpicclComm, int nRanks, ncclUniqueId *mpicclID, int myRank) {
+  // int mpicclError;
+
+  // MPI_Comm parent = mpicclID->comm;
+
+  // mpicclError = MPI_Comm_dup(parent, mpicclComm);
+  // if (mpicclError != MPI_SUCCESS) {
+  //   char errstr[MPI_MAX_ERROR_STRING];
+  //   int len = 0;
+  //   MPI_Error_string(mpicclError, errstr, &len);
+  //   errstr[len] = '\0';
+  //   errormessage("Error in mpicclCommInitRank: %s\n", errstr);
+  //   return 0;
+  // }
+
+  // // PETERDEBUG111: cleanup sanity checks after testing?
+  // // Sanity checks: do communicator size and rank match
+  // int size, rank;
+  // mpicclError = MPI_Comm_size(*mpicclComm, &size);
+  // if (mpicclError != MPI_SUCCESS) {
+  //   char errstr[MPI_MAX_ERROR_STRING];
+  //   int len = 0;
+  //   MPI_Error_string(mpicclError, errstr, &len);
+  //   errormessage("Error in mpicclCommInitRank (MPI_Comm_size): %s\n", errstr);
+  //   return 0;
+  // }
+
+  // mpicclError = MPI_Comm_rank(*mpicclComm, &rank);
+  // if (mpicclError != MPI_SUCCESS) {
+  //   char errstr[MPI_MAX_ERROR_STRING];
+  //   int len = 0;
+  //   MPI_Error_string(mpicclError, errstr, &len);
+  //   errstr[len] = '\0';
+  //   errormessage("Error in mpicclCommInitRank (MPI_Comm_rank): %s\n", errstr);
+  //   MPI_Comm_free(mpicclComm);
+  //   return 0;
+  // }
+
+  // if (size != nRanks) {
+  //   errormessage("Error in mpicclCommInitRank: communicator size %d != nRanks %d\n", size, nRanks);
+  //   return 0;
+  // }
+
+  // if (rank != myRank) {
+  //   errormessage("Error in mpicclCommInitRank: communicator rank %d != myRank %d\n", rank, myRank);
+  //   return 0;
+  // }
+
+  return 1;
+}
+
+
+int mpicclCommDestroyFromC(mpicclComm_t mpicclComm){
+  // int mpicclError;
+
+  // mpicclError = MPI_Comm_free(&mpicclComm);
+  // if (mpicclError != MPI_SUCCESS) {
+  //   char errstr[MPI_MAX_ERROR_STRING];
+  //   int len = 0;
+  //   MPI_Error_string(mpicclError, errstr, &len);
+
+  //   errormessage("Error in mpicclCommDestroy: %s\n", errstr);
+  //   return 0;
+  // }
+
+  return 1;
+}
+
+// PETERDEBUG111: cleanup after testing?
+// https://www.mpi-forum.org/docs/mpi-5.0/mpi50-report.pdf
+// see page 905 (pdf)/853 (printed doc), Sec 20.4.5,  Handle Serialization and tables there
+// MPI_Op_toint from MPI 5.0
+
+// use intptr_t here and for NCCL/RCCL/oneCCL too?
+// or create or own enum table? key-value pairs?
+int mpicclRedOpSumFromC(void) {
+  //int val = MPI_Op_toint(MPI_SUM) // >MPI 5.0
+  //MPI_Op op = MPI_SUM;
+  int val = MPI_Op_c2f(MPI_SUM); // converts MPI_Op to int
+  return val;
+}
+
+int mpicclRedOpProdFromC(void) {
+  int val = MPI_Op_c2f(MPI_PROD);
+  return val;
+}
+
+int mpicclRedOpMinFromC(void) {
+  int val = MPI_Op_c2f(MPI_MIN);
+  return val;
+}
+
+int mpicclRedOpMaxFromC(void) {
+  int val = MPI_Op_c2f(MPI_MAX);
+  return val;
+}
+
+int mpicclRedOpAvgFromC(void) {
+  int val = MPI_Op_c2f(MPI_OP_NULL); // no AVG in MPI
+  errormessage("Error in mpicclRedOpAvgFromC: %s\n", "MPI does not have an AVG operation");
+  return val;
+}
+
+int mpicclDataTypeMpicclIntFromC(void) {
+  int val = MPI_Type_c2f(MPI_INT);
+  return val;
+}
+
+int mpicclDataTypeMpicclInt32FromC(void) {
+  int val = MPI_Type_c2f(MPI_INT32_T);
+  return val;
+}
+
+int mpicclDataTypeMpicclInt64FromC(void) {
+  int val = MPI_Type_c2f(MPI_INT64_T);
+  return val;
+}
+
+int mpicclDataTypeMpicclFloat32FromC(void) {
+  int val = MPI_Type_c2f(MPI_FLOAT);
+  return val;
+}
+
+int mpicclDataTypeMpicclFloatFromC(void) {
+  int val = MPI_Type_c2f(MPI_FLOAT);
+  return val;
+}
+
+// For NCCL: ncclFloat64=ncclDouble
+int mpicclDataTypeMpicclFloat64FromC(void) {
+  int val = MPI_Type_c2f(MPI_DOUBLE);
+  return val;
+}
+
+int mpicclDataTypeMpicclDoubleFromC(void) {
+  int val = MPI_Type_c2f(MPI_DOUBLE);
+  return val;
+}
+
+int mpicclAllReduceFromC(const void *sendbuff, void *recvbuff, size_t count, int mpicclDatatype, int mpicclOp, intptr_t mpicclComm, gpuStream_t gpuStream) {
+  int mpicclError;
+
+#ifdef WITH_GPU_STREAMS
+  gpuStreamSynchronize(gpuStream);
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+#else
+  gpuDeviceSynchronize();
+#endif
+
+  //printf("mpicclAllreduceFromC, start\n"); // PETERDEBUG111: cleanup after testing
+
+  mpicclError = MPI_Allreduce(sendbuff, recvbuff, count, MPI_Type_f2c(mpicclDatatype), MPI_Op_f2c(mpicclOp), MPI_Comm_f2c(mpicclComm));
+  if (mpicclError != MPI_SUCCESS) {
+    char errstr[MPI_MAX_ERROR_STRING];
+    int len = 0;
+    MPI_Error_string(mpicclError, errstr, &len);
+    errormessage("Error in mpicclAllReduce: %s\n", errstr);
+    return 0;
+  }
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+
+  //printf("mpicclAllreduceFromC, done\n"); // PETERDEBUG111: cleanup after testing
+  return 1;
+}
+
+int mpicclReduceFromC(const void *sendbuff, void *recvbuff, size_t count, int mpicclDatatype, int mpicclOp, int root, intptr_t mpicclComm, gpuStream_t gpuStream) {
+  int mpicclError;
+
+#ifdef WITH_GPU_STREAMS
+  gpuStreamSynchronize(gpuStream);
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+#else
+  gpuDeviceSynchronize();
+#endif
+
+  mpicclError = MPI_Reduce(sendbuff, recvbuff, count, MPI_Type_f2c(mpicclDatatype), MPI_Op_f2c(mpicclOp), root, MPI_Comm_f2c(mpicclComm));
+  if (mpicclError != MPI_SUCCESS) {
+    char errstr[MPI_MAX_ERROR_STRING];
+    int len = 0;
+    MPI_Error_string(mpicclError, errstr, &len);
+    errormessage("Error in mpicclReduce: %s\n", errstr);
+    return 0;
+  }
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+
+  return 1;
+}
+
+int mpicclBroadcastFromC(const void* sendbuff, void* recvbuff, size_t count, int mpicclDatatype, int root, intptr_t mpicclComm, gpuStream_t gpuStream) {
+  int mpicclError;
+
+  //printf("mpicclBroadcastFromC, start\n"); // PETERDEBUG111: cleanup after testing
+  //printf("sizeof(intptr_t)=%zu, sizeof(MPI_Comm)=%zu\n", sizeof(intptr_t), sizeof(MPI_Comm)); // PETERDEBUG111: cleanup after testing
+  gpuError_t gpuerr = gpuSuccess;
+  
+  int rank;
+  //MPI_Comm_rank(MPI_COMM_WORLD, &rank); // PETERDEBUG111: cleanup after testing
+  //printf("mpicclBroadcastFromC, after MPI_Comm_rank(MPI_COMM_WORLD, &rank), rank=%d\n", rank); // PETERDEBUG111: cleanup after testing
+  //MPI_Comm      MPI_COMM = (MPI_Comm)mpicclComm_;
+
+  MPI_Comm_rank(MPI_Comm_f2c(mpicclComm), &rank);
+
+  //printf("mpicclBroadcastFromC, after MPI_Comm_rank, rank=%d\n", rank); // PETERDEBUG111: cleanup after testing
+
+  if (rank==root && recvbuff != sendbuff){
+    int typesize;
+    MPI_Datatype dtype = MPI_Type_f2c(mpicclDatatype);
+    mpicclError = MPI_Type_size(dtype, &typesize);
+    if (mpicclError != MPI_SUCCESS) {
+      char errstr[MPI_MAX_ERROR_STRING];
+      int len = 0;
+      MPI_Error_string(mpicclError, errstr, &len);
+      errormessage("Error in mpicclBcastFromC (MPI_Type_size): %s\n", errstr);
+      return 0;
+    }
+
+    //printf("mpicclBroadcastFromC, after MPI_Type_size, rank=%d\n", rank); // PETERDEBUG111: cleanup after testing
+    gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+
+    size_t nbytes = (size_t)typesize * count;
+
+#ifdef WITH_GPU_STREAMS
+    gpuerr = gpuMemcpyAsync(recvbuff, sendbuff, nbytes, gpuMemcpyDeviceToDevice, gpuStream);
+#else
+    gpuerr = gpuMemcpy     (recvbuff, sendbuff, nbytes, gpuMemcpyDeviceToDevice);
+#endif
+    //printf("mpicclBroadcastFromC, after gpuMemcpyAsync, rank=%d\n", rank); // PETERDEBUG111: cleanup after testing
+  }
+
+#ifdef WITH_GPU_STREAMS
+  gpuerr = gpuStreamSynchronize(gpuStream);
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+#else
+  gpuerr = gpuDeviceSynchronize();
+#endif
+
+  //printf("mpicclBroadcastFromC, after gpuStreamSynchronize, rank=%d\n", rank); // PETERDEBUG111: cleanup after testing
+
+  if (gpuerr != gpuSuccess) {
+    errormessage("Error in executing mpicclBroadcastFromC (gpuMemcpy): %s\n",gpuGetErrorString(gpuerr));
+    return 0;
+  }
+
+  mpicclError = MPI_Bcast(recvbuff, (int)count, MPI_Type_f2c(mpicclDatatype), root, MPI_Comm_f2c(mpicclComm));
+  if (mpicclError != MPI_SUCCESS) {
+    char errstr[MPI_MAX_ERROR_STRING];
+    int len = 0;
+    MPI_Error_string(mpicclError, errstr, &len);
+    errormessage("Error in mpicclBroadcast: %s\n", errstr);
+    return 0;
+  }
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+  return 1;
+}
+
+int mpicclSendFromC(const void* sendbuff, size_t count, int mpicclDatatype, int peer, intptr_t mpicclComm, gpuStream_t gpuStream) {
+  int mpicclError;
+  printf("mpicclSendFromC, start\n"); // PETERDEBUG111: cleanup after testing
+
+#ifdef WITH_GPU_STREAMS
+  gpuStreamSynchronize(gpuStream);
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+#else
+  gpuDeviceSynchronize();
+#endif
+
+  int tag_dummy = 0;
+
+  mpicclError = MPI_Send(sendbuff, count, MPI_Type_f2c(mpicclDatatype), peer, tag_dummy, MPI_Comm_f2c(mpicclComm));
+  if (mpicclError != MPI_SUCCESS) {
+    char errstr[MPI_MAX_ERROR_STRING];
+    int len = 0;
+    MPI_Error_string(mpicclError, errstr, &len);
+    errormessage("Error in mpicclSend: %s\n", errstr);
+    return 0;
+  }
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+
+  printf("mpicclSendFromC, done\n"); // PETERDEBUG111: cleanup after testing
+  return 1;
+}
+
+int mpicclRecvFromC(void* recvbuff, size_t count, int mpicclDatatype, int peer, intptr_t mpicclComm, gpuStream_t gpuStream) {
+  int mpicclError;
+  printf("mpicclRecvFromC, start\n"); // PETERDEBUG111: cleanup after testing
+
+#ifdef WITH_GPU_STREAMS
+  gpuStreamSynchronize(gpuStream);
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+#else
+  gpuDeviceSynchronize();
+#endif
+
+  int tag_dummy = 0;
+  MPI_Status* status;
+
+  mpicclError = MPI_Recv(recvbuff, count, MPI_Type_f2c(mpicclDatatype), peer, tag_dummy, MPI_Comm_f2c(mpicclComm), status);
+  if (mpicclError != MPI_SUCCESS) {
+    char errstr[MPI_MAX_ERROR_STRING];
+    int len = 0;
+    MPI_Error_string(mpicclError, errstr, &len);
+    errormessage("Error in mpicclRecv: %s\n", errstr);
+    return 0;
+  }
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+  printf("mpicclRecvFromC, done\n"); // PETERDEBUG111: cleanup after testing
+  return 1;
+}
+
+int mpicclSendrecvFromC(const void* sendbuff, size_t sendcount, int sendMpicclDatatype, int dest, 
+                        void*       recvbuff, size_t recvcount, int recvMpicclDatatype, int source,
+                        intptr_t mpicclComm, gpuStream_t gpuStream) {
+  int mpicclError;
+  printf("mpicclSendrecvFromC, start\n"); // PETERDEBUG111: cleanup after testing
+
+#ifdef WITH_GPU_STREAMS
+  gpuStreamSynchronize(gpuStream);
+#else
+  gpuDeviceSynchronize();
+#endif
+
+  int tag_dummy = 0;
+  MPI_Status* status;
+
+  mpicclError = MPI_Sendrecv(sendbuff, sendcount, MPI_Type_f2c(sendMpicclDatatype), dest  , tag_dummy, 
+                             recvbuff, recvcount, MPI_Type_f2c(recvMpicclDatatype), source, tag_dummy,
+                             MPI_COMM_WORLD, status);
+                             //MPI_Comm_f2c(mpicclComm), status); // PETERDEBUG111
+  if (mpicclError != MPI_SUCCESS) {
+    char errstr[MPI_MAX_ERROR_STRING];
+    int len = 0;
+    MPI_Error_string(mpicclError, errstr, &len);
+    errormessage("Error in mpicclSendrecv: %s\n", errstr);
+    return 0;
+  }
+
+  printf("mpicclSendrecvFromC, done\n"); // PETERDEBUG111: cleanup after testing
+  return 1;
+}
+
+int mpicclIsendFromC(const void* sendbuff, size_t count, int mpicclDatatype, int peer, intptr_t mpicclComm, intptr_t request, gpuStream_t gpuStream) {
+  int mpicclError;
+  //printf("mpicclIsendFromC, start\n"); // PETERDEBUG111: cleanup after testing
+
+#ifdef WITH_GPU_STREAMS
+  gpuStreamSynchronize(gpuStream);
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+#else
+  gpuDeviceSynchronize();
+#endif
+
+  int tag_dummy = 0;
+
+  mpicclError = MPI_Isend(sendbuff, count, MPI_Type_f2c(mpicclDatatype), peer, tag_dummy, MPI_Comm_f2c(mpicclComm), (MPI_Request*)request);
+  if (mpicclError != MPI_SUCCESS) {
+    char errstr[MPI_MAX_ERROR_STRING];
+    int len = 0;
+    MPI_Error_string(mpicclError, errstr, &len);
+    errormessage("Error in mpicclIsend: %s\n", errstr);
+    return 0;
+  }
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+
+  //printf("mpicclIsendFromC, done\n"); // PETERDEBUG111: cleanup after testing
+  return 1;
+}
+
+int mpicclIrecvFromC(void* recvbuff, size_t count, int mpicclDatatype, int peer, intptr_t mpicclComm, intptr_t request, gpuStream_t gpuStream) {
+  int mpicclError;
+  //printf("mpicclIrecvFromC, start\n"); // PETERDEBUG111: cleanup after testing
+
+#ifdef WITH_GPU_STREAMS
+  gpuStreamSynchronize(gpuStream);
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+#else
+  gpuDeviceSynchronize();
+#endif
+
+  int tag_dummy = 0;
+  MPI_Status* status;
+
+  mpicclError = MPI_Irecv(recvbuff, count, MPI_Type_f2c(mpicclDatatype), peer, tag_dummy, MPI_Comm_f2c(mpicclComm), (MPI_Request*)request);
+  if (mpicclError != MPI_SUCCESS) {
+    char errstr[MPI_MAX_ERROR_STRING];
+    int len = 0;
+    MPI_Error_string(mpicclError, errstr, &len);
+    errormessage("Error in mpicclIrecv: %s\n", errstr);
+    return 0;
+  }
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+
+  //printf("mpicclIrecvFromC, done\n"); // PETERDEBUG111: cleanup after testing
+  return 1;
+}
+
+int mpicclWaitallFromC(int count, intptr_t request_handles, gpuStream_t gpuStream) {
+  int mpicclError;
+  //printf("mpicclWaitallFromC, start\n"); // PETERDEBUG111: cleanup after testing
+
+  //printf("sizeof(int)=%zu, sizeof(MPI_Request)=%zu\n", sizeof(int), sizeof(MPI_Request)); // PETERDEBUG111: cleanup after testing
+  gpuDeviceSynchronize(); // PETERDEBUG111: cleanup after testing
+  
+  mpicclError = MPI_Waitall(count, (MPI_Request*)request_handles, MPI_STATUSES_IGNORE);
+  if (mpicclError != MPI_SUCCESS) {
+    char errstr[MPI_MAX_ERROR_STRING];
+    int len = 0;
+    MPI_Error_string(mpicclError, errstr, &len);
+    errormessage("Error in mpicclWaitall: %s\n", errstr);
+    return 0;
+  }
+
+  //printf("mpicclWaitallFromC, done\n"); // PETERDEBUG111: cleanup after testing
+  return 1;
+}
+
+
+} // extern "C" 
+#endif

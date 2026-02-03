@@ -65,6 +65,7 @@
 
 #ifdef WITH_NVIDIA_GPU_VERSION
 #define gpuDeviceSynchronize cudaDeviceSynchronize
+#define gpuStreamSynchronize cudaStreamSynchronize
 #define gpuStream_t cudaStream_t
 #define gpuGetLastError cudaGetLastError
 #define gpuGetErrorString cudaGetErrorString
@@ -74,6 +75,9 @@
 #define gpuFloatComplex  cuFloatComplex
 #define make_gpuDoubleComplex make_cuDoubleComplex
 #define make_gpuFloatComplex make_cuFloatComplex
+#define gpuMemcpy cudaMemcpy
+#define gpuMemcpyAsync cudaMemcpyAsync
+#define gpuMemcpyDeviceToDevice cudaMemcpyDeviceToDevice
 #define MAX_THREADS_PER_BLOCK 1024
 #define MIN_THREADS_PER_BLOCK 32 /* i.e. wrap size */
 #define ELPA_GPU cuda
@@ -83,6 +87,7 @@
 
 #ifdef WITH_AMD_GPU_VERSION
 #define gpuDeviceSynchronize hipDeviceSynchronize
+#define gpuStreamSynchronize hipStreamSynchronize
 #define gpuStream_t hipStream_t
 #define gpuGetLastError hipGetLastError
 #define gpuGetErrorString hipGetErrorString
@@ -92,6 +97,9 @@
 #define gpuFloatComplex  hipFloatComplex
 #define make_gpuDoubleComplex make_hipDoubleComplex
 #define make_gpuFloatComplex make_hipFloatComplex
+#define gpuMemcpy hipMemcpy
+#define gpuMemcpyAsync hipMemcpyAsync
+#define gpuMemcpyDeviceToDevice hipMemcpyDeviceToDevice
 #define MAX_THREADS_PER_BLOCK 1024
 #define MIN_THREADS_PER_BLOCK 64
 #define ELPA_GPU hip

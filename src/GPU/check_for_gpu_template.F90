@@ -285,7 +285,7 @@
           !gpuIsInitialized = .true.
 
           if (OBJECT%gpu_setup%useCCL) then
-#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL)
+#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL) || defined(WITH_GPU_AWARE_MPICCL)
 #include "./ccl_communicators_template.F90"
 #endif
           endif
@@ -394,8 +394,10 @@
 
 
             OBJECT%gpu_setup%useCCL=.false.            
-#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL)
+#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL) || defined(WITH_GPU_AWARE_MPICCL)
+            print *, "Checking whether to use ccl-communication" ! PETERDEBUG111
             if (OBJECT%gpu_setup%gpusPerNode/OBJECT%mpi_setup%nRanks_comm_parent_per_node .eq. 1) then
+              print *, "Setting useCCL to true since one GPU per MPI task" ! PETERDEBUG111
               call OBJECT%get("use_ccl", useCCLCOMM, error)
               if (error .ne. ELPA_OK) then
                 write(error_unit,*) "Problem getting option for 'ccl-communication'. Aborting..."
@@ -403,8 +405,10 @@
               endif
               if (useCCLCOMM .eq. 1) then
                 OBJECT%gpu_setup%useCCL=.true.
+                print *, "Using ccl-communication" ! PETERDEBUG111
               else
                 OBJECT%gpu_setup%useCCL=.false.
+                print *, "Not using ccl-communication" ! PETERDEBUG111
               endif
             endif
 #endif
@@ -444,7 +448,7 @@
 
             
             if (OBJECT%gpu_setup%useCCL) then
-#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL)
+#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL) || defined(WITH_GPU_AWARE_MPICCL)
 #include "./ccl_communicators_template.F90"
 #endif
             endif

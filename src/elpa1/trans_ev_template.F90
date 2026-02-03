@@ -89,7 +89,7 @@
 !>
 
 #undef USE_CCL_TRANS_EV
-#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL)
+#if defined(WITH_NVIDIA_NCCL) || defined(WITH_AMD_RCCL) || defined(WITH_ONEAPI_ONECCL) || defined(WITH_GPU_AWARE_MPICCL)
 #define USE_CCL_TRANS_EV
 #endif
 
