@@ -48,6 +48,7 @@
 
 
 #undef gpuDeviceSynchronize
+#undef gpuStreamSynchronize
 #undef gpuStream_t
 #undef gpuGetLastError
 #undef gpuGetErrorString
@@ -57,6 +58,10 @@
 #undef gpuFloatComplex
 #undef make_gpuDoubleComplex
 #undef make_gpuFloatComplex
+#undef gpuPointerAttributes
+#undef gpuPointerGetAttributes
+#undef gpuMemoryTypeHost
+#undef gpuMemoryTypeDevice
 #undef MAX_THREADS_PER_BLOCK
 #undef MIN_THREADS_PER_BLOCK
 #undef ELPA_GPU
@@ -78,8 +83,12 @@
 #define gpuMemcpy cudaMemcpy
 #define gpuMemcpyAsync cudaMemcpyAsync
 #define gpuMemcpyDeviceToDevice cudaMemcpyDeviceToDevice
+#define gpuPointerAttributes cudaPointerAttributes
+#define gpuPointerGetAttributes cudaPointerGetAttributes
+#define gpuMemoryTypeHost cudaMemoryTypeHost
+#define gpuMemoryTypeDevice cudaMemoryTypeDevice
 #define MAX_THREADS_PER_BLOCK 1024
-#define MIN_THREADS_PER_BLOCK 32 /* i.e. wrap size */
+#define MIN_THREADS_PER_BLOCK 32 /* i.e. warp size */
 #define ELPA_GPU cuda
 #endif
 
@@ -100,6 +109,10 @@
 #define gpuMemcpy hipMemcpy
 #define gpuMemcpyAsync hipMemcpyAsync
 #define gpuMemcpyDeviceToDevice hipMemcpyDeviceToDevice
+#define gpuPointerAttributes hipPointerAttribute_t
+#define gpuPointerGetAttributes hipPointerGetAttributes
+#define gpuMemoryTypeHost hipMemoryTypeHost
+#define gpuMemoryTypeDevice hipMemoryTypeDevice
 #define MAX_THREADS_PER_BLOCK 1024
 #define MIN_THREADS_PER_BLOCK 64
 #define ELPA_GPU hip
@@ -119,7 +132,7 @@
 #define make_gpuDoubleComplex std::complex<double>
 #define make_gpuFloatComplex std::complex<float>
 #define MAX_THREADS_PER_BLOCK 1024
-#define MIN_THREADS_PER_BLOCK 16
+#define MIN_THREADS_PER_BLOCK 32
 #define ELPA_GPU sycl
 #endif
 
