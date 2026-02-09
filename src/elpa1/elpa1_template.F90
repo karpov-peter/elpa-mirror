@@ -958,21 +958,21 @@ function elpa_solve_evp_&
        check_memcpy_gpu("elpa1_template: tau_dev -> tau", successGPU)
      endif ! (do_useGPU .and. .not. do_useGPU_tridiag) then
 
-    !  if (do_useGPU_tridiag) then
-    !    call tridiag_gpu_&
-    !    &MATH_DATATYPE&
-    !    &_&
-    !    &PRECISION&
-    !    & (obj, na, a_dev, matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, ev_dev, e_dev, tau_dev, &
-    !       wantDebug, nrThreads, isSkewsymmetric, success)
-    !  else
-    !    call tridiag_cpu_&
-    !    &MATH_DATATYPE&
-    !    &_&
-    !    &PRECISION&
-    !    & (obj, na, a, matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, ev, e, tau, &
-    !       wantDebug, nrThreads, isSkewsymmetric, success)
-    !  endif
+     if (do_useGPU_tridiag) then
+       call tridiag_gpu_&
+       &MATH_DATATYPE&
+       &_&
+       &PRECISION&
+       & (obj, na, a_dev, matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, ev_dev, e_dev, tau_dev, &
+          wantDebug, nrThreads, isSkewsymmetric, success)
+     else
+       call tridiag_cpu_&
+       &MATH_DATATYPE&
+       &_&
+       &PRECISION&
+       & (obj, na, a, matrixRows, nblk, matrixCols, mpi_comm_rows, mpi_comm_cols, ev, e, tau, &
+          wantDebug, nrThreads, isSkewsymmetric, success)
+     endif
 
      if (success) then
        success_int = 0

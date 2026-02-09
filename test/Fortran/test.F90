@@ -42,6 +42,8 @@
 !
 #include "config-f90.h"
 
+COMPILE_ERROR
+
 ! Define one of TEST_REAL or TEST_COMPLEX
 ! Define one of TEST_SINGLE or TEST_DOUBLE
 ! Define one of TEST_SOLVER_1STAGE or TEST_SOLVER_2STAGE
