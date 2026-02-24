@@ -400,13 +400,16 @@ void gpu_set_e_vec_scale_set_one_store_v_row (T_real *e_vec_dev, T *vrl_dev, T *
                                               T *v_row_dev, T *tau_dev, T *xf_host_or_dev, 
                                               int l_rows, int l_cols,  int matrixRows, int istep, 
                                               int isOurProcessRow, int useCCL, int wantDebug, gpuStream_t my_stream){
-
+  printf("tridiag_gpu.h: l_rows=%d, l_cols=%d, matrixRows=%d, istep=%d, isOurProcessRow=%d, useCCL=%d\n", l_rows, l_cols, matrixRows, istep, isOurProcessRow, useCCL);
+  fflush(stdout);
   int blocks = std::max((l_rows+MAX_THREADS_PER_BLOCK-1)/MAX_THREADS_PER_BLOCK, 1);
   dim3 blocksPerGrid = dim3(blocks,1,1);
   dim3 threadsPerBlock = dim3(MAX_THREADS_PER_BLOCK,1,1); // TODO_23_11: change to NB?
 
   gpuPointerAttributes attributes;
   gpuError_t error = gpuPointerGetAttributes(&attributes, xf_host_or_dev);
+  printf("tridiag_gpu.h: gpuPointerGetAttributes() - done\n");
+  fflush(stdout);
 
   if (error == gpuSuccess) 
     {
@@ -416,7 +419,12 @@ void gpu_set_e_vec_scale_set_one_store_v_row (T_real *e_vec_dev, T *vrl_dev, T *
     if (attributes.type == gpuMemoryTypeHost)
 #endif
       {
+      printf("tridiag_gpu.h: (attributes.type == gpuMemoryTypeHost)\n");
+      fflush(stdout);
       T xf_host_value = *xf_host_or_dev;
+      printf("tridiag_gpu.h: xf_host_value=%f\n", xf_host_value);
+      fflush(stdout);
+      
 #ifdef WITH_GPU_STREAMS
       gpu_set_e_vec_scale_set_one_store_v_row_kernel<<<blocks,threadsPerBlock,0,my_stream>>>(e_vec_dev, vrl_dev, a_dev, v_row_dev, tau_dev, xf_host_value,
                                                                                              l_rows, l_cols, matrixRows, istep, isOurProcessRow, useCCL);
@@ -436,6 +444,8 @@ void gpu_set_e_vec_scale_set_one_store_v_row (T_real *e_vec_dev, T *vrl_dev, T *
     else if (attributes.type == gpuMemoryTypeDevice)
 #endif
       {
+      printf("tridiag_gpu.h: (attributes.type == gpuMemoryTypeDevice)\n");
+      fflush(stdout);
 #ifdef WITH_GPU_STREAMS
       gpu_set_e_vec_scale_set_one_store_v_row_kernel<<<blocks,threadsPerBlock,0,my_stream>>>(e_vec_dev, vrl_dev, a_dev, v_row_dev, tau_dev, xf_host_or_dev,
                                                                                              l_rows, l_cols, matrixRows, istep, isOurProcessRow, useCCL);
@@ -454,12 +464,18 @@ void gpu_set_e_vec_scale_set_one_store_v_row (T_real *e_vec_dev, T *vrl_dev, T *
         if (cuerr != gpuSuccess) printf("Error in executing gpu_set_e_vec_scale_set_one_store_v_row_kernel: %s\n",gpuGetErrorString(cuerr));
         }
       }
+    else
+      {
+      printf("Error: Unable to determine the memory type of xf_host_or_dev\n");
+      }
     } 
   
   else 
     {
     printf("Error: Pointer type is unknown\n");
     }
+
+  printf("tridiag_gpu.h: gpu_set_e_vec_scale_set_one_store_v_row - done\n");
 
 }
 

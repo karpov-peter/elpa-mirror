@@ -339,6 +339,8 @@ module tridiag_gpu
       if (useCCL) useCCL_int = 1
       if (wantDebug) wantDebug_int = 1
 
+      print *, "mod_tridiag_gpu.F90: dataType=", dataType, " l_rows=", l_rows, " l_cols=", l_cols, " matrixRows=", matrixRows, " istep=", istep, &
+               " isOurProcessRow_int=", isOurProcessRow_int, " useCCL_int=", useCCL_int, " wantDebug_int=", wantDebug_int
 #if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION) || defined(WITH_SYCL_GPU_VERSION)
       call gpu_set_e_vec_scale_set_one_store_v_row_c (dataType, e_vec_dev, vrl_dev, a_dev, v_row_dev, tau_dev, xf_host_or_dev, &
                                                       l_rows, l_cols, matrixRows, istep, &
