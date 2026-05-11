@@ -466,11 +466,13 @@ for lang, p, d in product(sorted(language_flag.keys()), sorted(prec_flag.keys())
 
     print("if BUILD_CPU_TESTS")
     print("if ENABLE_AUTOTUNING")
+    if lang == "Fortran":
+        print("if ENABLE_FORTRAN_TESTS")
     if lang == "C":
         print("if ENABLE_C_TESTS")
     if lang == "C++":
         print("if ENABLE_CPP_TESTS")
-         
+
     print("check_SCRIPTS += " + name + "_autotune.sh")
     print("noinst_PROGRAMS += " + name)
 
@@ -494,6 +496,8 @@ for lang, p, d in product(sorted(language_flag.keys()), sorted(prec_flag.keys())
         domain_flag[d],
         prec_flag[p]]))
     print("endif\n" * endifs)
+    if lang == "Fortran":
+        print("endif")
     if lang == "C":
         print("endif")
     if lang == "C++":
@@ -629,6 +633,7 @@ for lang, g, gid, deviceptr, p, d, api_name in product(sorted(language_flag.keys
 
 
 name = "validate_multiple_objs_real_double"
+print("if ENABLE_FORTRAN_TESTS")
 print("if ENABLE_AUTOTUNING")
 print("if BUILD_EXTRA_TESTS")
 print("check_SCRIPTS += " + name + "_extended.sh")
@@ -639,6 +644,7 @@ print(name + "_FCFLAGS = $(test_program_fcflags) \\")
 print("  " + " \\\n  ".join([
         domain_flag['real'],
         prec_flag['double']]))
+print("endif\n")
 print("endif\n")
 print("endif\n")
 
@@ -692,6 +698,16 @@ for lang, g, p, s in product(sorted(language_flag.keys()),
     continue
 
   endifs = 0
+
+  if lang == "Fortran":
+      print("if ENABLE_FORTRAN_TESTS")
+      endifs += 1
+  elif lang == "C":
+      print("if ENABLE_C_TESTS")
+      endifs += 1
+  elif lang == "C++":
+      print("if ENABLE_CPP_TESTS")
+      endifs += 1
 
   if (g == "NVIDIA_GPU_ON"):
     print("if WITH_NVIDIA_GPU_VERSION")
@@ -761,6 +777,7 @@ for lang, g, p, s in product(sorted(language_flag.keys()),
 
 
 name = "validate_split_comm_real_double"
+print("if ENABLE_FORTRAN_TESTS")
 print("if BUILD_CPU_TESTS")
 print("check_SCRIPTS += " + name + "_extended.sh")
 print("noinst_PROGRAMS += " + name)
@@ -770,4 +787,5 @@ print(name + "_FCFLAGS = $(test_program_fcflags) \\")
 print("  " + " \\\n  ".join([
         domain_flag['real'],
         prec_flag['double']]))
+print("endif")
 print("endif")

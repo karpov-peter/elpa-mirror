@@ -58,6 +58,8 @@ if test x$_cv_gnu_make_command = x ; then
         AC_MSG_ERROR([Need GNU Make])
 fi
 
+PKG_PROG_PKG_CONFIG
+
 AC_MSG_CHECKING(whether in C interface the error argument should be optional)
 AC_ARG_ENABLE([optional-argument-in-C-API],
               AS_HELP_STRING([--enable-optional-argument-in-C-API],
@@ -3518,7 +3520,8 @@ if test x"$use_nvidia_nccl" = x"yes"; then
 
   AC_LANG_PUSH([C])
   CXXFLAGS="$CXXFLAGS -I$CUDA_INSTALL_PATH/include -I$NCCL_INSTALL_PATH/include"
-  LDFLAGS="$LDFLAGS -L$NCCL_INSTALL_PATH/lib"
+  NCCL_LDFLAGS="-L$NCCL_INSTALL_PATH/lib"
+  LDFLAGS="$LDFLAGS $NCCL_LDFLAGS"
   dnl check whether we find nccl
   AC_SEARCH_LIBS([ncclGetVersion],[nccl],[have_nccl=yes],[have_nccl=no])
   if test x"${have_nccl}" = x"no"; then
@@ -3531,6 +3534,7 @@ if test x"$use_nvidia_nccl" = x"yes"; then
   fi
 
 fi
+AC_SUBST([NCCL_LDFLAGS])
 AM_CONDITIONAL([WITH_NVIDIA_NCCL],[test x"$use_nvidia_nccl" = x"yes"])
 
 if test x"$use_amd_rccl" = x"yes"; then
@@ -3847,23 +3851,6 @@ if test x"${enable_cpp_tests}" = x"yes"; then
  AC_DEFINE([ENABLE_CPP_TESTS], [1], [enable C++ tests])
 fi
 
-AC_MSG_CHECKING(whether Fortran tests should be provided)
-AC_ARG_ENABLE([Fortran-tests],
-              AS_HELP_STRING([--enable-Fortran-tests],
-                             [enables the Fortran tests for elpa, default yes.]),
-			     [
-			      if test x"$enableval" = x"yes"; then
-			        enable_fortran_tests=yes
-		              else
-			        enable_fortran_tests=no
-			      fi
-			      ],
-              [enable_fortran_tests=yes])
-AC_MSG_RESULT([${enable_fortran_tests}])
-AM_CONDITIONAL([ENABLE_FORTRAN_TESTS],[test x"$enable_fortran_tests" = x"yes"])
-if test x"${enable_fortran_tests}" = x"yes"; then
- AC_DEFINE([ENABLE_FORTRAN_TESTS], [1], [enable Fortran tests])
-fi
 
 ##check for MPI-CXX wrapper
 #if test x"${enable_cpp_tests}" = x"yes"; then
@@ -4247,7 +4234,36 @@ AM_CONDITIONAL([BUILD_CPU_TESTS],[test x"$build_cpu_tests" = x"yes"])
 AM_CONDITIONAL([BUILD_GPU_TESTS],[test x"$build_gpu_tests" = x"yes"])
 AM_CONDITIONAL([BUILD_EXTRA_TESTS],[test x"$build_extra_tests" = x"yes"])
 
+dnl Unit tests with the Check framework
+AC_MSG_CHECKING(whether unit tests with the Check framework should be built)
+AC_ARG_ENABLE([unit-tests],
+              AS_HELP_STRING([--enable-unit-tests],
+                             [build unit tests using the Check framework, default no]),
+              [
+               if test x"$enableval" = x"yes"; then
+                 enable_unit_tests=yes
+               else
+                 enable_unit_tests=no
+               fi
+               ],
+              [enable_unit_tests=no])
+AC_MSG_RESULT([${enable_unit_tests}])
 
+if test x"${enable_unit_tests}" = x"yes"; then
+  PKG_CHECK_MODULES([CHECK], [check >= 0.9.6],
+    [have_check=yes],
+    [AC_MSG_ERROR([The Check unit testing framework (>= 0.9.6) was not found.
+Install it (e.g. apt install check / dnf install check-devel) or disable
+unit tests with --disable-unit-tests.])])
+fi
+
+AM_CONDITIONAL([WITH_UNIT_TESTS],[test x"$enable_unit_tests" = x"yes"])
+if test x"${enable_unit_tests}" = x"yes"; then
+  AC_DEFINE([WITH_UNIT_TESTS], [1], [Define if unit tests are enabled])
+  AC_DEFINE([HAVE_CHECK], [1], [Define if the Check unit testing framework is available])
+fi
+AC_SUBST([CHECK_CFLAGS])
+AC_SUBST([CHECK_LIBS])
 
 
 AC_OUTPUT

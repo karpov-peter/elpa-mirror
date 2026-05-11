@@ -754,9 +754,15 @@ endif
 .cu.lo:
 	NVCC="$(NVCC)"   $(LIBTOOL) --mode=compile --tag=CC $(top_srcdir)/nvcc_wrap  $(NVCCFLAGS)  $(LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/  -c $< -o $@
 
+.cu.o:
+	NVCC="$(NVCC)" $(top_srcdir)/nvcc_wrap $(NVCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -c $< -o $@
+
 # HIP files
 .hip.lo:
 	HIPCC="$(HIPCC)" $(LIBTOOL) --mode=compile --tag=CC $(top_srcdir)/hipcc_wrap $(HIPCCFLAGS) $(LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/  -c $< -o $@
+
+.hip.o:
+	HIPCC="$(HIPCC)" $(top_srcdir)/hipcc_wrap $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -c $< -o $@
 
 # Assembly files
 LTCCASCOMPILE = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
@@ -839,7 +845,9 @@ bin_PROGRAMS = \
   elpa2_print_kernels@SUFFIX@
 endif
 noinst_PROGRAMS =
+#check_PROGRAMS =
 check_SCRIPTS =
+unit_test_programs =
 
 test_program_ldadd = libelpatest@SUFFIX@.la libelpa@SUFFIX@.la
 test_program_fcflags = $(AM_FCFLAGS) $(FC_MODOUT)test_modules $(FC_MODINC)test_modules $(FC_MODINC)modules $(FC_MODINC)private_modules
@@ -880,11 +888,8 @@ libelpatest@SUFFIX@_la_SOURCES += \
   test/shared/GPU/SYCL/test_syclFunctions.cpp
 endif
 
-if WITH_ONEAPI_ONECCL
-libelpatest@SUFFIX@_la_SOURCES += \
-  test/shared/test_oneccl_init_wrapper.F90 \
-  test/shared/test_oneccl_init.cpp
-endif
+
+
 
 if WITH_SCALAPACK_TESTS
 libelpatest@SUFFIX@_la_SOURCES += \
@@ -903,6 +908,308 @@ elpa2_print_kernels@SUFFIX@_SOURCES = src/elpa2/elpa2_print_kernels.F90
 elpa2_print_kernels@SUFFIX@_LDADD = libelpa@SUFFIX@.la
 elpa2_print_kernels@SUFFIX@_FCFLAGS = $(AM_FCFLAGS) $(FC_MODINC)modules
 endif
+
+TESTS =
+
+if WITH_UNIT_TESTS
+if WITH_NVIDIA_GPU_VERSION
+noinst_PROGRAMS += unit_test_gpu_set_one_complex
+unit_test_programs += unit_test_gpu_set_one_complex
+TESTS += unit_test_gpu_set_one_complex
+unit_test_gpu_set_one_complex_SOURCES = test/unit_tests/CUDA/elpa1/test_gpu_set_one_complex.cu
+unit_test_gpu_set_one_complex_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_common_device_functions
+unit_test_programs += unit_test_common_device_functions
+TESTS += unit_test_common_device_functions
+unit_test_common_device_functions_SOURCES = test/unit_tests/CUDA/GPU/test_common_device_functions.cu
+unit_test_common_device_functions_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_tridiag_kernels
+unit_test_programs += unit_test_tridiag_kernels
+TESTS += unit_test_tridiag_kernels
+unit_test_tridiag_kernels_SOURCES = test/unit_tests/CUDA/elpa1/test_tridiag_kernels.cu
+unit_test_tridiag_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_pack_unpack_kernels
+unit_test_programs += unit_test_pack_unpack_kernels
+TESTS += unit_test_pack_unpack_kernels
+unit_test_pack_unpack_kernels_SOURCES = test/unit_tests/CUDA/GPU/test_pack_unpack_kernels.cu
+unit_test_pack_unpack_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_trans_ev_kernels
+unit_test_programs += unit_test_trans_ev_kernels
+TESTS += unit_test_trans_ev_kernels
+unit_test_trans_ev_kernels_SOURCES = test/unit_tests/CUDA/elpa1/test_trans_ev_kernels.cu
+unit_test_trans_ev_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_trans_ev_cuda_kernels
+unit_test_programs += unit_test_trans_ev_cuda_kernels
+TESTS += unit_test_trans_ev_cuda_kernels
+unit_test_trans_ev_cuda_kernels_SOURCES = test/unit_tests/CUDA/elpa1/test_trans_ev_cuda_kernels.cu
+unit_test_trans_ev_cuda_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_ev_tridi_band_complex_kernels
+unit_test_programs += unit_test_ev_tridi_band_complex_kernels
+TESTS += unit_test_ev_tridi_band_complex_kernels
+unit_test_ev_tridi_band_complex_kernels_SOURCES = test/unit_tests/CUDA/elpa2/test_ev_tridi_band_complex_kernels.cu
+unit_test_ev_tridi_band_complex_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_ev_tridi_band_real_sm80_kernels
+unit_test_programs += unit_test_ev_tridi_band_real_sm80_kernels
+TESTS += unit_test_ev_tridi_band_real_sm80_kernels
+unit_test_ev_tridi_band_real_sm80_kernels_SOURCES = test/unit_tests/CUDA/elpa2/test_ev_tridi_band_real_sm80_kernels.cu
+unit_test_ev_tridi_band_real_sm80_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_invert_trm_kernels
+unit_test_programs += unit_test_invert_trm_kernels
+TESTS += unit_test_invert_trm_kernels
+unit_test_invert_trm_kernels_SOURCES = test/unit_tests/CUDA/invert_trm/test_invert_trm_kernels.cu
+unit_test_invert_trm_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_pxgemm_multiply_kernels
+unit_test_programs += unit_test_pxgemm_multiply_kernels
+TESTS += unit_test_pxgemm_multiply_kernels
+unit_test_pxgemm_multiply_kernels_SOURCES = test/unit_tests/CUDA/multiply_a_b/test_pxgemm_multiply_kernels.cu
+unit_test_pxgemm_multiply_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_solve_tridi_kernels
+unit_test_programs += unit_test_solve_tridi_kernels
+TESTS += unit_test_solve_tridi_kernels
+unit_test_solve_tridi_kernels_SOURCES = test/unit_tests/CUDA/solve_tridi/test_solve_tridi_kernels.cu
+unit_test_solve_tridi_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_solve_tridi_single_problem_kernels
+unit_test_programs += unit_test_solve_tridi_single_problem_kernels
+TESTS += unit_test_solve_tridi_single_problem_kernels
+unit_test_solve_tridi_single_problem_kernels_SOURCES = test/unit_tests/CUDA/solve_tridi/test_solve_tridi_single_problem_kernels.cu
+unit_test_solve_tridi_single_problem_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_distribute_global_column_kernels
+unit_test_programs += unit_test_distribute_global_column_kernels
+TESTS += unit_test_distribute_global_column_kernels
+unit_test_distribute_global_column_kernels_SOURCES = test/unit_tests/CUDA/solve_tridi/test_distribute_global_column_kernels.cu
+unit_test_distribute_global_column_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_hermitian_multiply_kernels
+unit_test_programs += unit_test_hermitian_multiply_kernels
+TESTS += unit_test_hermitian_multiply_kernels
+unit_test_hermitian_multiply_kernels_SOURCES = test/unit_tests/CUDA/multiply_a_b/test_hermitian_multiply_kernels.cu
+unit_test_hermitian_multiply_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_cholesky_kernels
+unit_test_programs += unit_test_cholesky_kernels
+TESTS += unit_test_cholesky_kernels
+unit_test_cholesky_kernels_SOURCES = test/unit_tests/CUDA/cholesky/test_cholesky_kernels.cu
+unit_test_cholesky_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_elpa1_kernels
+unit_test_programs += unit_test_elpa1_kernels
+TESTS += unit_test_elpa1_kernels
+unit_test_elpa1_kernels_SOURCES = test/unit_tests/CUDA/elpa1/test_elpa1_kernels.cu
+unit_test_elpa1_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+endif
+endif
+
+if WITH_UNIT_TESTS
+if WITH_AMD_GPU_VERSION
+noinst_PROGRAMS += unit_test_gpu_set_one_complex_hip
+unit_test_programs += unit_test_gpu_set_one_complex_hip
+TESTS += unit_test_gpu_set_one_complex_hip
+unit_test_gpu_set_one_complex_hip_SOURCES = test/unit_tests/ROCm/elpa1/test_gpu_set_one_complex.hip
+unit_test_gpu_set_one_complex_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_common_device_functions_hip
+unit_test_programs += unit_test_common_device_functions_hip
+TESTS += unit_test_common_device_functions_hip
+unit_test_common_device_functions_hip_SOURCES = test/unit_tests/ROCm/GPU/test_common_device_functions.hip
+unit_test_common_device_functions_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_tridiag_kernels_hip
+unit_test_programs += unit_test_tridiag_kernels_hip
+TESTS += unit_test_tridiag_kernels_hip
+unit_test_tridiag_kernels_hip_SOURCES = test/unit_tests/ROCm/elpa1/test_tridiag_kernels.hip
+unit_test_tridiag_kernels_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_trans_ev_kernels_hip
+unit_test_programs += unit_test_trans_ev_kernels_hip
+TESTS += unit_test_trans_ev_kernels_hip
+unit_test_trans_ev_kernels_hip_SOURCES = test/unit_tests/ROCm/elpa1/test_trans_ev_kernels.hip
+unit_test_trans_ev_kernels_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_solve_tridi_kernels_hip
+unit_test_programs += unit_test_solve_tridi_kernels_hip
+TESTS += unit_test_solve_tridi_kernels_hip
+unit_test_solve_tridi_kernels_hip_SOURCES = test/unit_tests/ROCm/solve_tridi/test_solve_tridi_kernels.hip
+unit_test_solve_tridi_kernels_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_solve_tridi_single_problem_kernels_hip
+unit_test_programs += unit_test_solve_tridi_single_problem_kernels_hip
+TESTS += unit_test_solve_tridi_single_problem_kernels_hip
+unit_test_solve_tridi_single_problem_kernels_hip_SOURCES = test/unit_tests/ROCm/solve_tridi/test_solve_tridi_single_problem_kernels.hip
+unit_test_solve_tridi_single_problem_kernels_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_distribute_global_column_kernels_hip
+unit_test_programs += unit_test_distribute_global_column_kernels_hip
+TESTS += unit_test_distribute_global_column_kernels_hip
+unit_test_distribute_global_column_kernels_hip_SOURCES = test/unit_tests/ROCm/solve_tridi/test_distribute_global_column_kernels.hip
+unit_test_distribute_global_column_kernels_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_hermitian_multiply_kernels_hip
+unit_test_programs += unit_test_hermitian_multiply_kernels_hip
+TESTS += unit_test_hermitian_multiply_kernels_hip
+unit_test_hermitian_multiply_kernels_hip_SOURCES = test/unit_tests/ROCm/multiply_a_b/test_hermitian_multiply_kernels.hip
+unit_test_hermitian_multiply_kernels_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_pack_unpack_kernels_hip
+unit_test_programs += unit_test_pack_unpack_kernels_hip
+TESTS += unit_test_pack_unpack_kernels_hip
+unit_test_pack_unpack_kernels_hip_SOURCES = test/unit_tests/ROCm/GPU/test_pack_unpack_kernels.hip
+unit_test_pack_unpack_kernels_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_invert_trm_kernels_hip
+unit_test_programs += unit_test_invert_trm_kernels_hip
+TESTS += unit_test_invert_trm_kernels_hip
+unit_test_invert_trm_kernels_hip_SOURCES = test/unit_tests/ROCm/invert_trm/test_invert_trm_kernels.hip
+unit_test_invert_trm_kernels_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_pxgemm_multiply_kernels_hip
+unit_test_programs += unit_test_pxgemm_multiply_kernels_hip
+TESTS += unit_test_pxgemm_multiply_kernels_hip
+unit_test_pxgemm_multiply_kernels_hip_SOURCES = test/unit_tests/ROCm/multiply_a_b/test_pxgemm_multiply_kernels.hip
+unit_test_pxgemm_multiply_kernels_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_cholesky_kernels_hip
+unit_test_programs += unit_test_cholesky_kernels_hip
+TESTS += unit_test_cholesky_kernels_hip
+unit_test_cholesky_kernels_hip_SOURCES = test/unit_tests/ROCm/cholesky/test_cholesky_kernels.hip
+unit_test_cholesky_kernels_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
+noinst_PROGRAMS += unit_test_elpa1_kernels_hip
+unit_test_programs += unit_test_elpa1_kernels_hip
+TESTS += unit_test_elpa1_kernels_hip
+unit_test_elpa1_kernels_hip_SOURCES = test/unit_tests/ROCm/elpa1/test_elpa1_kernels.hip
+unit_test_elpa1_kernels_hip_LINK = $(HIPCC) $(HIPCCFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+endif
+endif
+
+if WITH_UNIT_TESTS
+if WITH_SYCL_GPU_VERSION
+noinst_PROGRAMS += unit_test_gpu_set_one_complex_sycl
+unit_test_programs += unit_test_gpu_set_one_complex_sycl
+TESTS += unit_test_gpu_set_one_complex_sycl
+unit_test_gpu_set_one_complex_sycl_SOURCES = test/unit_tests/SYCL/elpa1/test_gpu_set_one_complex.cpp
+unit_test_gpu_set_one_complex_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_gpu_set_one_complex_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_common_device_functions_sycl
+unit_test_programs += unit_test_common_device_functions_sycl
+TESTS += unit_test_common_device_functions_sycl
+unit_test_common_device_functions_sycl_SOURCES = test/unit_tests/SYCL/GPU/test_common_device_functions.cpp
+unit_test_common_device_functions_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_common_device_functions_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_tridiag_kernels_sycl
+unit_test_programs += unit_test_tridiag_kernels_sycl
+TESTS += unit_test_tridiag_kernels_sycl
+unit_test_tridiag_kernels_sycl_SOURCES = test/unit_tests/SYCL/elpa1/test_tridiag_kernels.cpp
+unit_test_tridiag_kernels_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_tridiag_kernels_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_trans_ev_kernels_sycl
+unit_test_programs += unit_test_trans_ev_kernels_sycl
+TESTS += unit_test_trans_ev_kernels_sycl
+unit_test_trans_ev_kernels_sycl_SOURCES = test/unit_tests/SYCL/elpa1/test_trans_ev_kernels.cpp
+unit_test_trans_ev_kernels_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_trans_ev_kernels_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_solve_tridi_kernels_sycl
+unit_test_programs += unit_test_solve_tridi_kernels_sycl
+TESTS += unit_test_solve_tridi_kernels_sycl
+unit_test_solve_tridi_kernels_sycl_SOURCES = test/unit_tests/SYCL/solve_tridi/test_solve_tridi_kernels.cpp
+unit_test_solve_tridi_kernels_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_solve_tridi_kernels_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_solve_tridi_single_problem_kernels_sycl
+unit_test_programs += unit_test_solve_tridi_single_problem_kernels_sycl
+TESTS += unit_test_solve_tridi_single_problem_kernels_sycl
+unit_test_solve_tridi_single_problem_kernels_sycl_SOURCES = test/unit_tests/SYCL/solve_tridi/test_solve_tridi_single_problem_kernels.cpp
+unit_test_solve_tridi_single_problem_kernels_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_solve_tridi_single_problem_kernels_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_distribute_global_column_kernels_sycl
+unit_test_programs += unit_test_distribute_global_column_kernels_sycl
+TESTS += unit_test_distribute_global_column_kernels_sycl
+unit_test_distribute_global_column_kernels_sycl_SOURCES = test/unit_tests/SYCL/solve_tridi/test_distribute_global_column_kernels.cpp
+unit_test_distribute_global_column_kernels_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_distribute_global_column_kernels_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_hermitian_multiply_kernels_sycl
+unit_test_programs += unit_test_hermitian_multiply_kernels_sycl
+TESTS += unit_test_hermitian_multiply_kernels_sycl
+unit_test_hermitian_multiply_kernels_sycl_SOURCES = test/unit_tests/SYCL/multiply_a_b/test_hermitian_multiply_kernels.cpp
+unit_test_hermitian_multiply_kernels_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_hermitian_multiply_kernels_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_pack_unpack_kernels_sycl
+unit_test_programs += unit_test_pack_unpack_kernels_sycl
+TESTS += unit_test_pack_unpack_kernels_sycl
+unit_test_pack_unpack_kernels_sycl_SOURCES = test/unit_tests/SYCL/GPU/test_pack_unpack_kernels.cpp
+unit_test_pack_unpack_kernels_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_pack_unpack_kernels_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_invert_trm_kernels_sycl
+unit_test_programs += unit_test_invert_trm_kernels_sycl
+TESTS += unit_test_invert_trm_kernels_sycl
+unit_test_invert_trm_kernels_sycl_SOURCES = test/unit_tests/SYCL/invert_trm/test_invert_trm_kernels.cpp
+unit_test_invert_trm_kernels_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_invert_trm_kernels_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_pxgemm_multiply_kernels_sycl
+unit_test_programs += unit_test_pxgemm_multiply_kernels_sycl
+TESTS += unit_test_pxgemm_multiply_kernels_sycl
+unit_test_pxgemm_multiply_kernels_sycl_SOURCES = test/unit_tests/SYCL/multiply_a_b/test_pxgemm_multiply_kernels.cpp
+unit_test_pxgemm_multiply_kernels_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_pxgemm_multiply_kernels_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_cholesky_kernels_sycl
+unit_test_programs += unit_test_cholesky_kernels_sycl
+TESTS += unit_test_cholesky_kernels_sycl
+unit_test_cholesky_kernels_sycl_SOURCES = test/unit_tests/SYCL/cholesky/test_cholesky_kernels.cpp
+unit_test_cholesky_kernels_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_cholesky_kernels_sycl_LDADD =
+
+noinst_PROGRAMS += unit_test_elpa1_kernels_sycl
+unit_test_programs += unit_test_elpa1_kernels_sycl
+TESTS += unit_test_elpa1_kernels_sycl
+unit_test_elpa1_kernels_sycl_SOURCES = test/unit_tests/SYCL/elpa1/test_elpa1_kernels.cpp
+unit_test_elpa1_kernels_sycl_CXXFLAGS = $(AM_CXXFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/
+unit_test_elpa1_kernels_sycl_LDADD =
+endif
+endif
+
+if ENABLE_FORTRAN_TESTS
+# DO nothing
+else
+#we have to build at least one Fortran program
+noinst_PROGRAMS += validate_real_double_eigenvectors_1stage_random
+check_SCRIPTS += validate_real_double_eigenvectors_1stage_random_default.sh
+validate_real_double_eigenvectors_1stage_random_SOURCES = test/Fortran/test.F90
+validate_real_double_eigenvectors_1stage_random_LDADD = $(test_program_ldadd)
+validate_real_double_eigenvectors_1stage_random_FCFLAGS = $(test_program_fcflags) \
+  -DTEST_CASE=\"validate_real_double_eigenvectors_1stage_random\" \
+  -DTEST_REAL \
+  -DTEST_DOUBLE \
+  -DTEST_EIGENVECTORS \
+  -DTEST_SOLVER_1STAGE \
+  -DTEST_NVIDIA_GPU=0 -DTEST_INTEL_GPU=0 -DTEST_AMD_GPU=0 -DTEST_OPENMP_OFFLOAD_GPU=0 -DTEST_INTEL_GPU_OPENMP=0 -DTEST_INTEL_GPU_SYCL=0 \
+  -DTEST_GPU_SET_ID=0 \
+  -DTEST_GPU_DEVICE_POINTER_API=0 \
+  -DTEST_QR_DECOMPOSITION=0 \
+   \
+  -DTEST_MATRIX_RANDOM
+endif
+
 
 include test_programs.am
 
@@ -968,7 +1275,8 @@ if WITH_MPI
 else
   wrapper=
 endif
-TESTS = $(check_SCRIPTS)
+#TESTS += $(check_SCRIPTS) $(check_PROGRAMS)
+TESTS += $(check_SCRIPTS)
 %_autotune.sh: %
 	@echo "#!/bin/bash" > $@
 	@echo 'if [ "$$CHECK_LEVEL" = "autotune" ] ; then $(wrapper) ./$^ $$TEST_FLAGS ; else exit 77; fi' >> $@
@@ -991,6 +1299,23 @@ TESTS = $(check_SCRIPTS)
 if WITH_PYTHON_TESTS
 check_SCRIPTS += test_python.sh
 endif
+
+.PHONY: unit_tests
+unit_tests: $(unit_test_programs)
+	@if [ -z "$(unit_test_programs)" ]; then \
+	  echo "No unit tests enabled (configure with --enable-unit-tests)"; \
+	  exit 0; \
+	fi; \
+	failed=0; \
+	for t in $(unit_test_programs); do \
+	  echo "  RUN     $$t"; \
+	  ./$$t || failed=$$((failed + 1)); \
+	done; \
+	if [ $$((failed)) -ne 0 ]; then \
+	  echo "$$failed unit test(s) FAILED"; \
+	  exit 1; \
+	fi; \
+	echo "All unit tests passed."
 
 test_python.sh:
 	@echo '#!/bin/bash' > $@
@@ -1045,6 +1370,7 @@ clean-local:
 	-rm -rf $(generated_headers)
 	-rm -rf *.sh.trs
 	-rm -rf *.sh.log
+	-rm -f unit_test_*.log unit_test_*.trs
 
 distclean-local:
 	-rm -rf ./m4
