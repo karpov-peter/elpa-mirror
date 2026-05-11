@@ -71,7 +71,7 @@ __global__ void gpu_set_one_complex_kernel(T *a_dev)
 
 
 template <typename T>
-void gpu_set_one_complex (T *a_dev, cudaStream_t my_stream){
+void gpu_set_one_complex (T *a_dev, gpuStream_t my_stream){
 #ifdef WITH_GPU_STREAMS
   gpu_set_one_complex_kernel <<<1, 1, 0, my_stream>>>(a_dev);
 #else
@@ -743,6 +743,7 @@ __global__ void gpu_update_matrix_element_add_kernel(T *vu_stored_rows_dev, T *u
       i /= 2;
       }
 
+    // here we do only update of d_vec_dev by dot product. Initial value is already set in gpu_copy_and_set_zeros
     if (threadIdx.x==0) 
       {
       atomicAdd(&a_dev[(l_rows-1) + matrixRows*(l_cols-1)], cache[0]);
@@ -840,8 +841,8 @@ __global__ void gpu_hh_transform_kernel(T *alpha_dev, T *xnorm_sq_dev, T *xf_dev
 #endif
     alpha = alpha + beta
     if ( beta<0 ) then
+      tau  = alpha / beta
       beta = -beta
-      tau  = -alpha / beta
     else
 #if realcase == 1
       alpha = xnorm_sq / alpha
