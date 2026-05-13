@@ -4253,7 +4253,7 @@ found_pkg_config=no
 if test x"${enable_unit_tests}" = x"yes"; then
   if [ test -z "$PKG_CONFIG" ]; then
     found_pkg_config=no
-    AC_MSG_WARN([--enable-unit-tests requires pkg-config to locate the Check framework, but pkg-config was not found. Please install pkg-config (e.g. apt install pkg-config / dnf install pkgconf-pkg-config) or disable unit tests with --disable-unit-tests to get rid of this warning. Disabling unit tests now])]
+    AC_MSG_WARN([--enable-unit-tests requires pkg-config to locate the Check framework, but pkg-config was not found. Please install pkg-config (e.g. apt install pkg-config / dnf install pkgconf-pkg-config) or disable unit tests with --disable-unit-tests to get rid of this warning. Disabling unit tests now])
   else
     found_pkg_config=yes
   fi
