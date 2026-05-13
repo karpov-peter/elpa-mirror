@@ -4263,6 +4263,7 @@ if test x"${enable_unit_tests}" = x"yes"; then
                       [AC_MSG_ERROR([The Check unit testing framework (>= 0.9.6) was not found. Install it (e.g. apt install check / dnf install check-devel) or disable unit tests with --disable-unit-tests.])])
 
   fi
+fi
 
 AM_CONDITIONAL([WITH_UNIT_TESTS],[test x"$found_pkg_config" = x"yes"])
 if test x"$found_pkg_config" = x"yes"; then
