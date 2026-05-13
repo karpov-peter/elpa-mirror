@@ -4246,19 +4246,30 @@ AC_ARG_ENABLE([unit-tests],
                  enable_unit_tests=no
                fi
                ],
-              [enable_unit_tests=no])
+              [enable_unit_tests=yes])
 AC_MSG_RESULT([${enable_unit_tests}])
 
+found_pkg_config=no
 if test x"${enable_unit_tests}" = x"yes"; then
-  PKG_CHECK_MODULES([CHECK], [check >= 0.9.6],
-    [have_check=yes],
-    [AC_MSG_ERROR([The Check unit testing framework (>= 0.9.6) was not found.
+  if [ test -z "$PKG_CONFIG"]; then
+    found_pkg_config=no
+    AC_MSG_WARN([--enable-unit-tests requires pkg-config to locate the Check framework, but pkg-config was not found.
+Please install pkg-config (e.g. apt install pkg-config / dnf install pkgconf-pkg-config) or disable
+unit tests with --disable-unit-tests to get rid of this warning. Disabling unit tests now])]
+  else
+    found_pkg_config=yes
+  fi
+  if test x"$found_pkg_config" = x"yes"; then
+    PKG_CHECK_MODULES([CHECK], [check >= 0.9.6],
+                      [have_check=yes],
+                      [AC_MSG_ERROR([The Check unit testing framework (>= 0.9.6) was not found.
 Install it (e.g. apt install check / dnf install check-devel) or disable
 unit tests with --disable-unit-tests.])])
-fi
 
-AM_CONDITIONAL([WITH_UNIT_TESTS],[test x"$enable_unit_tests" = x"yes"])
-if test x"${enable_unit_tests}" = x"yes"; then
+  fi
+
+AM_CONDITIONAL([WITH_UNIT_TESTS],[test x"$found_pkg_config" = x"yes"])
+if test x"$found_pkg_config" = x"yes"; then
   AC_DEFINE([WITH_UNIT_TESTS], [1], [Define if unit tests are enabled])
   AC_DEFINE([HAVE_CHECK], [1], [Define if the Check unit testing framework is available])
 fi
