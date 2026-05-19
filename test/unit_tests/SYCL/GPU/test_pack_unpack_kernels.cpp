@@ -33,12 +33,6 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with ELPA.  If not, see <http://www.gnu.org/licenses/>
 
-// Unit tests for the kernels in src/GPU/SYCL/syclUtils.cpp (SYCL backend):
-//   launch_my_pack_c_sycl_kernel    (double, float, gpuDoubleComplex, gpuFloatComplex)
-//   launch_my_unpack_c_sycl_kernel  (double, float, gpuDoubleComplex, gpuFloatComplex)
-//   launch_extract_hh_tau_c_sycl_kernel (double, float, gpuDoubleComplex, gpuFloatComplex)
-// Self-contained: kernel bodies copied here to avoid syclCommon.hpp dependency.
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>

@@ -33,23 +33,6 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with ELPA.  If not, see <http://www.gnu.org/licenses/>
 
-// Unit tests for kernels in gpu_solve_tridi_single_problem.h (Intel SYCL backend).
-// SYCL port of test/unit_tests/CUDA/test_solve_tridi_single_problem_kernels.cu.
-//
-// Kernel 1: gpu_check_monotony<T>
-//   Single-threaded insertion sort on d[0..nlen-1].  Correspondingly permutes
-//   columns of q (col-major, leading dimension ldq).  qtmp[nlen] is scratch.
-//   Key detail: the comparison threshold is stored as 'double dtmp' even when
-//   T=float — a deliberate widening that is exact for all float values.
-//
-// Kernel 2: gpu_construct_full_from_tridi_matrix<T>
-//   Fills a symmetric tridiagonal matrix into q (col-major, ldq) from
-//   d[0..nlen-1] (diagonal) and e[0..nlen-2] (sub/super-diagonal).
-//   q must be pre-zeroed by the caller.
-//
-// Note: kernel bodies are inlined here because sycl_solve_tridi_single_problem.cpp
-// includes syclCommon.hpp (which is not usable in self-contained unit tests).
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>

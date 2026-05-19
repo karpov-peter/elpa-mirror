@@ -33,18 +33,6 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with ELPA.  If not, see <http://www.gnu.org/licenses/>
 
-// Unit tests for the three kernels in elpa_multiply_a_b_sycl.cpp (Intel SYCL).
-// SYCL port of test/unit_tests/CUDA/test_hermitian_multiply_kernels.cu.
-//
-// The kernel bodies are inlined here because elpa_multiply_a_b_sycl.cpp
-// includes syclCommon.hpp (getQueueOrDefault, QueueData, etc.) which is not
-// available in self-contained unit tests.  Self-contained launchers use a
-// module-local sycl::queue singleton instead.
-//
-// Kernel logic is identical to CUDA/HIP; only the threading model differs:
-//   gpu_copy_tmp2_c:        1-D nd_range, groups=lce-lcs+1, local=nstor
-//   gpu_copy_a_aux_bc_loop: 1-D nd_range, groups=n_size,    local=TPB (stride loop)
-//   gpu_copy_aux_bc_aux_mat_loop: same shape as above
 
 #include <stdio.h>
 #include <stdlib.h>

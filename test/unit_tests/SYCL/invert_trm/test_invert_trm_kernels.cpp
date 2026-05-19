@@ -1,13 +1,14 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include "config-f90.h"
+
 #ifdef WITH_UNIT_TESTS
 #ifdef WITH_SYCL_GPU_VERSION
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <math.h>
 #include <complex>
 #include <type_traits>
 #include <cassert>
-#include "config-f90.h"
 #include <sycl/sycl.hpp>
 #include "../../../../src/GPU/common_device_functions.h"
 #include "../../../../src/GPU/gpu_to_cuda_and_hip_interface.h"

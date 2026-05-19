@@ -33,16 +33,6 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with ELPA.  If not, see <http://www.gnu.org/licenses/>
 
-// Unit tests for all functions/types in src/GPU/common_device_functions.h (SYCL backend).
-// Covers: elpaHostNumberFromInt, elpaDeviceSign, elpaDeviceNumber,
-//         elpaDeviceNumberFromRealImag, elpaDeviceAdd, elpaDeviceSubtract,
-//         elpaDeviceMultiply, elpaDeviceDivide, elpaDeviceSqrt,
-//         elpaDeviceComplexConjugate, elpaDeviceRealPart, elpaDeviceImagPart,
-//         elpaDeviceEqual, elpaDeviceEqualBool, atomicAdd (complex),
-//         pcol, prow, local_index.
-// All four types tested where applicable: double, float,
-//         double_complex (std::complex<double>), float_complex (std::complex<float>).
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>

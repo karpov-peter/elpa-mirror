@@ -33,15 +33,6 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with ELPA.  If not, see <http://www.gnu.org/licenses/>
 
-// Unit tests for trans_ev kernels (SYCL backend).
-// Covers: gpu_set_tmat_diag_from_tau, gpu_copy_hvb_a, gpu_copy_hvm_hvb.
-// Self-contained: kernel bodies copied here to avoid syclCommon.hpp dependency.
-//
-// SYCL-specific behavioural difference from CUDA:
-//   gpu_copy_hvm_hvb: when tau[ic-1]==0, the SYCL kernel ZERO-FILLS the entire
-//   hvm column (up to ld_hvm elements), whereas the CUDA kernel skips it entirely.
-//   The tests below verify SYCL's actual behaviour.
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>

@@ -33,9 +33,6 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with ELPA.  If not, see <http://www.gnu.org/licenses/>
 
-// Unit tests for pxgemm multiply kernels (SYCL backend).
-// Covers: gpu_copy_aux_full_kernel, gpu_copy_and_set_zeros_aux_full_kernel.
-// Self-contained: kernel bodies copied here to avoid syclCommon.hpp dependency.
 
 #include <stdio.h>
 #include <stdlib.h>

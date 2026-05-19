@@ -33,19 +33,6 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with ELPA.  If not, see <http://www.gnu.org/licenses/>
 
-// Unit tests for solve_tridi GPU kernels (SYCL backend).
-// Covers: gpu_transform_one_column, gpu_transform_two_columns,
-//         gpu_update_d, gpu_copy_qmat1_to_qmat2,
-//         gpu_fill_array, gpu_copy_qtmp1_to_qtmp1_tmp,
-//         gpu_compute_nnzl_nnzu_val_part1/2.
-// Self-contained: kernel bodies copied here to avoid syclCommon.hpp dependency.
-//
-// SYCL-specific behavioural difference from CUDA:
-//   gpu_copy_qmat1_to_qmat2: the SYCL kernel uses dimension 0 of nd_item<3>
-//   for both i and j, but the launcher assigns only 1 thread/block in dimension 0.
-//   As a result, ALL threads get i=j=0 and only element [0,0] is copied.
-//   Tests below verify this actual SYCL behaviour.
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>

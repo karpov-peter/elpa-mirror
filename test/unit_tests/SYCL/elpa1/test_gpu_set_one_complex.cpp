@@ -33,8 +33,6 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with ELPA.  If not, see <http://www.gnu.org/licenses/>
 
-// Unit test for gpu_set_one_complex<T> (SYCL backend).
-// Tests both gpuDoubleComplex (std::complex<double>) and gpuFloatComplex (std::complex<float>).
 
 #include <stdio.h>
 #include <stdlib.h>

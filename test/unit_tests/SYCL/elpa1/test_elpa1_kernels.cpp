@@ -33,14 +33,6 @@
 //    You should have received a copy of the GNU Lesser General Public License
 //    along with ELPA.  If not, see <http://www.gnu.org/licenses/>
 
-// Unit tests for kernels in src/elpa1/GPU/SYCL/elpa1_sycl.cpp (SYCL backend):
-//   sycl_copy_real_part_to_q_complex     (double, float)
-//   sycl_zero_skewsymmetric_q            (double, float)
-//   sycl_copy_skewsymmetric_second_half_q_kernel  (double, float; isPlus=true/false)
-//   sycl_copy_skewsymmetric_first_half_q (double, float)
-//   sycl_get_skewsymmetric_second_half_q (double, float)
-//   sycl_put_skewsymmetric_second_half_q (double, float)
-// Self-contained: kernel bodies copied here to avoid syclCommon.hpp dependency.
 
 #include <stdio.h>
 #include <stdlib.h>
