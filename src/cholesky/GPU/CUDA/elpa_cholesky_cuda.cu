@@ -59,6 +59,10 @@
 #include <assert.h>
 #include "config-f90.h"
 
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
+
 #include "../../../GPU/common_device_functions.h"
 
 #define MAX_THREADS_PER_BLOCK 1024
@@ -115,16 +119,10 @@ extern "C" void cuda_accumulate_device_info_FromC(int *info_abs_dev, int *info_n
 //________________________________________________________________
 
 template <typename T>
-__device__ void cuda_copy_a_tmatc_kernel_body(T *a_dev, T *tmatc_dev, const int l_cols, const int matrixRows, const int l_colx, const int l_row1){
-
+__global__ void cuda_copy_a_tmatc_kernel(T *a_dev, T *tmatc_dev, const int l_cols, const int matrixRows, const int l_colx, const int l_row1){
   int ii_index    = threadIdx.x +1; // range 1..nblk
   int jj_index = blockIdx.x + 1; // range 1..l_cols-l_colx+1
   tmatc_dev[l_colx-1+jj_index-1+(ii_index-1)*l_cols] = elpaDeviceComplexConjugate(a_dev[l_row1-1+ii_index-1 + (l_colx-1+jj_index-1)*matrixRows]);
-}
-
-template <typename T>
-__global__ void cuda_copy_a_tmatc_kernel(T *a_dev, T *tmatc_dev, const int l_cols, const int matrixRows, const int l_colx, const int l_row1){
-  cuda_copy_a_tmatc_kernel_body(a_dev, tmatc_dev, l_cols, matrixRows, l_colx, l_row1);
 }
 
 template <typename T>
@@ -165,16 +163,30 @@ extern "C" void cuda_copy_double_complex_a_tmatc_FromC(cuDoubleComplex *a_dev, c
   cuda_copy_a_tmatc_FromC(a_dev, tmatc_dev, nblk_in, matrixRows_in, l_cols_in, l_colx_in, l_row1_in, my_stream);
 }
 
-extern "C" void cuda_copy_float_complex_a_tmatc_FromC(cuFloatComplex *a_dev, cuFloatComplex *tmatc_dev, int *nblk_in, int *matrixRows_in, 
+extern "C" void cuda_copy_float_complex_a_tmatc_FromC(cuFloatComplex *a_dev, cuFloatComplex *tmatc_dev, int *nblk_in, int *matrixRows_in,
                                                  int *l_cols_in, int *l_colx_in, int *l_row1_in, cudaStream_t my_stream){
   cuda_copy_a_tmatc_FromC(a_dev, tmatc_dev, nblk_in, matrixRows_in, l_cols_in, l_colx_in, l_row1_in, my_stream);
 }
+
+#ifdef WANT_HALF_PRECISION_REAL
+extern "C" void cuda_copy_half_a_tmatc_FromC(__half *a_dev, __half *tmatc_dev, int *nblk_in, int *matrixRows_in,
+                                             int *l_cols_in, int *l_colx_in, int *l_row1_in, cudaStream_t my_stream){
+  cuda_copy_a_tmatc_FromC(a_dev, tmatc_dev, nblk_in, matrixRows_in, l_cols_in, l_colx_in, l_row1_in, my_stream);
+}
+#endif
+
+#ifdef WANT_HALF_PRECISION_COMPLEX
+extern "C" void cuda_copy_half_complex_a_tmatc_FromC(__half2 *a_dev, __half2 *tmatc_dev, int *nblk_in, int *matrixRows_in,
+                                                     int *l_cols_in, int *l_colx_in, int *l_row1_in, cudaStream_t my_stream){
+  cuda_copy_a_tmatc_FromC(a_dev, tmatc_dev, nblk_in, matrixRows_in, l_cols_in, l_colx_in, l_row1_in, my_stream);
+}
+#endif
 
 //________________________________________________________________
 
 
 template <typename T>
-__device__ void cuda_set_a_lower_to_zero_kernel_body (T *a_dev, int na, int matrixRows, int my_pcol, int np_cols, int my_prow, int np_rows, int nblk) {
+__global__ void cuda_set_a_lower_to_zero_kernel (T *a_dev, int na, int matrixRows, int my_pcol, int np_cols, int my_prow, int np_rows, int nblk) {
 
   // do i=1,na
   //   if (my_pcol==pcol(i, nblk, np_cols)) then
@@ -204,11 +216,6 @@ __device__ void cuda_set_a_lower_to_zero_kernel_body (T *a_dev, int na, int matr
         a_dev[((l_row1-1)+di_loc) + matrixRows*(l_col1-1)] = Zero;
       }
     }
-}
-
-template <typename T>
-__global__ void cuda_set_a_lower_to_zero_kernel (T *a_dev, int na, int matrixRows, int my_pcol, int np_cols, int my_prow, int np_rows, int nblk) {
-  cuda_set_a_lower_to_zero_kernel_body(a_dev, na, matrixRows, my_pcol, np_cols, my_prow, np_rows, nblk);
 }
 
 template <typename T>
@@ -249,4 +256,10 @@ extern "C" void cuda_set_a_lower_to_zero_FromC(char dataType, intptr_t a_dev, in
   if (dataType=='S') cuda_set_a_lower_to_zero<float> ((float *) a_dev, na_in, matrixRows_in, my_pcol_in, np_cols_in, my_prow_in, np_rows_in, nblk_in, wantDebug_in, my_stream);
   if (dataType=='Z') cuda_set_a_lower_to_zero<cuDoubleComplex>((cuDoubleComplex *) a_dev, na_in, matrixRows_in, my_pcol_in, np_cols_in, my_prow_in, np_rows_in, nblk_in, wantDebug_in, my_stream);
   if (dataType=='C') cuda_set_a_lower_to_zero<cuFloatComplex> ((cuFloatComplex *) a_dev, na_in, matrixRows_in, my_pcol_in, np_cols_in, my_prow_in, np_rows_in, nblk_in, wantDebug_in, my_stream);
+#ifdef WANT_HALF_PRECISION_REAL
+  if (dataType=='H') cuda_set_a_lower_to_zero<__half>((__half *) a_dev, na_in, matrixRows_in, my_pcol_in, np_cols_in, my_prow_in, np_rows_in, nblk_in, wantDebug_in, my_stream);
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+  if (dataType=='G') cuda_set_a_lower_to_zero<__half2>((__half2 *) a_dev, na_in, matrixRows_in, my_pcol_in, np_cols_in, my_prow_in, np_rows_in, nblk_in, wantDebug_in, my_stream);
+#endif
 }

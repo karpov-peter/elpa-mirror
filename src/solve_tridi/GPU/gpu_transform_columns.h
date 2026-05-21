@@ -91,12 +91,17 @@ extern "C" void CONCATENATE(ELPA_GPU,  _transform_one_column_FromC)(char dataTyp
                                                       intptr_t alpha_dev, intptr_t beta_dev, 
                                                       int n_elements, int SM_count, int debug, gpuStream_t my_stream){
 
-  if      (dataType=='D') gpu_transform_one_column<double>((double *) a_dev, (double *) b_dev, (double *) c_dev, 
-                                             (double *) alpha_dev, (double *) beta_dev, 
+  if      (dataType=='D') gpu_transform_one_column<double>((double *) a_dev, (double *) b_dev, (double *) c_dev,
+                                             (double *) alpha_dev, (double *) beta_dev,
                                              n_elements, SM_count, debug, my_stream);
-  else if (dataType=='S') gpu_transform_one_column<float> ((float  *) a_dev, (float  *) b_dev, (float  *) c_dev, 
-                                             (float  *) alpha_dev, (float  *) beta_dev, 
+  else if (dataType=='S') gpu_transform_one_column<float> ((float  *) a_dev, (float  *) b_dev, (float  *) c_dev,
+                                             (float  *) alpha_dev, (float  *) beta_dev,
                                              n_elements, SM_count, debug, my_stream);
+#ifdef WANT_HALF_PRECISION_REAL
+  else if (dataType=='H') gpu_transform_one_column<half_real>((half_real *) a_dev, (half_real *) b_dev, (half_real *) c_dev,
+                                             (half_real *) alpha_dev, (half_real *) beta_dev,
+                                             n_elements, SM_count, debug, my_stream);
+#endif
   else {
     printf("Error in elpa_transform_one_column: Unsupported data type\n");
   }
@@ -154,10 +159,14 @@ extern "C" void CONCATENATE(ELPA_GPU,  _transform_two_columns_FromC)(char dataTy
                                                                      int ldq, int l_rows, int l_rqs, int l_rqe, int lc1, int lc2, 
                                                                      int SM_count, int debug, gpuStream_t my_stream){
 
-  if      (dataType=='D') gpu_transform_two_columns<double>((double *) q_dev, (double *) qtrans_dev, (double *) tmp_dev, 
+  if      (dataType=='D') gpu_transform_two_columns<double>((double *) q_dev, (double *) qtrans_dev, (double *) tmp_dev,
                                              ldq, l_rows, l_rqs, l_rqe, lc1, lc2, SM_count, debug, my_stream);
   else if (dataType=='S') gpu_transform_two_columns<float> ((float  *) q_dev, (float  *) qtrans_dev, (float  *) tmp_dev,
                                              ldq, l_rows, l_rqs, l_rqe, lc1, lc2, SM_count, debug, my_stream);
+#ifdef WANT_HALF_PRECISION_REAL
+  else if (dataType=='H') gpu_transform_two_columns<half_real>((half_real *) q_dev, (half_real *) qtrans_dev, (half_real *) tmp_dev,
+                                             ldq, l_rows, l_rqs, l_rqe, lc1, lc2, SM_count, debug, my_stream);
+#endif
   else {
     printf("Error in elpa_transform_two_columns: Unsupported data type\n");
   }

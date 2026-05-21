@@ -79,6 +79,7 @@ libelpa@SUFFIX@_private_la_SOURCES = \
   src/GPU/CUDA/mod_cuda.F90 \
   src/GPU/CUDA/mod_cusolver.F90 \
   src/GPU/CUDA/mod_nccl.F90 \
+  src/GPU/CUDA/mod_precision_helpers_cuda.F90 \
   src/GPU/ROCm/mod_hip.F90 \
   src/GPU/ROCm/mod_rocsolver.F90 \
   src/GPU/ROCm/mod_rccl.F90 \
@@ -249,6 +250,7 @@ if WITH_NVIDIA_GPU_VERSION
   src/GPU/CUDA/elpa_explicit_name_nvidia_gpu.cu \
   src/GPU/CUDA/cudaFunctions.cu \
   src/GPU/CUDA/cuUtils.cu \
+  src/GPU/CUDA/precision_helpers_cuda.cu \
   src/cholesky/GPU/CUDA/elpa_cholesky_cuda.cu \
   src/invert_trm/GPU/CUDA/elpa_invert_trm_cuda.cu \
   src/elpa1/GPU/CUDA/tridiag_cuda.cu \
@@ -848,6 +850,8 @@ noinst_PROGRAMS =
 #check_PROGRAMS =
 check_SCRIPTS =
 unit_test_programs =
+unit_test_nccl_programs =
+unit_test_nccl_scripts =
 
 test_program_ldadd = libelpatest@SUFFIX@.la libelpa@SUFFIX@.la
 test_program_fcflags = $(AM_FCFLAGS) $(FC_MODOUT)test_modules $(FC_MODINC)test_modules $(FC_MODINC)modules $(FC_MODINC)private_modules
@@ -937,6 +941,12 @@ TESTS += unit_test_pack_unpack_kernels
 unit_test_pack_unpack_kernels_SOURCES = test/unit_tests/CUDA/GPU/test_pack_unpack_kernels.cu
 unit_test_pack_unpack_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
 
+noinst_PROGRAMS += unit_test_precision_helpers_kernels
+unit_test_programs += unit_test_precision_helpers_kernels
+TESTS += unit_test_precision_helpers_kernels
+unit_test_precision_helpers_kernels_SOURCES = test/unit_tests/CUDA/GPU/test_precision_helpers_kernels.cu
+unit_test_precision_helpers_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+
 noinst_PROGRAMS += unit_test_trans_ev_kernels
 unit_test_programs += unit_test_trans_ev_kernels
 TESTS += unit_test_trans_ev_kernels
@@ -1008,6 +1018,21 @@ unit_test_programs += unit_test_elpa1_kernels
 TESTS += unit_test_elpa1_kernels
 unit_test_elpa1_kernels_SOURCES = test/unit_tests/CUDA/elpa1/test_elpa1_kernels.cu
 unit_test_elpa1_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+endif
+endif
+
+if WITH_UNIT_TESTS
+if WITH_NVIDIA_GPU_VERSION
+if WITH_NVIDIA_NCCL
+noinst_PROGRAMS += unit_test_nccl_comms
+unit_test_nccl_programs += unit_test_nccl_comms
+unit_test_nccl_comms_SOURCES = test/unit_tests/CUDA/nccl/test_nccl_comms.cu
+unit_test_nccl_comms_LINK = $(NVCC) -ccbin $(CXX) $(NVCCFLAGS) $(NCCL_LDFLAGS) -lnccl -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+test/unit_tests/CUDA/nccl/test_nccl_comms.o: $(top_srcdir)/test/unit_tests/CUDA/nccl/test_nccl_comms.cu
+	NVCC="$(NVCC)" $(top_srcdir)/nvcc_wrap $(NVCCFLAGS) -ccbin $(CXX) -I$(top_builddir)/ -I$(top_srcdir)/ -c $< -o $@
+check_SCRIPTS += unit_test_nccl_comms_default.sh
+unit_test_nccl_scripts += unit_test_nccl_comms_default.sh
+endif
 endif
 endif
 
@@ -1301,13 +1326,17 @@ check_SCRIPTS += test_python.sh
 endif
 
 .PHONY: unit_tests
-unit_tests: $(unit_test_programs)
-	@if [ -z "$(unit_test_programs)" ]; then \
+unit_tests: $(unit_test_programs) $(unit_test_nccl_programs) $(unit_test_nccl_scripts)
+	@if [ -z "$(unit_test_programs)$(unit_test_nccl_scripts)" ]; then \
 	  echo "No unit tests enabled (configure with --enable-unit-tests)"; \
 	  exit 0; \
 	fi; \
 	failed=0; \
 	for t in $(unit_test_programs); do \
+	  echo "  RUN     $$t"; \
+	  ./$$t || failed=$$((failed + 1)); \
+	done; \
+	for t in $(unit_test_nccl_scripts); do \
 	  echo "  RUN     $$t"; \
 	  ./$$t || failed=$$((failed + 1)); \
 	done; \
@@ -1370,7 +1399,7 @@ clean-local:
 	-rm -rf $(generated_headers)
 	-rm -rf *.sh.trs
 	-rm -rf *.sh.log
-	-rm -f unit_test_*.log unit_test_*.trs
+	-rm -f unit_test_*.log unit_test_*.trs unit_test_*.sh
 
 distclean-local:
 	-rm -rf ./m4
@@ -1387,6 +1416,7 @@ distclean-local:
 	-rm -rf modules/* private_modules/* test_modules/* .fortran_dependencies/*
 	-rm -rf validate_*.sh
 	-rm -rf test_*.sh
+	-rm -f unit_test_*.sh
 	-rm -rf real_2stage*.sh
 	-rm -rf complex_2stage*.sh
 	-rm -rf single_complex_2stage*.sh
@@ -1429,6 +1459,7 @@ EXTRA_DIST = \
   src/GPU/CUDA/nccl_template.F90 \
   src/GPU/CUDA/ncclFunctions_template.h \
   src/GPU/CUDA/cuUtils_template.cu \
+  src/GPU/CUDA/precision_helpers_cuda_template.F90 \
   src/GPU/ROCm/hip_template.F90 \
   src/GPU/ROCm/rocsolver_template.F90 \
   src/GPU/ROCm/rocmFunctions_template.h \

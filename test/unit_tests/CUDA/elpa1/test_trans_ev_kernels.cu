@@ -50,6 +50,9 @@
 #include <cuComplex.h>
 #include <algorithm>
 #include <type_traits>
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/GPU/common_device_functions.h"
 #include "../../../../src/GPU/gpu_to_cuda_and_hip_interface.h"
@@ -256,6 +259,110 @@ static void test_copy_hvm_hvb()
 }
 
 // ============================================================
+// Half-precision (__half) tests
+
+#ifdef WANT_HALF_PRECISION_REAL
+
+static bool half_neq(__half a, float ref, float tol=0.02f) {
+  return fabsf(__half2float(a) - ref) < tol * (fabsf(ref) + 1.0f);
+}
+
+static void test_set_tmat_diag_from_tau_half()
+{
+  printf("\ngpu_set_tmat_diag_from_tau <__half>:\n");
+
+  // __half: nstor=3, max_stored_rows=3, tau=[2.0, 0.0, 4.0], tau_offset=0
+  // Expected diagonal: [0.5, 1.0, 0.25]
+  int nstor = 3, mrs = 3, tau_offset = 0;
+  __half h_tau[3] = { __float2half(2.0f), __float2half(0.0f), __float2half(4.0f) };
+  __half *dtmat, *dtau;
+  CUDA_CHECK(cudaMalloc(&dtmat, mrs*mrs*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dtau,  nstor*sizeof(__half)));
+  CUDA_CHECK(cudaMemset(dtmat, 0, mrs*mrs*sizeof(__half)));
+  CUDA_CHECK(cudaMemcpy(dtau, h_tau, nstor*sizeof(__half), cudaMemcpyHostToDevice));
+  gpu_set_tmat_diag_from_tau<__half>(dtmat, dtau, mrs, nstor, tau_offset, 1, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  __half htmat[3*3];
+  dev_read_n(htmat, dtmat, mrs*mrs);
+  REPORT("__half diag[0]=1/tau[0]=0.5",  half_neq(htmat[0+0*mrs], 0.5f));
+  REPORT("__half diag[1]=1.0 (tau==0)",  half_neq(htmat[1+1*mrs], 1.0f));
+  REPORT("__half diag[2]=1/tau[2]=0.25", half_neq(htmat[2+2*mrs], 0.25f));
+  CUDA_CHECK(cudaFree(dtmat)); CUDA_CHECK(cudaFree(dtau));
+}
+
+static void test_copy_hvb_a_half()
+{
+  printf("\ngpu_copy_hvb_a <__half>:\n");
+
+  int np_rows=1, np_cols=1, nblk=1, my_prow=0, my_pcol=0;
+  int ics=2, ice=3, lda=4, ld_hvb=4;
+
+  __half h_a[12];
+  for (int k=0; k<12; k++) h_a[k] = __float2half(0.0f);
+  h_a[0 + 1*lda] = __float2half(5.0f);
+  h_a[0 + 2*lda] = __float2half(7.0f);
+  h_a[1 + 2*lda] = __float2half(8.0f);
+
+  __half h_hvb[12];
+  for (int k=0; k<12; k++) h_hvb[k] = __float2half(0.0f);
+
+  __half *da, *dhvb;
+  CUDA_CHECK(cudaMalloc(&da,   12*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dhvb, 12*sizeof(__half)));
+  CUDA_CHECK(cudaMemcpy(da,   h_a,   12*sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(dhvb, h_hvb, 12*sizeof(__half), cudaMemcpyHostToDevice));
+
+  gpu_copy_hvb_a<__half>(dhvb, da, ld_hvb, lda, my_prow, np_rows, my_pcol, np_cols, nblk, ics, ice, 1, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  dev_read_n(h_hvb, dhvb, 12);
+
+  REPORT("__half copy_hvb_a: ic=2 last-row set to 1.0", half_neq(h_hvb[0 + ld_hvb*0], 1.0f));
+  REPORT("__half copy_hvb_a: ic=3 row 0 = 7.0",         half_neq(h_hvb[0 + ld_hvb*1], 7.0f));
+  REPORT("__half copy_hvb_a: ic=3 last-row set to 1.0", half_neq(h_hvb[1 + ld_hvb*1], 1.0f));
+
+  CUDA_CHECK(cudaFree(da)); CUDA_CHECK(cudaFree(dhvb));
+}
+
+static void test_copy_hvm_hvb_half()
+{
+  printf("\ngpu_copy_hvm_hvb <__half>:\n");
+
+  int np_rows=1, nblk=1, my_prow=0;
+  int ics=2, ice=3, nstor=0, ld_hvm=4, ld_hvb=4;
+
+  __half h_tau[3]  = { __float2half(99.0f), __float2half(2.0f), __float2half(0.0f) };
+  __half h_hvb[8]  = { __float2half(10.0f), __float2half(0.0f), __float2half(0.0f), __float2half(0.0f),
+                       __float2half(50.0f), __float2half(60.0f), __float2half(0.0f), __float2half(0.0f) };
+  __half h_hvm[8];
+  for (int k=0; k<8; k++) h_hvm[k] = __float2half(-1.0f);
+
+  __half *dtau, *dhvb, *dhvm;
+  CUDA_CHECK(cudaMalloc(&dtau, 3*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dhvb, 8*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dhvm, 8*sizeof(__half)));
+  CUDA_CHECK(cudaMemcpy(dtau, h_tau, 3*sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(dhvb, h_hvb, 8*sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(dhvm, h_hvm, 8*sizeof(__half), cudaMemcpyHostToDevice));
+
+  gpu_copy_hvm_hvb<__half>(dhvm, dhvb, dtau, ld_hvm, ld_hvb, my_prow, np_rows, nstor, nblk, ics, ice, 1, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  dev_read_n(h_hvm, dhvm, 8);
+
+  REPORT("__half copy_hvm_hvb: ic=2 hvm[0]=10.0",          half_neq(h_hvm[0], 10.0f));
+  REPORT("__half copy_hvm_hvb: ic=2 hvm[1]=0 (zero-fill)", half_neq(h_hvm[1],  0.0f));
+  REPORT("__half copy_hvm_hvb: ic=2 hvm[2]=0 (zero-fill)", half_neq(h_hvm[2],  0.0f));
+  REPORT("__half copy_hvm_hvb: ic=2 hvm[3]=0 (zero-fill)", half_neq(h_hvm[3],  0.0f));
+  REPORT("__half copy_hvm_hvb: ic=3 skipped, hvm[4]=-1",   half_neq(h_hvm[4], -1.0f));
+  REPORT("__half copy_hvm_hvb: ic=3 skipped, hvm[5]=-1",   half_neq(h_hvm[5], -1.0f));
+
+  CUDA_CHECK(cudaFree(dtau)); CUDA_CHECK(cudaFree(dhvb)); CUDA_CHECK(cudaFree(dhvm));
+}
+
+#endif /* WANT_HALF_PRECISION_REAL */
+
+// ============================================================
 int main(void)
 {
   printf("=== Unit tests for trans_ev_gpu.h kernels (CUDA) ===\n");
@@ -263,6 +370,12 @@ int main(void)
   test_set_tmat_diag_from_tau();
   test_copy_hvb_a();
   test_copy_hvm_hvb();
+
+#ifdef WANT_HALF_PRECISION_REAL
+  test_set_tmat_diag_from_tau_half();
+  test_copy_hvb_a_half();
+  test_copy_hvm_hvb_half();
+#endif
 
   printf("\n=== Summary: %d failure(s) ===\n", g_failures);
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

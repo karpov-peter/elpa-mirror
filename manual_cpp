@@ -6,11 +6,20 @@ import subprocess
 import os.path
 
 
-def cpp_arg(arg):
-    return \
-        arg.startswith("-I") or \
-        arg.startswith("-D") or \
-        arg.startswith("-U")
+def get_cpp_args(args):
+    result = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg.startswith("-I") or arg.startswith("-D") or arg.startswith("-U"):
+            result.append(arg)
+        elif arg in ("-ccbin", "--compiler-bindir"):
+            result.append(arg)
+            i += 1
+            if i < len(args):
+                result.append(args[i])
+        i += 1
+    return result
 
 
 def check_call(args, **kwargs):
@@ -42,7 +51,7 @@ def is_nvidia_backend():
         return False
 
 args = sys.argv[1:]
-cpp_args = list(filter(cpp_arg, args))
+cpp_args = get_cpp_args(args)
 files = list(filter(lambda q: q.endswith((".F90", ".cu", ".hip")), args))
 args = list(filter(lambda q: not q.endswith((".F90", ".cu", ".hip")), args))
 

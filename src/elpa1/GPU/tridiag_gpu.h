@@ -85,6 +85,9 @@ extern "C" void CONCATENATE(ELPA_GPU,  _set_one_complex_FromC)(char dataType, in
   //else if (dataType=='S') gpu_set_one_complex<float> (   (float *)a_dev, my_stream);
   if (dataType=='Z') gpu_set_one_complex<gpuDoubleComplex> ( (gpuDoubleComplex *)a_dev, my_stream);
   else if (dataType=='C') gpu_set_one_complex<gpuFloatComplex> (   (gpuFloatComplex *)a_dev, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+  else if (dataType=='G') gpu_set_one_complex<__half2>( (__half2 *)a_dev, my_stream);
+#endif
   else {
     printf("Error in gpu_set_one_complex_FromC: Unsupported data type\n");
   }
@@ -124,7 +127,7 @@ __global__ void gpu_copy_and_set_zeros_kernel(T *v_row_dev, T *u_col_dev, T cons
     if (isOurProcessRow && isOurProcessCol)
       {
       if (isSkewsymmetric)
-        d_vec_dev[istep-1-1] = 0.0;
+        d_vec_dev[istep-1-1] = elpaDeviceNumber<T_real>(0.0);
       else
         d_vec_dev[istep-1-1] = elpaDeviceRealPart(a_dev[(l_rows-1) + matrixRows*(l_cols-1)]);
       }
@@ -186,9 +189,21 @@ extern "C" void CONCATENATE(ELPA_GPU,  _copy_and_set_zeros_FromC)(char dataType,
                             l_rows, l_cols, matrixRows, istep, isOurProcessRow, isOurProcessCol, 
                             isOurProcessCol_prev, isSkewsymmetric, useCCL, wantDebug, SM_count, my_stream);
   else if (dataType=='C') gpu_copy_and_set_zeros<gpuFloatComplex, float>   ((gpuFloatComplex  *)v_row_dev, (gpuFloatComplex  *)u_col_dev, (gpuFloatComplex  *)a_dev,
-                            (gpuFloatComplex  *)aux1_dev, (gpuFloatComplex  *)vav_dev, (float  *)d_vec_dev, 
-                            l_rows, l_cols, matrixRows, istep, isOurProcessRow, isOurProcessCol, 
+                            (gpuFloatComplex  *)aux1_dev, (gpuFloatComplex  *)vav_dev, (float  *)d_vec_dev,
+                            l_rows, l_cols, matrixRows, istep, isOurProcessRow, isOurProcessCol,
                             isOurProcessCol_prev, isSkewsymmetric, useCCL, wantDebug, SM_count, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_copy_and_set_zeros<__half, __half>((__half *)v_row_dev, (__half *)u_col_dev, (__half *)a_dev,
+                            (__half *)aux1_dev, (__half *)vav_dev, (__half *)d_vec_dev,
+                            l_rows, l_cols, matrixRows, istep, isOurProcessRow, isOurProcessCol,
+                            isOurProcessCol_prev, isSkewsymmetric, useCCL, wantDebug, SM_count, my_stream);
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+  else if (dataType=='G') gpu_copy_and_set_zeros<__half2, __half>((__half2 *)v_row_dev, (__half2 *)u_col_dev, (__half2 *)a_dev,
+                            (__half2 *)aux1_dev, (__half2 *)vav_dev, (__half *)d_vec_dev,
+                            l_rows, l_cols, matrixRows, istep, isOurProcessRow, isOurProcessCol,
+                            isOurProcessCol_prev, isSkewsymmetric, useCCL, wantDebug, SM_count, my_stream);
+#endif
   else {
     printf("Error in gpu_copy_and_set_zeros_FromC: Unsupported data type\n");
   }
@@ -264,6 +279,12 @@ extern "C" void CONCATENATE(ELPA_GPU, _dot_product_FromC)(char dataType, int n, 
   else if (dataType=='S') gpu_dot_product<float> (n, (float  *)x_dev, incx, (float  *)y_dev, incy, (float  *)result_dev, wantDebug, SM_count, my_stream);
   else if (dataType=='Z') gpu_dot_product<gpuDoubleComplex>(n, (gpuDoubleComplex *)x_dev, incx, (gpuDoubleComplex *)y_dev, incy, (gpuDoubleComplex *)result_dev, wantDebug, SM_count, my_stream);
   else if (dataType=='C') gpu_dot_product<gpuFloatComplex> (n, (gpuFloatComplex  *)x_dev, incx, (gpuFloatComplex  *)y_dev, incy, (gpuFloatComplex  *)result_dev, wantDebug, SM_count, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_dot_product<__half>(n, (__half *)x_dev, incx, (__half *)y_dev, incy, (__half *)result_dev, wantDebug, SM_count, my_stream);
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+  else if (dataType=='G') gpu_dot_product<__half2>(n, (__half2 *)x_dev, incx, (__half2 *)y_dev, incy, (__half2 *)result_dev, wantDebug, SM_count, my_stream);
+#endif
   else {
     printf("Error in gpu_dot_product_FromC: Unsupported data type\n");
   }
@@ -356,6 +377,9 @@ extern "C" void CONCATENATE(ELPA_GPU, _dot_product_and_assign_FromC)(char dataTy
   else if (dataType=='S') gpu_dot_product_and_assign<float> ((float  *)v_row_dev, l_rows, isOurProcessRow, (float  *)aux1_dev, wantDebug, SM_count, my_stream);
   else if (dataType=='Z') gpu_dot_product_and_assign<gpuDoubleComplex>((gpuDoubleComplex *)v_row_dev, l_rows, isOurProcessRow, (gpuDoubleComplex *)aux1_dev, wantDebug, SM_count, my_stream);
   else if (dataType=='C') gpu_dot_product_and_assign<gpuFloatComplex> ((gpuFloatComplex  *)v_row_dev, l_rows, isOurProcessRow, (gpuFloatComplex  *)aux1_dev, wantDebug, SM_count, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_dot_product_and_assign<__half>((__half *)v_row_dev, l_rows, isOurProcessRow, (__half *)aux1_dev, wantDebug, SM_count, my_stream);
+#endif
   else {
     printf("Error in gpu_dot_product_and_assign_FromC: Unsupported data type\n");
   }
@@ -505,6 +529,12 @@ extern "C" void CONCATENATE(ELPA_GPU, _set_e_vec_scale_set_one_store_v_row_FromC
   else if (dataType=='S') gpu_set_e_vec_scale_set_one_store_v_row<float, float> ((float  *)e_vec_dev, (float  *)vrl_dev, (float  *)a_dev, (float  *)v_row_dev, (float  *)tau_dev, (float  *)xf_host_or_dev, l_rows, l_cols, matrixRows, istep, isOurProcessRow, useCCL, wantDebug, my_stream);
   else if (dataType=='Z') gpu_set_e_vec_scale_set_one_store_v_row<gpuDoubleComplex, double>((double *)e_vec_dev, (gpuDoubleComplex *)vrl_dev, (gpuDoubleComplex *)a_dev, (gpuDoubleComplex *)v_row_dev, (gpuDoubleComplex *)tau_dev, (gpuDoubleComplex *)xf_host_or_dev, l_rows, l_cols, matrixRows, istep, isOurProcessRow, useCCL, wantDebug, my_stream);
   else if (dataType=='C') gpu_set_e_vec_scale_set_one_store_v_row<gpuFloatComplex , float> ((float  *)e_vec_dev, (gpuFloatComplex  *)vrl_dev, (gpuFloatComplex  *)a_dev, (gpuFloatComplex  *)v_row_dev, (gpuFloatComplex  *)tau_dev, (gpuFloatComplex  *)xf_host_or_dev, l_rows, l_cols, matrixRows, istep, isOurProcessRow, useCCL, wantDebug, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_set_e_vec_scale_set_one_store_v_row<__half, __half>((__half *)e_vec_dev, (__half *)vrl_dev, (__half *)a_dev, (__half *)v_row_dev, (__half *)tau_dev, (__half *)xf_host_or_dev, l_rows, l_cols, matrixRows, istep, isOurProcessRow, useCCL, wantDebug, my_stream);
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+  else if (dataType=='G') gpu_set_e_vec_scale_set_one_store_v_row<__half2, __half>((__half *)e_vec_dev, (__half2 *)vrl_dev, (__half2 *)a_dev, (__half2 *)v_row_dev, (__half2 *)tau_dev, (__half2 *)xf_host_or_dev, l_rows, l_cols, matrixRows, istep, isOurProcessRow, useCCL, wantDebug, my_stream);
+#endif
   else {
     printf("Error in gpu_set_e_vec_scale_set_one_store_v_row_FromC: Unsupported data type\n");
   }
@@ -686,6 +716,14 @@ extern "C" void CONCATENATE(ELPA_GPU, _store_u_v_in_uv_vu_FromC) (char dataType,
                                                                 l_rows, l_cols, n_stored_vecs, max_local_rows, max_local_cols, istep, useCCL, wantDebug, my_stream);
   else if (dataType=='C') gpu_store_u_v_in_uv_vu<gpuFloatComplex> ((gpuFloatComplex  *)vu_stored_rows_dev, (gpuFloatComplex  *)uv_stored_cols_dev, (gpuFloatComplex  *)v_row_dev, (gpuFloatComplex  *)u_row_dev, (gpuFloatComplex  *)v_col_dev, (gpuFloatComplex  *)u_col_dev, (gpuFloatComplex  *)tau_dev, (gpuFloatComplex  *)aux_complex_dev, (gpuFloatComplex  *)vav_host_or_dev, (gpuFloatComplex  *)tau_host_or_dev,
                                                                 l_rows, l_cols, n_stored_vecs, max_local_rows, max_local_cols, istep, useCCL, wantDebug, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_store_u_v_in_uv_vu<__half>((__half *)vu_stored_rows_dev, (__half *)uv_stored_cols_dev, (__half *)v_row_dev, (__half *)u_row_dev, (__half *)v_col_dev, (__half *)u_col_dev, (__half *)tau_dev, (__half *)aux_complex_dev, (__half *)vav_host_or_dev, (__half *)tau_host_or_dev,
+                                                                l_rows, l_cols, n_stored_vecs, max_local_rows, max_local_cols, istep, useCCL, wantDebug, my_stream);
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+  else if (dataType=='G') gpu_store_u_v_in_uv_vu<__half2>((__half2 *)vu_stored_rows_dev, (__half2 *)uv_stored_cols_dev, (__half2 *)v_row_dev, (__half2 *)u_row_dev, (__half2 *)v_col_dev, (__half2 *)u_col_dev, (__half2 *)tau_dev, (__half2 *)aux_complex_dev, (__half2 *)vav_host_or_dev, (__half2 *)tau_host_or_dev,
+                                                                l_rows, l_cols, n_stored_vecs, max_local_rows, max_local_cols, istep, useCCL, wantDebug, my_stream);
+#endif
   else {
     printf("Error in gpu_store_u_v_in_uv_vu_double_FromC: Unsupported data type\n");
   }
@@ -793,8 +831,16 @@ extern "C" void CONCATENATE(ELPA_GPU, _update_matrix_element_add_FromC) (char da
                                                         l_rows, l_cols, matrixRows, max_local_rows, max_local_cols, istep, n_stored_vecs, isSkewsymmetric, wantDebug, SM_count, my_stream);
   else if (dataType=='Z') gpu_update_matrix_element_add<gpuDoubleComplex, double>((gpuDoubleComplex *)vu_stored_rows_dev, (gpuDoubleComplex *)uv_stored_cols_dev, (gpuDoubleComplex *)a_dev, (double *)d_vec_dev, 
                                                         l_rows, l_cols, matrixRows, max_local_rows, max_local_cols, istep, n_stored_vecs, isSkewsymmetric, wantDebug, SM_count, my_stream);
-  else if (dataType=='C') gpu_update_matrix_element_add<gpuFloatComplex , float> ((gpuFloatComplex  *)vu_stored_rows_dev, (gpuFloatComplex  *)uv_stored_cols_dev, (gpuFloatComplex  *)a_dev, (float  *)d_vec_dev, 
+  else if (dataType=='C') gpu_update_matrix_element_add<gpuFloatComplex , float> ((gpuFloatComplex  *)vu_stored_rows_dev, (gpuFloatComplex  *)uv_stored_cols_dev, (gpuFloatComplex  *)a_dev, (float  *)d_vec_dev,
                                                         l_rows, l_cols, matrixRows, max_local_rows, max_local_cols, istep, n_stored_vecs, isSkewsymmetric, wantDebug, SM_count, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_update_matrix_element_add<__half, __half>((__half *)vu_stored_rows_dev, (__half *)uv_stored_cols_dev, (__half *)a_dev, (__half *)d_vec_dev,
+                                                        l_rows, l_cols, matrixRows, max_local_rows, max_local_cols, istep, n_stored_vecs, isSkewsymmetric, wantDebug, SM_count, my_stream);
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+  else if (dataType=='G') gpu_update_matrix_element_add<__half2, __half>((__half2 *)vu_stored_rows_dev, (__half2 *)uv_stored_cols_dev, (__half2 *)a_dev, (__half *)d_vec_dev,
+                                                        l_rows, l_cols, matrixRows, max_local_rows, max_local_cols, istep, n_stored_vecs, isSkewsymmetric, wantDebug, SM_count, my_stream);
+#endif
   else {
     printf("Error in gpu_update_matrix_element_add_FromC: Unsupported data type\n");
   }
@@ -869,9 +915,9 @@ __global__ void gpu_hh_transform_kernel(T *alpha_dev, T *xnorm_sq_dev, T *xf_dev
   auto alpha_r = elpaDeviceRealPart(*alpha_dev);
   auto alpha_i = elpaDeviceImagPart(*alpha_dev);
 
-  if (elpaDeviceRealPart(*xnorm_sq_dev)==0.0 && alpha_i==0.0)
+  if (elpaDeviceIsZero(elpaDeviceRealPart(*xnorm_sq_dev)) && elpaDeviceIsZero(alpha_i))
     {
-    if (alpha_r >= 0.0) *tau_dev = elpaDeviceNumber<T>(0.0);
+    if (elpaDeviceIsGreaterEqualZero(alpha_r)) *tau_dev = elpaDeviceNumber<T>(0.0);
     else
       {
       *tau_dev = elpaDeviceNumber<T>(2.0);
@@ -888,7 +934,7 @@ __global__ void gpu_hh_transform_kernel(T *alpha_dev, T *xnorm_sq_dev, T *xf_dev
 
     *alpha_dev = elpaDeviceAdd(*alpha_dev, beta);
     
-    if (elpaDeviceRealPart(beta)<0)
+    if (!elpaDeviceIsGreaterEqualZero(elpaDeviceRealPart(beta)))
       {
       *tau_dev  = elpaDeviceDivide(*alpha_dev, beta);
       beta = elpaDeviceMultiply(beta, elpaDeviceNumber<T>(-1.0)); // beta *= -1
@@ -939,6 +985,12 @@ extern "C" void CONCATENATE(ELPA_GPU, _hh_transform_FromC) (char dataType, intpt
   else if (dataType=='S') gpu_hh_transform<float> ((float  *)alpha_dev, (float  *)xnorm_sq_dev, (float  *)xf_dev, (float  *)tau_dev, wantDebug, my_stream);
   else if (dataType=='Z') gpu_hh_transform<gpuDoubleComplex>((gpuDoubleComplex *)alpha_dev, (gpuDoubleComplex *)xnorm_sq_dev, (gpuDoubleComplex *)xf_dev, (gpuDoubleComplex *)tau_dev, wantDebug, my_stream);
   else if (dataType=='C') gpu_hh_transform<gpuFloatComplex> ((gpuFloatComplex  *)alpha_dev, (gpuFloatComplex  *)xnorm_sq_dev, (gpuFloatComplex  *)xf_dev, (gpuFloatComplex  *)tau_dev, wantDebug, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_hh_transform<__half>((__half *)alpha_dev, (__half *)xnorm_sq_dev, (__half *)xf_dev, (__half *)tau_dev, wantDebug, my_stream);
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+  else if (dataType=='G') gpu_hh_transform<__half2>((__half2 *)alpha_dev, (__half2 *)xnorm_sq_dev, (__half2 *)xf_dev, (__half2 *)tau_dev, wantDebug, my_stream);
+#endif
   else {
     printf("Error in gpu_hh_transform_FromC: Unsupported data type\n");
   }
@@ -1051,6 +1103,12 @@ extern "C" void CONCATENATE(ELPA_GPU, _transpose_reduceadd_vectors_copy_block_Fr
   else if (dataType=='S') gpu_transpose_reduceadd_vectors_copy_block<float> ((float  *)aux_transpose_dev, (float  *)vmat_st_dev, nvc, nvr, n_block, nblks_skip, nblks_tot, lcm_s_t, nblk, auxstride, np_st, ld_st, direction, isSkewsymmetric, isReduceadd, wantDebug, SM_count, my_stream);
   else if (dataType=='Z') gpu_transpose_reduceadd_vectors_copy_block<gpuDoubleComplex>((gpuDoubleComplex *)aux_transpose_dev, (gpuDoubleComplex *)vmat_st_dev, nvc, nvr, n_block, nblks_skip, nblks_tot, lcm_s_t, nblk, auxstride, np_st, ld_st, direction, isSkewsymmetric, isReduceadd, wantDebug, SM_count, my_stream);
   else if (dataType=='C') gpu_transpose_reduceadd_vectors_copy_block<gpuFloatComplex> ((gpuFloatComplex  *)aux_transpose_dev, (gpuFloatComplex  *)vmat_st_dev, nvc, nvr, n_block, nblks_skip, nblks_tot, lcm_s_t, nblk, auxstride, np_st, ld_st, direction, isSkewsymmetric, isReduceadd, wantDebug, SM_count, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_transpose_reduceadd_vectors_copy_block<__half>((__half *)aux_transpose_dev, (__half *)vmat_st_dev, nvc, nvr, n_block, nblks_skip, nblks_tot, lcm_s_t, nblk, auxstride, np_st, ld_st, direction, isSkewsymmetric, isReduceadd, wantDebug, SM_count, my_stream);
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+  else if (dataType=='G') gpu_transpose_reduceadd_vectors_copy_block<__half2>((__half2 *)aux_transpose_dev, (__half2 *)vmat_st_dev, nvc, nvr, n_block, nblks_skip, nblks_tot, lcm_s_t, nblk, auxstride, np_st, ld_st, direction, isSkewsymmetric, isReduceadd, wantDebug, SM_count, my_stream);
+#endif
   else {
     printf("Error in gpu_transpose_reduceadd_vectors_copy_block_FromC: Unsupported data type\n");
   }

@@ -53,6 +53,9 @@
 #include <cuComplex.h>
 #include <algorithm>
 #include <type_traits>
+#ifdef WANT_HALF_PRECISION_REAL
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/GPU/common_device_functions.h"
 #include "../../../../src/GPU/gpu_to_cuda_and_hip_interface.h"
@@ -80,6 +83,11 @@ static int g_failures = 0;
 
 static bool neq (double a, double b, double tol=1e-10) { return fabs(a-b) < tol; }
 static bool neqf(float  a, float  b, float  tol=1e-5f) { return fabsf(a-b) < tol; }
+#ifdef WANT_HALF_PRECISION_REAL
+static bool neqh(__half a, __half b, float tol=0.02f) {
+  return fabsf(__half2float(a) - __half2float(b)) < tol;
+}
+#endif
 
 template <typename T>
 static void dev_read_n(T *h, T *d, int n) {
@@ -428,6 +436,163 @@ static void test_compute_nnzl_nnzu()
   CUDA_CHECK(cudaFree(d_nnzl));
 }
 
+#ifdef WANT_HALF_PRECISION_REAL
+// ============================================================
+// gpu_transform_one_column<half_real>: c = alpha*a + beta*b
+// a=[1,2,3,4], b=[5,6,7,8], alpha=2, beta=3 → c=[17,22,27,32]
+// ============================================================
+static void test_transform_one_column_half()
+{
+  printf("\ngpu_transform_one_column<half_real>:\n");
+
+  float fa[4]={1,2,3,4}, fb[4]={5,6,7,8};
+  __half ha[4], hb[4], halpha, hbeta;
+  for (int i=0; i<4; i++) ha[i] = __float2half(fa[i]);
+  for (int i=0; i<4; i++) hb[i] = __float2half(fb[i]);
+  halpha = __float2half(2.0f);
+  hbeta  = __float2half(3.0f);
+
+  __half *da, *db, *dc, *dalpha, *dbeta;
+  CUDA_CHECK(cudaMalloc(&da,     4*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&db,     4*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dc,     4*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dalpha, sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dbeta,  sizeof(__half)));
+  CUDA_CHECK(cudaMemcpy(da,     ha,     4*sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(db,     hb,     4*sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(dalpha, &halpha, sizeof(__half),  cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(dbeta,  &hbeta,  sizeof(__half),  cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemset(dc, 0, 4*sizeof(__half)));
+  gpu_transform_one_column<half_real>(da, db, dc, dalpha, dbeta, 4, 1, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  __half hc[4];
+  dev_read_n(hc, dc, 4);
+  REPORT("half transform_one_col: c[0]~17", neqh(hc[0], __float2half(17.0f)));
+  REPORT("half transform_one_col: c[1]~22", neqh(hc[1], __float2half(22.0f)));
+  REPORT("half transform_one_col: c[2]~27", neqh(hc[2], __float2half(27.0f)));
+  REPORT("half transform_one_col: c[3]~32", neqh(hc[3], __float2half(32.0f)));
+  CUDA_CHECK(cudaFree(da)); CUDA_CHECK(cudaFree(db)); CUDA_CHECK(cudaFree(dc));
+  CUDA_CHECK(cudaFree(dalpha)); CUDA_CHECK(cudaFree(dbeta));
+}
+
+// ============================================================
+// gpu_transform_two_columns<half_real>
+// col1=[1,2], col2=[3,4], qtrans={2,4,3,5}, ldq=4, l_rows=2
+// col1_new=[14,20], col2_new=[18,26]
+// ============================================================
+static void test_transform_two_columns_half()
+{
+  printf("\ngpu_transform_two_columns<half_real>:\n");
+
+  int ldq=4, l_rows=2, l_rqs=1, l_rqe=2, lc1=1, lc2=2;
+
+  float fq[4*2]     = {1,2,0,0, 3,4,0,0};
+  float fqtrans[4]  = {2,4,3,5};
+  __half hq[4*2], hqtrans[4];
+  for (int i=0; i<8; i++) hq[i]      = __float2half(fq[i]);
+  for (int i=0; i<4; i++) hqtrans[i] = __float2half(fqtrans[i]);
+
+  __half *dq, *dqtrans, *dtmp;
+  CUDA_CHECK(cudaMalloc(&dq,      4*2*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dqtrans, 4*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dtmp,    4*sizeof(__half)));
+  CUDA_CHECK(cudaMemcpy(dq,      hq,      4*2*sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(dqtrans, hqtrans, 4*sizeof(__half),   cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemset(dtmp, 0, 4*sizeof(__half)));
+
+  gpu_transform_two_columns<half_real>(dq, dqtrans, dtmp, ldq, l_rows, l_rqs, l_rqe, lc1, lc2, 1, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  dev_read_n(hq, dq, 4*2);
+  REPORT("half transform_two_cols: q_col1[0]~14", neqh(hq[0 + (lc1-1)*ldq], __float2half(14.0f)));
+  REPORT("half transform_two_cols: q_col1[1]~20", neqh(hq[1 + (lc1-1)*ldq], __float2half(20.0f)));
+  REPORT("half transform_two_cols: q_col2[0]~18", neqh(hq[0 + (lc2-1)*ldq], __float2half(18.0f)));
+  REPORT("half transform_two_cols: q_col2[1]~26", neqh(hq[1 + (lc2-1)*ldq], __float2half(26.0f)));
+
+  CUDA_CHECK(cudaFree(dq)); CUDA_CHECK(cudaFree(dqtrans)); CUDA_CHECK(cudaFree(dtmp));
+}
+
+// ============================================================
+// gpu_copy_qmat1_to_qmat2<half_real>: diagonal-only copy
+// max_size=4, qmat1 values 1..16, qmat2 zeros → diagonal {1,6,11,16}
+// ============================================================
+static void test_copy_qmat1_to_qmat2_half()
+{
+  printf("\ngpu_copy_qmat1_to_qmat2<half_real>:\n");
+
+  int max_size = 4;
+  __half h1[16], h2[16];
+  for (int k=0; k<16; k++) h1[k] = __float2half((float)(k+1));
+  for (int k=0; k<16; k++) h2[k] = __float2half(0.0f);
+
+  __half *d1, *d2;
+  CUDA_CHECK(cudaMalloc(&d1, 16*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&d2, 16*sizeof(__half)));
+  CUDA_CHECK(cudaMemcpy(d1, h1, 16*sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d2, h2, 16*sizeof(__half), cudaMemcpyHostToDevice));
+
+  gpu_copy_qmat1_to_qmat2<half_real>(d1, d2, max_size, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  dev_read_n(h2, d2, 16);
+
+  REPORT("half copy_qmat (diag): [0,0]~1",  neqh(h2[0+4*0], __float2half(1.0f)));
+  REPORT("half copy_qmat (diag): [1,1]~6",  neqh(h2[1+4*1], __float2half(6.0f)));
+  REPORT("half copy_qmat (diag): [2,2]~11", neqh(h2[2+4*2], __float2half(11.0f)));
+  REPORT("half copy_qmat (diag): [3,3]~16", neqh(h2[3+4*3], __float2half(16.0f)));
+  REPORT("half copy_qmat (off-diag [1,0]=0)", neqh(h2[1+4*0], __float2half(0.0f)));
+
+  CUDA_CHECK(cudaFree(d1)); CUDA_CHECK(cudaFree(d2));
+}
+
+// ============================================================
+// gpu_fill_array<half_real>: fill 4 elements with 2.5
+// ============================================================
+static void test_fill_array_half()
+{
+  printf("\ngpu_fill_array<half_real>:\n");
+
+  __half hval = __float2half(2.5f), hout[4];
+  __half *dval, *dout;
+  CUDA_CHECK(cudaMalloc(&dval, sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dout, 4*sizeof(__half)));
+  CUDA_CHECK(cudaMemcpy(dval, &hval, sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemset(dout, 0, 4*sizeof(__half)));
+  gpu_fill_array<half_real>(dout, dval, 4, 1, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  dev_read_n(hout, dout, 4);
+  bool ok = true;
+  for (int k=0; k<4; k++) ok = ok && neqh(hout[k], __float2half(2.5f));
+  REPORT("half fill_array: all 4 elements ~ 2.5", ok);
+  CUDA_CHECK(cudaFree(dval)); CUDA_CHECK(cudaFree(dout));
+}
+
+// ============================================================
+// gpu_copy_qtmp1_to_qtmp1_tmp<half_real>: copy 6 elements
+// ============================================================
+static void test_copy_qtmp1_to_qtmp1_tmp_half()
+{
+  printf("\ngpu_copy_qtmp1_to_qtmp1_tmp<half_real>:\n");
+
+  int k=3, l=2;
+  __half hsrc[6], hdst[6];
+  for (int n=0; n<6; n++) hsrc[n] = __float2half((float)(n+1));
+  for (int n=0; n<6; n++) hdst[n] = __float2half(0.0f);
+
+  __half *dsrc, *ddst;
+  CUDA_CHECK(cudaMalloc(&dsrc, 6*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&ddst, 6*sizeof(__half)));
+  CUDA_CHECK(cudaMemcpy(dsrc, hsrc, 6*sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemset(ddst, 0, 6*sizeof(__half)));
+  gpu_copy_qtmp1_to_qtmp1_tmp<half_real>(dsrc, ddst, k, l, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  dev_read_n(hdst, ddst, 6);
+  bool ok = true;
+  for (int n=0; n<6; n++) ok = ok && neqh(hdst[n], __float2half((float)(n+1)));
+  REPORT("half copy_qtmp1_to_qtmp1_tmp: all 6 elements copied", ok);
+  CUDA_CHECK(cudaFree(dsrc)); CUDA_CHECK(cudaFree(ddst));
+}
+#endif /* WANT_HALF_PRECISION_REAL */
+
 // ============================================================
 int main(void)
 {
@@ -440,6 +605,15 @@ int main(void)
   test_fill_array();
   test_copy_qtmp1_to_qtmp1_tmp();
   test_compute_nnzl_nnzu();
+
+#ifdef WANT_HALF_PRECISION_REAL
+  printf("\n--- half precision (WANT_HALF_PRECISION_REAL) ---\n");
+  test_transform_one_column_half();
+  test_transform_two_columns_half();
+  test_copy_qmat1_to_qmat2_half();
+  test_fill_array_half();
+  test_copy_qtmp1_to_qtmp1_tmp_half();
+#endif
 
   printf("\n=== Summary: %d failure(s) ===\n", g_failures);
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

@@ -50,31 +50,4 @@
 
 #include "config-f90.h"
 
-// The real part
-#define REALCASE 1
-#undef COMPLEXCASE
-#define DOUBLE_PRECISION_REAL 1
 #include "cuUtils_template.cu"
-#undef DOUBLE_PRECISION_REAL
-
-#ifdef WANT_SINGLE_PRECISION_REAL
-
-#undef DOUBLE_PRECISION_REAL
-#include "cuUtils_template.cu"
-
-#endif
-
-// The complex part
-#define COMPLEXCASE 1
-#undef REALCASE
-#define DOUBLE_PRECISION_COMPLEX 1
-#include "cuUtils_template.cu"
-#undef DOUBLE_PRECISION_COMPLEX
-
-#ifdef WANT_SINGLE_PRECISION_COMPLEX
-
-#undef DOUBLE_PRECISION_COMPLEX
-#include "cuUtils_template.cu"
-
-#endif
-

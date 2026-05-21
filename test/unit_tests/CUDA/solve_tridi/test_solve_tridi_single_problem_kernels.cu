@@ -60,6 +60,9 @@
 #include <cuComplex.h>
 #include <algorithm>
 #include <type_traits>
+#ifdef WANT_HALF_PRECISION_REAL
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/GPU/common_device_functions.h"
 #include "../../../../src/GPU/gpu_to_cuda_and_hip_interface.h"
@@ -85,6 +88,11 @@ static int g_failures = 0;
 
 static bool deq (double a, double b, double tol=1e-10) { return fabs (a-b) < tol; }
 static bool feq (float  a, float  b, float  tol=1e-5f) { return fabsf(a-b) < tol; }
+#ifdef WANT_HALF_PRECISION_REAL
+static bool heq (__half  a, __half  b, float tol=0.02f) {
+  return fabsf(__half2float(a) - __half2float(b)) < tol;
+}
+#endif
 
 template <typename T>
 static T dev_read(T *d) {
@@ -675,6 +683,52 @@ static void test_construct_tridi_symmetry()
 }
 
 
+#ifdef WANT_HALF_PRECISION_REAL
+// ============================================================
+// gpu_construct_full_from_tridi_matrix<half_real>
+// d=[1,2,3], e=[4,5], nlen=3, ldq=3
+// Expected 3x3:
+//   [ 1  4  0 ]
+//   [ 4  2  5 ]
+//   [ 0  5  3 ]
+// ============================================================
+static void test_construct_tridi_half()
+{
+  printf("\ngpu_construct_full_from_tridi_matrix<half_real> — nlen=3:\n");
+
+  const int nlen = 3, ldq = 3;
+  float fd[3] = {1.0f, 2.0f, 3.0f};
+  float fe[2] = {4.0f, 5.0f};
+  __half hd[3], he[2];
+  for (int i=0; i<3; i++) hd[i] = __float2half(fd[i]);
+  for (int i=0; i<2; i++) he[i] = __float2half(fe[i]);
+
+  __half *dq = dev_alloc_zero<__half>(ldq*nlen);
+  __half *dd, *de;
+  CUDA_CHECK(cudaMalloc(&dd, nlen*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&de, (nlen-1)*sizeof(__half)));
+  CUDA_CHECK(cudaMemcpy(dd, hd, nlen*sizeof(__half),     cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(de, he, (nlen-1)*sizeof(__half), cudaMemcpyHostToDevice));
+
+  gpu_construct_full_from_tridi_matrix<half_real>(dq, dd, de, nlen, ldq, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  __half rq[9]; dev_read_n(rq, dq, ldq*nlen);
+
+  REPORT("half tridi: q[0,0]~d[0]=1", heq(rq[0+ldq*0], __float2half(1.0f)));
+  REPORT("half tridi: q[1,1]~d[1]=2", heq(rq[1+ldq*1], __float2half(2.0f)));
+  REPORT("half tridi: q[2,2]~d[2]=3", heq(rq[2+ldq*2], __float2half(3.0f)));
+  REPORT("half tridi: q[1,0]~e[0]=4", heq(rq[1+ldq*0], __float2half(4.0f)));
+  REPORT("half tridi: q[0,1]~e[0]=4", heq(rq[0+ldq*1], __float2half(4.0f)));
+  REPORT("half tridi: q[2,1]~e[1]=5", heq(rq[2+ldq*1], __float2half(5.0f)));
+  REPORT("half tridi: q[1,2]~e[1]=5", heq(rq[1+ldq*2], __float2half(5.0f)));
+  REPORT("half tridi: q[0,2]=0 (off-tridiag)", heq(rq[0+ldq*2], __float2half(0.0f)));
+  REPORT("half tridi: q[2,0]=0 (off-tridiag)", heq(rq[2+ldq*0], __float2half(0.0f)));
+
+  CUDA_CHECK(cudaFree(dq)); CUDA_CHECK(cudaFree(dd)); CUDA_CHECK(cudaFree(de));
+}
+#endif /* WANT_HALF_PRECISION_REAL */
+
 // ============================================================
 int main(void)
 {
@@ -697,6 +751,11 @@ int main(void)
   test_construct_tridi_n3_float();
   test_construct_tridi_padded_ldq();
   test_construct_tridi_symmetry();
+
+#ifdef WANT_HALF_PRECISION_REAL
+  printf("\n--- half precision (WANT_HALF_PRECISION_REAL) ---\n");
+  test_construct_tridi_half();
+#endif
 
   printf("\n=== Summary: %d failure(s) ===\n", g_failures);
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

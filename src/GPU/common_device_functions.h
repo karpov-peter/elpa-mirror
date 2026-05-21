@@ -53,6 +53,18 @@
 #define float_complex  cuFloatComplex
 #endif
 
+#if defined(WITH_NVIDIA_GPU_VERSION) && (defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX))
+#include <cuda_fp16.h>
+#endif
+
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+typedef __half half_real;
+#endif
+
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+typedef __half2 half_complex;
+#endif
+
 #ifdef WITH_AMD_GPU_VERSION
 #define INLINE_DEVICE __forceinline__ __device__
 #define double_complex hipDoubleComplex
@@ -91,6 +103,18 @@ template <>  inline float_complex elpaHostNumberFromInt<float_complex> (int numb
 #endif
 }
 
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+template <> inline __half elpaHostNumberFromInt<__half>(int number) {
+  return __float2half((float)number);
+}
+#endif
+
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+template <> inline __half2 elpaHostNumberFromInt<__half2>(int number) {
+  return make_half2(__float2half((float)number), __float2half(0.0f));
+}
+#endif
+
 //_________________________________________________________________________________________________
 // Generic math device functions
 
@@ -99,6 +123,14 @@ INLINE_DEVICE T elpaDeviceSign(T a, T b) {
   if (b>=0) return fabs(a);
   else return -fabs(a);
 }
+
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+INLINE_DEVICE __half elpaDeviceSign(__half a, __half b) {
+  float fa = __half2float(a), fb = __half2float(b);
+  float result = (fb >= 0.0f) ? fabsf(fa) : -fabsf(fa);
+  return __float2half(result);
+}
+#endif
 
 // construct a generic double/float/double_complex/float_complex from a double
 template <typename T> INLINE_DEVICE T elpaDeviceNumber(double number);
@@ -123,6 +155,18 @@ template <>  INLINE_DEVICE float_complex elpaDeviceNumber<float_complex> (double
 #endif
 }
 
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+template <> INLINE_DEVICE __half elpaDeviceNumber<__half>(double number) {
+  return __float2half((float)number);
+}
+#endif
+
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+template <> INLINE_DEVICE __half2 elpaDeviceNumber<__half2>(double number) {
+  return make_half2(__float2half((float)number), __float2half(0.0f));
+}
+#endif
+
 // construct a generic double/float/double_complex/float_complex from a real and imaginary parts
 template <typename T, typename T_real>  INLINE_DEVICE T elpaDeviceNumberFromRealImag(T_real Re, T_real Im);
 template <> INLINE_DEVICE double elpaDeviceNumberFromRealImag<double>(double Real, double Imag) {return Real;}
@@ -145,6 +189,25 @@ template <> INLINE_DEVICE float_complex elpaDeviceNumberFromRealImag<float_compl
   return std::complex<float>(Real, Imag);
 #endif
 }
+
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+template <> INLINE_DEVICE __half elpaDeviceNumberFromRealImag<__half>(__half Real, __half Imag) {
+  return Real;
+}
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+template <> INLINE_DEVICE __half2 elpaDeviceNumberFromRealImag<__half2>(double Real, double Imag) {
+  return make_half2(__float2half((float)Real), __float2half((float)Imag));
+}
+template <> INLINE_DEVICE __half2 elpaDeviceNumberFromRealImag<__half2>(float Real, float Imag) {
+  return make_half2(__float2half(Real), __float2half(Imag));
+}
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL) && defined(WANT_HALF_PRECISION_COMPLEX)
+template <> INLINE_DEVICE __half2 elpaDeviceNumberFromRealImag<__half2>(__half Real, __half Imag) {
+  return make_half2(Real, Imag);
+}
+#endif
 
 INLINE_DEVICE double elpaDeviceAdd(double a, double b) { return a + b; }
 INLINE_DEVICE float  elpaDeviceAdd(float a, float b)   { return a + b; }
@@ -230,8 +293,38 @@ INLINE_DEVICE float_complex elpaDeviceDivide(float_complex a, float_complex b) {
 #endif
 }
 
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+INLINE_DEVICE __half elpaDeviceAdd(__half a, __half b)      { return __hadd(a, b); }
+INLINE_DEVICE __half elpaDeviceSubtract(__half a, __half b) { return __hsub(a, b); }
+INLINE_DEVICE __half elpaDeviceMultiply(__half a, __half b) { return __hmul(a, b); }
+INLINE_DEVICE __half elpaDeviceDivide(__half a, __half b)   { return __hdiv(a, b); }
+#endif
+
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+INLINE_DEVICE __half2 elpaDeviceAdd(__half2 a, __half2 b)      { return __hadd2(a, b); }
+INLINE_DEVICE __half2 elpaDeviceSubtract(__half2 a, __half2 b) { return __hsub2(a, b); }
+INLINE_DEVICE __half2 elpaDeviceMultiply(__half2 a, __half2 b) {
+  // true complex multiply: (ax+ay*i)*(bx+by*i) = (ax*bx-ay*by) + (ax*by+ay*bx)*i
+  __half re = __hsub(__hmul(a.x, b.x), __hmul(a.y, b.y));
+  __half im = __hadd(__hmul(a.x, b.y), __hmul(a.y, b.x));
+  return make_half2(re, im);
+}
+INLINE_DEVICE __half2 elpaDeviceDivide(__half2 a, __half2 b) {
+  // (ax+ay*i)/(bx+by*i): denom=bx*bx+by*by, re=(ax*bx+ay*by)/denom, im=(ay*bx-ax*by)/denom
+  __half denom = __hadd(__hmul(b.x, b.x), __hmul(b.y, b.y));
+  __half re    = __hdiv(__hadd(__hmul(a.x, b.x), __hmul(a.y, b.y)), denom);
+  __half im    = __hdiv(__hsub(__hmul(a.y, b.x), __hmul(a.x, b.y)), denom);
+  return make_half2(re, im);
+}
+#endif
+
 INLINE_DEVICE double elpaDeviceSqrt(double number) { return sqrt (number); }
 INLINE_DEVICE float  elpaDeviceSqrt(float  number) { return sqrtf(number); }
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+INLINE_DEVICE __half elpaDeviceSqrt(__half number) {
+  return __float2half(sqrtf(__half2float(number)));
+}
+#endif
 
 INLINE_DEVICE double elpaDeviceComplexConjugate(double number) {return number;}
 INLINE_DEVICE float elpaDeviceComplexConjugate(float  number) {return number;}
@@ -253,6 +346,15 @@ INLINE_DEVICE float_complex elpaDeviceComplexConjugate(float_complex number) {
   return std::conj(number);
 #endif
 }
+
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+INLINE_DEVICE __half elpaDeviceComplexConjugate(__half number) { return number; }
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+INLINE_DEVICE __half2 elpaDeviceComplexConjugate(__half2 number) {
+  return make_half2(number.x, __hneg(number.y));
+}
+#endif
 
 INLINE_DEVICE double elpaDeviceRealPart(double number) {return number;}
 INLINE_DEVICE float  elpaDeviceRealPart(float  number) {return number;}
@@ -287,6 +389,27 @@ INLINE_DEVICE float elpaDeviceImagPart(float_complex number) {
   return number.imag();
 #endif
 }
+
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+INLINE_DEVICE __half elpaDeviceRealPart(__half number) { return number; }
+INLINE_DEVICE __half elpaDeviceImagPart(__half number) { return __float2half(0.0f); }
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+INLINE_DEVICE __half elpaDeviceRealPart(__half2 number) { return number.x; }
+INLINE_DEVICE __half elpaDeviceImagPart(__half2 number) { return number.y; }
+#endif
+
+INLINE_DEVICE bool elpaDeviceIsZero(double x) { return x == 0.0;  }
+INLINE_DEVICE bool elpaDeviceIsZero(float  x) { return x == 0.0f; }
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+INLINE_DEVICE bool elpaDeviceIsZero(__half  x) { return __heq(x, __float2half(0.0f)); }
+#endif
+
+INLINE_DEVICE bool elpaDeviceIsGreaterEqualZero(double x) { return x >= 0.0;  }
+INLINE_DEVICE bool elpaDeviceIsGreaterEqualZero(float  x) { return x >= 0.0f; }
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+INLINE_DEVICE bool elpaDeviceIsGreaterEqualZero(__half  x) { return __half2float(x) >= 0.0f; }
+#endif
 
 INLINE_DEVICE double elpaDeviceEqual(double a, double b) { return (double)(a == b); }
 INLINE_DEVICE float  elpaDeviceEqual(float  a, float  b) { return (float)(a == b); }
@@ -330,6 +453,24 @@ INLINE_DEVICE bool elpaDeviceEqualBool(float_complex a, float_complex b) {
 #endif
 }
 
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+INLINE_DEVICE __half elpaDeviceEqual(__half a, __half b) {
+  return __heq(a, b) ? __float2half(1.0f) : __float2half(0.0f);
+}
+INLINE_DEVICE bool elpaDeviceEqualBool(__half a, __half b) {
+  return __heq(a, b);
+}
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+INLINE_DEVICE __half2 elpaDeviceEqual(__half2 a, __half2 b) {
+  bool eq = __heq(a.x, b.x) && __heq(a.y, b.y);
+  return make_half2(eq ? __float2half(1.0f) : __float2half(0.0f), __float2half(0.0f));
+}
+INLINE_DEVICE bool elpaDeviceEqualBool(__half2 a, __half2 b) {
+  return __heq(a.x, b.x) && __heq(a.y, b.y);
+}
+#endif
+
 // Device function to convert a pointer to a value
 template <typename T>
 INLINE_DEVICE T convert_to_device(T* x, std::true_type) { return *x;}
@@ -363,6 +504,7 @@ static __inline__ __device__ double atomicAdd(double* address, double val)
 }
 #endif
 #endif
+
 
 // atomicAdd for double_complex and float_complex
 #if defined(WITH_NVIDIA_GPU_VERSION) || defined(WITH_AMD_GPU_VERSION)

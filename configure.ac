@@ -577,6 +577,15 @@ AC_ARG_ENABLE(single-precision,
               [want_single_precision="yes"])
 AC_MSG_RESULT([${want_single_precision}])
 
+dnl check whether half precision is requested
+AC_MSG_CHECKING(whether ELPA library should contain also half precision functions)
+AC_ARG_ENABLE(half-precision,
+              [AS_HELP_STRING([--enable-half-precision],
+                              [build with half precision (default: no)])],
+              [want_half_precision="$enableval"],
+              [want_half_precision="no"])
+AC_MSG_RESULT([${want_half_precision}])
+
 
 dnl redirect
 if test x"${enable_redirect}" = x"yes"; then
@@ -3635,6 +3644,7 @@ AM_CONDITIONAL([WITH_ONEAPI_ONECCL],[test x"$use_oneccl" = x"yes"])
 #############################################################################################
 
 if test x"${need_nvidia_gpu}" = x"yes" ; then
+  NVCC_REAL="$NVCC"
   NVCC="\$(top_srcdir)/manual_cpp $NVCC"
 fi
 
@@ -3949,6 +3959,40 @@ if test x"${want_single_precision}" = x"yes" ; then
 fi
 AM_CONDITIONAL([WANT_SINGLE_PRECISION_REAL],[test x"$want_single_precision" = x"yes"])
 AM_CONDITIONAL([WANT_SINGLE_PRECISION_COMPLEX],[test x"$want_single_precision" = x"yes"])
+
+if test x"${want_half_precision}" = x"yes" ; then
+  dnl half precision requires an NVIDIA GPU build
+  if test x"${need_nvidia_gpu}" != x"yes" ; then
+    AC_MSG_WARN([Half precision support requires an NVIDIA GPU build (--enable-nvidia-gpu-kernels); disabling half precision])
+    want_half_precision=no
+  else
+    dnl check whether __half (real) and __half2 (complex) can be compiled with nvcc
+    AC_MSG_CHECKING(whether half precision (__half and __half2) can be compiled with nvcc)
+    cat > conftest.cu << '_HALF_EOF_'
+#include <cuda_fp16.h>
+__global__ void test_half_real(__half *a) { *a = __float2half(1.0f); }
+__global__ void test_half_complex(__half2 *a) { *a = __floats2half2_rn(1.0f, 2.0f); }
+int main(void) { return 0; }
+_HALF_EOF_
+    $NVCC_REAL $NVCCFLAGS -c conftest.cu -o conftest.o 2>&5
+    if test "$?" == 0 ; then
+      can_compile_half_precision=yes
+    else
+      can_compile_half_precision=no
+    fi
+    rm -f conftest.cu conftest.o
+    AC_MSG_RESULT([${can_compile_half_precision}])
+    if test x"${can_compile_half_precision}" != x"yes" ; then
+      AC_MSG_ERROR([Half precision cannot be compiled for this GPU/CUDA setup. The GPU compute capability may be too low (requires sm_53 or higher). Please check your --with-NVIDIA-GPU-compute-capability setting or disable half precision via --disable-half-precision.])
+    fi
+  fi
+fi
+if test x"${want_half_precision}" = x"yes" ; then
+  AC_DEFINE([WANT_HALF_PRECISION_REAL],[1],[build also half-precision for real calculation])
+  AC_DEFINE([WANT_HALF_PRECISION_COMPLEX],[1],[build also half-precision for complex calculation])
+fi
+AM_CONDITIONAL([WANT_HALF_PRECISION_REAL],[test x"$want_half_precision" = x"yes"])
+AM_CONDITIONAL([WANT_HALF_PRECISION_COMPLEX],[test x"$want_half_precision" = x"yes"])
 
 AC_MSG_CHECKING(whether we should enable skew-symmetric support)
 AC_ARG_ENABLE([skew-symmetric-support],

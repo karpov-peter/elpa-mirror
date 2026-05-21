@@ -132,6 +132,9 @@ extern "C" void CONCATENATE(ELPA_GPU,  _copy_qmat1_to_qmat2_FromC)(char dataType
                                                                    int max_size, int debug, gpuStream_t my_stream) {
   if      (dataType=='D') gpu_copy_qmat1_to_qmat2<double>((double *) qmat1_dev, (double *) qmat2_dev, max_size, debug, my_stream);
   else if (dataType=='S') gpu_copy_qmat1_to_qmat2<float> ((float  *) qmat1_dev, (float  *) qmat2_dev, max_size, debug, my_stream);
+#ifdef WANT_HALF_PRECISION_REAL
+  else if (dataType=='H') gpu_copy_qmat1_to_qmat2<half_real>((half_real *) qmat1_dev, (half_real *) qmat2_dev, max_size, debug, my_stream);
+#endif
   else {
     printf("Error in elpa_copy_qmat1_to_qmat2: Unsupported data type\n");
   }

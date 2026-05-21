@@ -216,14 +216,12 @@ template <typename T, unsigned int blk> __device__ void reduce_complex(T *s_bloc
 }
 #endif /* WITH_CUCUB_COMPLEX */
 
-//__________________________________________________________________________
-// Kernel body: shared between double-complex and float-complex __global__
-// wrappers below.  All type-specific arithmetic is routed through the
-// cx_mul / cx_sub / cx_conj helpers above.
-
 template <typename T, unsigned int blk>
-__device__ void compute_hh_trafo_cuda_kernel_complex_body(
-    T * __restrict__ q, const T * __restrict__ hh, const T * __restrict__ hh_tau,
+__global__ void
+#ifdef WITH_CUCUB_COMPLEX
+__launch_bounds__(blk)
+#endif
+compute_hh_trafo_cuda_kernel_complex(T * __restrict__ q, const T * __restrict__ hh, const T * __restrict__ hh_tau,
     const int nb, const int ldq, const int ncols)
 {
     __shared__ T q_s[blk + 1];
@@ -295,26 +293,6 @@ __device__ void compute_hh_trafo_cuda_kernel_complex_body(
     }
 }
 
-template <unsigned int blk>
-__global__ void
-#ifdef WITH_CUCUB_COMPLEX
-__launch_bounds__(blk)
-#endif
-compute_hh_trafo_cuda_kernel_complex_double(cuDoubleComplex * __restrict__ q, const cuDoubleComplex * __restrict__ hh, const cuDoubleComplex * __restrict__ hh_tau, const int nb, const int ldq, const int ncols)
-{
-    compute_hh_trafo_cuda_kernel_complex_body<cuDoubleComplex, blk>(q, hh, hh_tau, nb, ldq, ncols);
-}
-
-template <unsigned int blk>
-__global__ void
-#ifdef WITH_HIPCUB
-__launch_bounds__(blk)
-#endif
-compute_hh_trafo_cuda_kernel_complex_single(cuFloatComplex * __restrict__ q, const cuFloatComplex * __restrict__ hh, const cuFloatComplex * __restrict__ hh_tau, const int nb, const int ldq, const int ncols)
-{
-    compute_hh_trafo_cuda_kernel_complex_body<cuFloatComplex, blk>(q, hh, hh_tau, nb, ldq, ncols);
-}
-
 extern "C" void launch_compute_hh_trafo_c_cuda_kernel_complex_double(cuDoubleComplex *q, const cuDoubleComplex *hh, const cuDoubleComplex *hh_tau, const int nev, const int nb, const int ldq, const int ncols, cudaStream_t my_stream)
 {
     cudaError_t err;
@@ -326,79 +304,79 @@ extern "C" void launch_compute_hh_trafo_c_cuda_kernel_complex_double(cuDoubleCom
     {
     case 1024:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_double<1024><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,1024><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_double<1024><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,1024><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 512:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_double<512><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,512><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_double<512><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,512><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 256:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_double<256><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,256><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_double<256><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,256><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 128:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_double<128><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,128><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_double<128><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,128><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 64:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_double<64><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,64><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_double<64><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,64><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 32:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_double<32><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,32><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_double<32><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,32><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 16:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_double<16><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,16><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_double<16><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,16><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 8:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_double<8><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,8><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_double<8><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,8><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 4:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_double<4><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,4><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_double<4><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,4><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 2:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_double<2><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,2><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_double<2><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,2><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 1:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_double<1><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,1><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_double<1><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuDoubleComplex,1><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     }
@@ -421,79 +399,79 @@ extern "C" void launch_compute_hh_trafo_c_cuda_kernel_complex_single(cuFloatComp
     {
     case 1024:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_single<1024><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,1024><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_single<1024><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,1024><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 512:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_single<512><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,512><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_single<512><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,512><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 256:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_single<256><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,256><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_single<256><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,256><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 128:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_single<128><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,128><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_single<128><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,128><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 64:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_single<64><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,64><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_single<64><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,64><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 32:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_single<32><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,32><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_single<32><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,32><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 16:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_single<16><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,16><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_single<16><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,16><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 8:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_single<8><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,8><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_single<8><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,8><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 4:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_single<4><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,4><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_single<4><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,4><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 2:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_single<2><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,2><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_single<2><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,2><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     case 1:
 #ifdef WITH_GPU_STREAMS
-        compute_hh_trafo_cuda_kernel_complex_single<2><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,2><<<nev, nb, 0, my_stream>>>(q, hh, hh_tau, nb, ldq, ncols);
 #else
-        compute_hh_trafo_cuda_kernel_complex_single<1><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
+        compute_hh_trafo_cuda_kernel_complex<cuFloatComplex,1><<<nev, nb>>>(q, hh, hh_tau, nb, ldq, ncols);
 #endif
         break;
     }

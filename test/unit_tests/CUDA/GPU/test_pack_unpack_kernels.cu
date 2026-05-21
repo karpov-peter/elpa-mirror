@@ -51,24 +51,11 @@
 #include <cuda_runtime.h>
 #include <cuComplex.h>
 #include <type_traits>
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
 
-// Pull in all four type variants using the same macro sequence as cuUtils.cu.
-#define REALCASE 1
-#undef COMPLEXCASE
-#define DOUBLE_PRECISION_REAL 1
-#include "../../../../src/GPU/CUDA/cuUtils_template.cu"
-#undef DOUBLE_PRECISION_REAL
-
-#undef DOUBLE_PRECISION_REAL
-#include "../../../../src/GPU/CUDA/cuUtils_template.cu"
-
-#define COMPLEXCASE 1
-#undef REALCASE
-#define DOUBLE_PRECISION_COMPLEX 1
-#include "../../../../src/GPU/CUDA/cuUtils_template.cu"
-#undef DOUBLE_PRECISION_COMPLEX
-
-#undef DOUBLE_PRECISION_COMPLEX
+// Pull in all type variants — single include suffices (C++ templates handle all types).
 #include "../../../../src/GPU/CUDA/cuUtils_template.cu"
 
 #define CUDA_CHECK(call)                                                       \
@@ -94,6 +81,13 @@ static T make_val(int i)
         return (T)i;
 }
 
+#ifdef WANT_HALF_PRECISION_REAL
+template <> __half make_val<__half>(int i) { return __float2half((float)i); }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> __half2 make_val<__half2>(int i) { return make_half2(__float2half((float)i), __float2half((float)(i * 2))); }
+#endif
+
 template <typename T> static T one_val()
 {
     if constexpr (std::is_same_v<T, cuDoubleComplex>) return make_cuDoubleComplex(1.0, 0.0);
@@ -101,12 +95,26 @@ template <typename T> static T one_val()
     else return (T)1;
 }
 
+#ifdef WANT_HALF_PRECISION_REAL
+template <> __half one_val<__half>() { return __float2half(1.0f); }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> __half2 one_val<__half2>() { return make_half2(__float2half(1.0f), __float2half(0.0f)); }
+#endif
+
 template <typename T> static T zero_val()
 {
     if constexpr (std::is_same_v<T, cuDoubleComplex>) return make_cuDoubleComplex(0.0, 0.0);
     else if constexpr (std::is_same_v<T, cuFloatComplex>) return make_cuFloatComplex(0.0f, 0.0f);
     else return (T)0;
 }
+
+#ifdef WANT_HALF_PRECISION_REAL
+template <> __half zero_val<__half>() { return __float2half(0.0f); }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> __half2 zero_val<__half2>() { return make_half2(__float2half(0.0f), __float2half(0.0f)); }
+#endif
 
 template <typename T>
 static bool vals_equal(T a, T b)
@@ -116,6 +124,18 @@ static bool vals_equal(T a, T b)
     else
         return a == b;
 }
+
+#ifdef WANT_HALF_PRECISION_REAL
+template <> bool vals_equal<__half>(__half a, __half b) {
+    return fabsf(__half2float(a) - __half2float(b)) < 0.02f * (fabsf(__half2float(b)) + 1.0f);
+}
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> bool vals_equal<__half2>(__half2 a, __half2 b) {
+    return fabsf(__half2float(a.x) - __half2float(b.x)) < 0.02f * (fabsf(__half2float(b.x)) + 1.0f) &&
+           fabsf(__half2float(a.y) - __half2float(b.y)) < 0.02f * (fabsf(__half2float(b.y)) + 1.0f);
+}
+#endif
 
 // ---- launcher dispatch overloads ----
 
@@ -162,6 +182,32 @@ static void call_extract(cuDoubleComplex *hh, cuDoubleComplex *tau, int nbw, int
 
 static void call_extract(cuFloatComplex *hh, cuFloatComplex *tau, int nbw, int n, int val, cudaStream_t s)
 { launch_extract_hh_tau_c_cuda_kernel_complex_single(hh, tau, nbw, n, val, s); }
+
+#ifdef WANT_HALF_PRECISION_REAL
+static void call_pack(int rc, int n_off, int max_idx, int sw, int ad2, int sc, int ln,
+                      __half *a, __half *rg, cudaStream_t s)
+{ launch_my_pack_c_cuda_kernel_real_half(rc, n_off, max_idx, sw, ad2, sc, ln, a, rg, s); }
+
+static void call_unpack(int rc, int n_off, int max_idx, int sw, int ad2, int sc, int ln,
+                        __half *rg, __half *a, cudaStream_t s)
+{ launch_my_unpack_c_cuda_kernel_real_half(rc, n_off, max_idx, sw, ad2, sc, ln, rg, a, s); }
+
+static void call_extract(__half *hh, __half *tau, int nbw, int n, int val, cudaStream_t s)
+{ launch_extract_hh_tau_c_cuda_kernel_real_half(hh, tau, nbw, n, val, s); }
+#endif
+
+#ifdef WANT_HALF_PRECISION_COMPLEX
+static void call_pack(int rc, int n_off, int max_idx, int sw, int ad2, int sc, int ln,
+                      __half2 *a, __half2 *rg, cudaStream_t s)
+{ launch_my_pack_c_cuda_kernel_complex_half(rc, n_off, max_idx, sw, ad2, sc, ln, a, rg, s); }
+
+static void call_unpack(int rc, int n_off, int max_idx, int sw, int ad2, int sc, int ln,
+                        __half2 *rg, __half2 *a, cudaStream_t s)
+{ launch_my_unpack_c_cuda_kernel_complex_half(rc, n_off, max_idx, sw, ad2, sc, ln, rg, a, s); }
+
+static void call_extract(__half2 *hh, __half2 *tau, int nbw, int n, int val, cudaStream_t s)
+{ launch_extract_hh_tau_c_cuda_kernel_complex_half(hh, tau, nbw, n, val, s); }
+#endif
 
 // ============================================================
 // Test: my_pack_c_cuda_kernel
@@ -322,6 +368,7 @@ int main(void)
 {
     int failures = 0;
 
+    printf("=== Unit tests for pack/unpack/extract_hh_tau CUDA kernels ===\n\n");
     printf("Testing my_pack_c_cuda_kernel:\n");
     failures += run_pack_test<double>         ("double");
     failures += run_pack_test<float>          ("float");
@@ -340,11 +387,25 @@ int main(void)
     failures += run_extract_hh_tau_test<cuDoubleComplex>("cuDoubleComplex");
     failures += run_extract_hh_tau_test<cuFloatComplex> ("cuFloatComplex");
 
-    if (failures == 0)
-        printf("\nAll tests passed.\n");
-    else
-        printf("\n%d test(s) FAILED.\n", failures);
+#ifdef WANT_HALF_PRECISION_REAL
+    printf("\nTesting my_pack_c_cuda_kernel (half real):\n");
+    failures += run_pack_test<__half>("__half");
+    printf("\nTesting my_unpack_c_cuda_kernel (half real):\n");
+    failures += run_unpack_test<__half>("__half");
+    printf("\nTesting extract_hh_tau_c_cuda_kernel (half real):\n");
+    failures += run_extract_hh_tau_test<__half>("__half");
+#endif
 
+#ifdef WANT_HALF_PRECISION_COMPLEX
+    printf("\nTesting my_pack_c_cuda_kernel (half complex):\n");
+    failures += run_pack_test<__half2>("__half2");
+    printf("\nTesting my_unpack_c_cuda_kernel (half complex):\n");
+    failures += run_unpack_test<__half2>("__half2");
+    printf("\nTesting extract_hh_tau_c_cuda_kernel (half complex):\n");
+    failures += run_extract_hh_tau_test<__half2>("__half2");
+#endif
+
+    printf("\n=== Summary: %d failure(s) ===\n", failures);
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

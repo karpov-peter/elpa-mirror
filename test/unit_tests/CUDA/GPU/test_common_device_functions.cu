@@ -58,6 +58,10 @@
 #include <algorithm>
 #include <type_traits>
 
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
+
 #include "../../../../src/GPU/common_device_functions.h"
 
 #define CUDA_CHECK(call)                                                      \
@@ -80,6 +84,10 @@ static int g_failures = 0;
 
 static bool neq (double a, double b) { return fabs (a - b) < 1e-12; }
 static bool neqf(float  a, float  b) { return fabsf(a - b) < 1e-5f; }
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+// ~2% relative tolerance for half precision
+static bool neqh(__half  a, float  ref) { return fabsf(__half2float(a) - ref) < 0.02f * (fabsf(ref) + 1.0f); }
+#endif
 
 // ---- Device kernels ----
 
@@ -121,6 +129,15 @@ __global__ void k_imagPart_d (double         v, double *o) { *o = elpaDeviceImag
 __global__ void k_imagPart_f (float          v, float  *o) { *o = (float)elpaDeviceImagPart(v); }
 __global__ void k_imagPart_dc(double_complex v, double *o) { *o = elpaDeviceImagPart(v); }
 __global__ void k_imagPart_fc(float_complex  v, float  *o) { *o = elpaDeviceImagPart(v); }
+
+#ifdef WANT_HALF_PRECISION_REAL
+__global__ void k_realPart_h(__half v, __half *o) { *o = elpaDeviceRealPart(v); }
+__global__ void k_imagPart_h(__half v, __half *o) { *o = elpaDeviceImagPart(v); }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+__global__ void k_realPart_h2(__half2 v, __half *o) { *o = elpaDeviceRealPart(v); }
+__global__ void k_imagPart_h2(__half2 v, __half *o) { *o = elpaDeviceImagPart(v); }
+#endif
 
 template <typename T>
 __global__ void k_equal(T a, T b, T *out) { *out = elpaDeviceEqual(a, b); }
@@ -701,6 +718,182 @@ static void test_localIndex()
 }
 
 // ============================================================
+// Half-precision tests
+// ============================================================
+#ifdef WANT_HALF_PRECISION_REAL
+static void test_half_real()
+{
+  printf("\n--- __half (real half precision) ---\n");
+
+  __half *dh; CUDA_CHECK(cudaMalloc(&dh, sizeof(__half)));
+  __half ha = __float2half(3.0f), hb = __float2half(4.0f);
+
+  // elpaHostNumberFromInt
+  __half hv = elpaHostNumberFromInt<__half>(7);
+  REPORT("__half: elpaHostNumberFromInt(7)==7.0f", neqh(hv, 7.0f));
+
+  // elpaDeviceNumber
+  k_number<__half><<<1,1>>>(5.0, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: elpaDeviceNumber(5.0)==5.0f", neqh(dev_read(dh), 5.0f));
+
+  // elpaDeviceSign
+  k_sign<<<1,1>>>(ha, __float2half(1.0f), dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: sign(3,1)==3", neqh(dev_read(dh), 3.0f));
+  k_sign<<<1,1>>>(ha, __float2half(-1.0f), dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: sign(3,-1)==-3", neqh(dev_read(dh), -3.0f));
+
+  // arithmetic
+  k_add<<<1,1>>>(ha, hb, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: 3+4==7", neqh(dev_read(dh), 7.0f));
+
+  k_sub<<<1,1>>>(hb, ha, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: 4-3==1", neqh(dev_read(dh), 1.0f));
+
+  k_mul<<<1,1>>>(ha, hb, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: 3*4==12", neqh(dev_read(dh), 12.0f));
+
+  k_div<<<1,1>>>(hb, ha, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: 4/2==2 (using 4/3~1.333 - check ~4/3)", neqh(dev_read(dh), 4.0f/3.0f));
+
+  // sqrt
+  k_sqrt<<<1,1>>>(__float2half(9.0f), dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: sqrt(9)==3", neqh(dev_read(dh), 3.0f));
+
+  // conj (identity for real)
+  k_conj<<<1,1>>>(ha, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: conj(3)==3", neqh(dev_read(dh), 3.0f));
+
+  // realPart / imagPart
+  k_realPart_h<<<1,1>>>(ha, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: realPart(3)==3", neqh(dev_read(dh), 3.0f));
+  k_imagPart_h<<<1,1>>>(ha, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: imagPart(3)==0", neqh(dev_read(dh), 0.0f));
+
+  // equal / equalBool
+  k_equal<<<1,1>>>(ha, ha, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: equal(3,3)==1", neqh(dev_read(dh), 1.0f));
+  k_equal<<<1,1>>>(ha, hb, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: equal(3,4)==0", neqh(dev_read(dh), 0.0f));
+
+  bool *db; CUDA_CHECK(cudaMalloc(&db, sizeof(bool)));
+  k_equalBool<<<1,1>>>(ha, ha, db); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: equalBool(3,3)==true",  dev_read(db) == true);
+  k_equalBool<<<1,1>>>(ha, hb, db); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: equalBool(3,4)==false", dev_read(db) == false);
+
+  // atomicAdd
+  __half zero_h = __float2half(0.0f);
+  __half inc_h  = __float2half(1.5f);
+  CUDA_CHECK(cudaMemcpy(dh, &zero_h, sizeof(__half), cudaMemcpyHostToDevice));
+  k_atomicAdd<<<1,1>>>(dh, inc_h);
+  k_atomicAdd<<<1,1>>>(dh, inc_h);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half: atomicAdd x2 with 1.5==3.0", neqh(dev_read(dh), 3.0f));
+
+  CUDA_CHECK(cudaFree(dh));
+  CUDA_CHECK(cudaFree(db));
+}
+#endif /* WANT_HALF_PRECISION_REAL */
+
+#ifdef WANT_HALF_PRECISION_COMPLEX
+static void test_half_complex()
+{
+  printf("\n--- __half2 (complex half precision) ---\n");
+
+  __half2 *dh2; CUDA_CHECK(cudaMalloc(&dh2, sizeof(__half2)));
+  __half  *dh;  CUDA_CHECK(cudaMalloc(&dh,  sizeof(__half)));
+
+  __half2 ha2 = make_half2(__float2half(1.0f), __float2half(2.0f)); // 1+2i
+  __half2 hb2 = make_half2(__float2half(3.0f), __float2half(4.0f)); // 3+4i
+
+  // elpaHostNumberFromInt
+  __half2 hv = elpaHostNumberFromInt<__half2>(7);
+  REPORT("__half2: elpaHostNumberFromInt(7).real==7", neqh(hv.x, 7.0f));
+  REPORT("__half2: elpaHostNumberFromInt(7).imag==0", neqh(hv.y, 0.0f));
+
+  // elpaDeviceNumber
+  k_number<__half2><<<1,1>>>(5.0, dh2); CUDA_CHECK(cudaDeviceSynchronize());
+  { __half2 h = dev_read(dh2);
+    REPORT("__half2: elpaDeviceNumber(5.0).real==5", neqh(h.x, 5.0f));
+    REPORT("__half2: elpaDeviceNumber(5.0).imag==0", neqh(h.y, 0.0f)); }
+
+  // elpaDeviceNumberFromRealImag (double version)
+  k_fromRI<__half2,double><<<1,1>>>(3.0, 4.0, dh2); CUDA_CHECK(cudaDeviceSynchronize());
+  { __half2 h = dev_read(dh2);
+    REPORT("__half2: fromRI(3.0,4.0).real==3", neqh(h.x, 3.0f));
+    REPORT("__half2: fromRI(3.0,4.0).imag==4", neqh(h.y, 4.0f)); }
+
+  // arithmetic: add
+  k_add<<<1,1>>>(ha2, hb2, dh2); CUDA_CHECK(cudaDeviceSynchronize());
+  { __half2 h = dev_read(dh2);
+    REPORT("__half2: (1+2i)+(3+4i).real==4", neqh(h.x, 4.0f));
+    REPORT("__half2: (1+2i)+(3+4i).imag==6", neqh(h.y, 6.0f)); }
+
+  // subtract
+  k_sub<<<1,1>>>(hb2, ha2, dh2); CUDA_CHECK(cudaDeviceSynchronize());
+  { __half2 h = dev_read(dh2);
+    REPORT("__half2: (3+4i)-(1+2i).real==2", neqh(h.x, 2.0f));
+    REPORT("__half2: (3+4i)-(1+2i).imag==2", neqh(h.y, 2.0f)); }
+
+  // multiply: (1+2i)*(3+4i) = (3-8) + (4+6)i = -5+10i
+  k_mul<<<1,1>>>(ha2, hb2, dh2); CUDA_CHECK(cudaDeviceSynchronize());
+  { __half2 h = dev_read(dh2);
+    REPORT("__half2: (1+2i)*(3+4i).real==-5", neqh(h.x, -5.0f));
+    REPORT("__half2: (1+2i)*(3+4i).imag==10", neqh(h.y, 10.0f)); }
+
+  // divide: (4+2i)/(3+1i) = 1.4+0.2i
+  __half2 ha2_d = make_half2(__float2half(4.0f), __float2half(2.0f));
+  __half2 hb2_d = make_half2(__float2half(3.0f), __float2half(1.0f));
+  k_div<<<1,1>>>(ha2_d, hb2_d, dh2); CUDA_CHECK(cudaDeviceSynchronize());
+  { __half2 h = dev_read(dh2);
+    REPORT("__half2: (4+2i)/(3+1i).real==1.4", neqh(h.x, 1.4f));
+    REPORT("__half2: (4+2i)/(3+1i).imag==0.2", neqh(h.y, 0.2f)); }
+
+  // conj: conj(3+4i) = 3-4i
+  __half2 hz = make_half2(__float2half(3.0f), __float2half(4.0f));
+  k_conj<<<1,1>>>(hz, dh2); CUDA_CHECK(cudaDeviceSynchronize());
+  { __half2 h = dev_read(dh2);
+    REPORT("__half2: conj(3+4i).real== 3", neqh(h.x,  3.0f));
+    REPORT("__half2: conj(3+4i).imag==-4", neqh(h.y, -4.0f)); }
+
+  // realPart / imagPart
+  k_realPart_h2<<<1,1>>>(ha2, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half2: realPart(1+2i)==1", neqh(dev_read(dh), 1.0f));
+  k_imagPart_h2<<<1,1>>>(ha2, dh); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half2: imagPart(1+2i)==2", neqh(dev_read(dh), 2.0f));
+
+  // equal / equalBool
+  k_equal<<<1,1>>>(ha2, ha2, dh2); CUDA_CHECK(cudaDeviceSynchronize());
+  { __half2 h = dev_read(dh2);
+    REPORT("__half2: equal(z,z).real==1", neqh(h.x, 1.0f)); }
+  k_equal<<<1,1>>>(ha2, hb2, dh2); CUDA_CHECK(cudaDeviceSynchronize());
+  { __half2 h = dev_read(dh2);
+    REPORT("__half2: equal(z1,z2).real==0", neqh(h.x, 0.0f)); }
+
+  bool *db; CUDA_CHECK(cudaMalloc(&db, sizeof(bool)));
+  k_equalBool<<<1,1>>>(ha2, ha2, db); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half2: equalBool(z,z)==true",   dev_read(db) == true);
+  k_equalBool<<<1,1>>>(ha2, hb2, db); CUDA_CHECK(cudaDeviceSynchronize());
+  REPORT("__half2: equalBool(z1,z2)==false", dev_read(db) == false);
+
+  // atomicAdd
+  __half2 zero_h2 = make_half2(__float2half(0.0f), __float2half(0.0f));
+  __half2 inc_h2  = make_half2(__float2half(1.5f), __float2half(2.5f));
+  CUDA_CHECK(cudaMemcpy(dh2, &zero_h2, sizeof(__half2), cudaMemcpyHostToDevice));
+  k_atomicAdd<<<1,1>>>(dh2, inc_h2);
+  k_atomicAdd<<<1,1>>>(dh2, inc_h2);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  { __half2 h = dev_read(dh2);
+    REPORT("__half2: atomicAdd x2 (1.5+2.5i).real==3.0", neqh(h.x, 3.0f));
+    REPORT("__half2: atomicAdd x2 (1.5+2.5i).imag==5.0", neqh(h.y, 5.0f)); }
+
+  CUDA_CHECK(cudaFree(dh2));
+  CUDA_CHECK(cudaFree(dh));
+  CUDA_CHECK(cudaFree(db));
+}
+#endif /* WANT_HALF_PRECISION_COMPLEX */
+
+// ============================================================
 int main(void)
 {
   printf("=== Unit tests for common_device_functions.h (CUDA) ===\n");
@@ -722,6 +915,13 @@ int main(void)
   test_atomicAdd();
   test_pcol_prow();
   test_localIndex();
+
+#ifdef WANT_HALF_PRECISION_REAL
+  test_half_real();
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+  test_half_complex();
+#endif
 
   printf("\n=== Summary: %d failure(s) ===\n", g_failures);
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

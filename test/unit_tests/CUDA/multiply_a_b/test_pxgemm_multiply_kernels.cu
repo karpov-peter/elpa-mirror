@@ -27,6 +27,9 @@
 #include <cuda_runtime.h>
 #include <cuComplex.h>
 #include <type_traits>
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/multiply_a_b/GPU/CUDA/elpa_pxgemm_multiply_cuda.cu"
 
@@ -55,12 +58,33 @@ template <> double          make_val<double>(int n)         { return (double)n; 
 template <> float           make_val<float>(int n)          { return (float)n; }
 template <> cuDoubleComplex make_val<cuDoubleComplex>(int n) { return make_cuDoubleComplex((double)n, (double)(n+100)); }
 template <> cuFloatComplex  make_val<cuFloatComplex>(int n)  { return make_cuFloatComplex((float)n, (float)(n+100)); }
+#ifdef WANT_HALF_PRECISION_REAL
+template <> __half          make_val<__half>(int n)          { return __float2half((float)n); }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> __half2         make_val<__half2>(int n)         { return make_half2(__float2half((float)n), __float2half((float)(n+100))); }
+#endif
 
 template <typename T>
 static bool vals_eq(T a, T b)
 {
     if constexpr (std::is_same_v<T, cuDoubleComplex> || std::is_same_v<T, cuFloatComplex>)
         return a.x == b.x && a.y == b.y;
+#ifdef WANT_HALF_PRECISION_REAL
+    else if constexpr (std::is_same_v<T, __half>) {
+        float fa = __half2float(a), fb = __half2float(b);
+        float denom = fabsf(fb) + 1.0f;
+        return fabsf(fa - fb) < 0.02f * denom;
+    }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+    else if constexpr (std::is_same_v<T, __half2>) {
+        float ax = __half2float(a.x), ay = __half2float(a.y);
+        float bx = __half2float(b.x), by = __half2float(b.y);
+        return fabsf(ax - bx) < 0.02f * (fabsf(bx) + 1.0f) &&
+               fabsf(ay - by) < 0.02f * (fabsf(by) + 1.0f);
+    }
+#endif
     else
         return a == b;
 }
@@ -73,6 +97,10 @@ static T conj_val(T v)
         return make_cuDoubleComplex(v.x, -v.y);
     else if constexpr (std::is_same_v<T, cuFloatComplex>)
         return make_cuFloatComplex(v.x, -v.y);
+#ifdef WANT_HALF_PRECISION_COMPLEX
+    else if constexpr (std::is_same_v<T, __half2>)
+        return make_half2(v.x, __hneg(v.y));
+#endif
     else
         return v;
 }
@@ -82,12 +110,24 @@ template <> double          make_zero<double>()          { return 0.0; }
 template <> float           make_zero<float>()           { return 0.0f; }
 template <> cuDoubleComplex make_zero<cuDoubleComplex>()  { return make_cuDoubleComplex(0.0, 0.0); }
 template <> cuFloatComplex  make_zero<cuFloatComplex>()   { return make_cuFloatComplex(0.0f, 0.0f); }
+#ifdef WANT_HALF_PRECISION_REAL
+template <> __half          make_zero<__half>()           { return __float2half(0.0f); }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> __half2         make_zero<__half2>()          { return make_half2(__float2half(0.0f), __float2half(0.0f)); }
+#endif
 
 template <typename T> static char dtype();
 template <> char dtype<double>()         { return 'D'; }
 template <> char dtype<float>()          { return 'S'; }
 template <> char dtype<cuDoubleComplex>() { return 'Z'; }
 template <> char dtype<cuFloatComplex>()  { return 'C'; }
+#ifdef WANT_HALF_PRECISION_REAL
+template <> char dtype<__half>()         { return 'H'; }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> char dtype<__half2>()        { return 'G'; }
+#endif
 
 // ============================================================
 // Test: gpu_copy_aux_full
@@ -712,6 +752,52 @@ int main(void)
     run_update_c_tn_nt_test<float>          ("float",          0, "nt");
     run_update_c_tn_nt_test<cuDoubleComplex>("cuDoubleComplex", 0, "nt");
     run_update_c_tn_nt_test<cuFloatComplex> ("cuFloatComplex",  0, "nt");
+
+#ifdef WANT_HALF_PRECISION_REAL
+    printf("\ngpu_copy_aux_full <__half>:\n");
+    run_copy_aux_full_test<__half>("__half");
+    printf("\ngpu_copy_and_set_zeros_aux_full <__half>:\n");
+    run_copy_and_set_zeros_aux_full_test<__half>("__half");
+    printf("\ngpu_copy_and_set_zeros_aux_a_full <__half>:\n");
+    run_copy_aux_a_full_test<__half>("__half");
+    printf("\ngpu_copy_and_set_zeros_aux_b_full <__half>:\n");
+    run_copy_aux_b_full_test<__half>("__half");
+    printf("\ngpu_ccl_copy_buf_send <__half>:\n");
+    run_ccl_copy_buf_send_test<__half>("__half");
+    printf("\ngpu_ccl_copy_buf_recv <__half>:\n");
+    run_ccl_copy_buf_recv_test<__half>("__half");
+    printf("\ngpu_copy_and_set_zeros_aux_ab_full (TN path) <__half>:\n");
+    run_copy_aux_ab_full_tn_nt_test<__half>("__half", 1, "tn");
+    printf("\ngpu_copy_and_set_zeros_aux_ab_full (NT path) <__half>:\n");
+    run_copy_aux_ab_full_tn_nt_test<__half>("__half", 0, "nt");
+    printf("\ngpu_update_c_tn_nt (TN path, beta=0) <__half>:\n");
+    run_update_c_tn_nt_test<__half>("__half", 1, "tn");
+    printf("\ngpu_update_c_tn_nt (NT path, beta=0) <__half>:\n");
+    run_update_c_tn_nt_test<__half>("__half", 0, "nt");
+#endif /* WANT_HALF_PRECISION_REAL */
+
+#ifdef WANT_HALF_PRECISION_COMPLEX
+    printf("\ngpu_copy_aux_full <__half2>:\n");
+    run_copy_aux_full_test<__half2>("__half2");
+    printf("\ngpu_copy_and_set_zeros_aux_full <__half2>:\n");
+    run_copy_and_set_zeros_aux_full_test<__half2>("__half2");
+    printf("\ngpu_copy_and_set_zeros_aux_a_full <__half2>:\n");
+    run_copy_aux_a_full_test<__half2>("__half2");
+    printf("\ngpu_copy_and_set_zeros_aux_b_full <__half2>:\n");
+    run_copy_aux_b_full_test<__half2>("__half2");
+    printf("\ngpu_ccl_copy_buf_send <__half2>:\n");
+    run_ccl_copy_buf_send_test<__half2>("__half2");
+    printf("\ngpu_ccl_copy_buf_recv <__half2>:\n");
+    run_ccl_copy_buf_recv_test<__half2>("__half2");
+    printf("\ngpu_copy_and_set_zeros_aux_ab_full (TN path) <__half2>:\n");
+    run_copy_aux_ab_full_tn_nt_test<__half2>("__half2", 1, "tn");
+    printf("\ngpu_copy_and_set_zeros_aux_ab_full (NT path) <__half2>:\n");
+    run_copy_aux_ab_full_tn_nt_test<__half2>("__half2", 0, "nt");
+    printf("\ngpu_update_c_tn_nt (TN path, beta=0) <__half2>:\n");
+    run_update_c_tn_nt_test<__half2>("__half2", 1, "tn");
+    printf("\ngpu_update_c_tn_nt (NT path, beta=0) <__half2>:\n");
+    run_update_c_tn_nt_test<__half2>("__half2", 0, "nt");
+#endif /* WANT_HALF_PRECISION_COMPLEX */
 
     printf("\n=== Summary: %d failure(s) ===\n", g_failures);
     return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

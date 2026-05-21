@@ -199,10 +199,16 @@ extern "C" void CONCATENATE(ELPA_GPU,  _distribute_global_column_FromC)(char dat
                                                               g_col_dim1, g_col_dim2, ldq, matrixCols, 
                                                               noff_in, noff, nlen, my_prow, np_rows, nblk,
                                                               debug, my_stream);
-  else if (dataType=='S') gpu_distribute_global_column<float> ((float  *) g_col_dev, (float  *) l_col_dev, 
-                                                              g_col_dim1, g_col_dim2, ldq, matrixCols, 
+  else if (dataType=='S') gpu_distribute_global_column<float> ((float  *) g_col_dev, (float  *) l_col_dev,
+                                                              g_col_dim1, g_col_dim2, ldq, matrixCols,
                                                               noff_in, noff, nlen, my_prow, np_rows, nblk,
                                                               debug, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_distribute_global_column<__half>((__half *) g_col_dev, (__half *) l_col_dev,
+                                                              g_col_dim1, g_col_dim2, ldq, matrixCols,
+                                                              noff_in, noff, nlen, my_prow, np_rows, nblk,
+                                                              debug, my_stream);
+#endif
   else {
     printf("Error in elpa_distribute_global_column: Unsupported data type\n");
   }

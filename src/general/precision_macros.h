@@ -51,6 +51,7 @@
 #ifdef REALCASE
 #undef DOUBLE_PRECISION_REAL
 #undef SINGLE_PRECSION_REAL
+#undef HALF_PRECISION_REAL
 #undef  MATH_DATATYPE
 #undef  BLAS_TRANS_OR_CONJ
 #undef  BLAS_CHAR
@@ -348,12 +349,111 @@
 #define gpusolver_PRECISION_syevd gpusolver_ssyevd
 #endif /* SINGLE_PRECISION */
 
+#ifdef HALF_PRECISION
+/* stub: half-precision uses single-precision arithmetic; only naming differs */
+#define HALF_PRECISION_REAL
+
+#define  PRECISION half
+#define  PRECISION_STR 'half'
+#define  PRECISION_SUFFIX "_half"
+#define  ELPA_IMPL_SUFFIX h
+#define  REAL_DATATYPE rk4
+#define  C_REAL_DATATYPE c_float
+#define  BLAS_CHAR S
+#define  BLAS_CHAR_AND_SY_OR_HE SSY
+#define  PRECISION_CHAR 'S'
+#define  SPECIAL_COMPLEX_DATATYPE ck4
+
+#define  PRECISION_TRTRI STRTRI
+#define  PRECISION_POTRF SPOTRF
+#define  PRECISION_TRSM STRSM
+#define  PRECISION_GEMV SGEMV
+#define  PRECISION_GERC SGER
+#define  PRECISION_TRMV STRMV
+#define  PRECISION_GEMM SGEMM
+#define  PRECISION_TRMM STRMM
+#define  PRECISION_HERK SHERK
+#define  PRECISION_SYRK SSYRK
+#define  PRECISION_SYMV SSYMV
+#define  PRECISION_SYMM SSYMM
+#define  PRECISION_HEMV SHEMV
+#define  PRECISION_HER2 SHER2
+#define  PRECISION_SYR2 SSYR2
+#define  PRECISION_SYR2K SSYR2K
+#define  PRECISION_GEQRF SGEQRF
+#define  PRECISION_STEDC SSTEDC
+#define  PRECISION_STEQR SSTEQR
+#define  PRECISION_LAMRG SLAMRG
+#define  PRECISION_LAMCH SLAMCH
+#define  PRECISION_LAPY2 SLAPY2
+#define  PRECISION_LAED4 SLAED4
+#define  PRECISION_LAED5 SLAED5
+#define  PRECISION_NRM2 SNRM2
+#define  PRECISION_LASET SLASET
+#define  PRECISION_GER SGER
+#define  PRECISION_SCAL SSCAL
+#define  PRECISION_COPY SCOPY
+#define  PRECISION_AXPY SAXPY
+#define  gpublas_PRECISION_GEMM gpublas_SGEMM
+#define  gpublas_PRECISION_TRMM gpublas_STRMM
+#define  gpublas_PRECISION_SYRK_HERK gpublas_SSYRK
+#define  gpublas_PRECISION_GEMV gpublas_SGEMV
+#define  gpublas_PRECISION_SYMV gpublas_SSYMV
+#define  gpublas_PRECISION_TRMV gpublas_STRMV
+#define  gpublas_PRECISION_COPY gpublas_SCOPY
+#define  gpublas_PRECISION_TRSM gpublas_STRSM
+#define  gpublas_PRECISION_DOT  gpublas_SDOT
+#define  gpublas_PRECISION_SCAL gpublas_SSCAL
+#define  gpusolver_PRECISION_TRTRI gpusolver_STRTRI
+#define  gpusolver_PRECISION_POTRF gpusolver_SPOTRF
+#define  cublas_PRECISION_GEMM cublas_SGEMM
+#define  cublas_PRECISION_TRMM cublas_STRMM
+#define  cublas_PRECISION_GEMV cublas_SGEMV
+#define  cublas_PRECISION_SYMV cublas_SSYMV
+#define  cublas_PRECISION_COPY cublas_SCOPY
+#define  gpu_copy_PRECISION_a_tmp1 gpu_copy_float_a_tmp1
+#define  gpu_copy_PRECISION_tmp1_tmp2 gpu_copy_float_tmp1_tmp2
+#define  gpu_copy_PRECISION_a_tmat2 gpu_copy_float_a_tmat2
+#define  gpu_copy_PRECISION_tmp2_tmat2 gpu_copy_float_tmp2_tmat2
+#define  gpu_copy_PRECISION_a_tmat1 gpu_copy_float_a_tmat1
+#define  gpu_copy_PRECISION_a_tmatc gpu_copy_float_a_tmatc
+#define  mkl_offload_PRECISION_GEMM mkl_offload_SGEMM
+#define  mkl_offload_PRECISION_GEMV mkl_offload_SGEMV
+#define  mkl_offload_PRECISION_TRMM mkl_offload_STRMM
+#define  scal_PRECISION_GEMM PSGEMM
+#define  scal_PRECISION_NRM2 PSNRM2
+#define  scal_PRECISION_LASET PSLASET
+#define  scal_PRECISION_GEMR2D PSGEMR2D
+#define  MPI_REAL_PRECISION MPI_REAL4
+#define  MPI_MATH_DATATYPE_PRECISION MPI_REAL4
+#define  MPI_MATH_DATATYPE_PRECISION_C MPI_FLOAT
+#define  MPI_MATH_DATATYPE_PRECISION_EXPL MPI_REAL4
+#define  C_DATATYPE_KIND c_float
+
+#define ELPA_PRECISION_SSMV elpa_sssmv
+#define ELPA_PRECISION_SSR2 elpa_sssr2
+
+#define C_GEMM sgemm_
+#define C_LACPY slacpy_
+#define C_PLACPY pslacpy_
+#define C_PTRAN pstran_
+
+#define GPU_ZERO_SKEWSYMMETRIC_Q_PRECISION gpu_zero_skewsymmetric_q_float
+#define GPU_COPY_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION gpu_copy_skewsymmetric_second_half_q_float
+#define GPU_COPY_SKEWSYMMETRIC_FIRST_HALF_Q_PRECISION gpu_copy_skewsymmetric_first_half_q_float
+#define GPU_GET_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION gpu_get_skewsymmetric_second_half_q_float
+#define GPU_PUT_SKEWSYMMETRIC_SECOND_HALF_Q_PRECISION gpu_put_skewsymmetric_second_half_q_float
+
+#define  gpusolver_PRECISION_syevd gpusolver_ssyevd
+#endif /* HALF_PRECISION */
+
 #endif /* REALCASE */
 
 #ifdef COMPLEXCASE
 
 #undef DOUBLE_PRECISION_COMPLEX
 #undef SINGLE_PRECISION_COMPLEX
+#undef HALF_PRECISION_COMPLEX
 #undef  MATH_DATATYPE
 #undef  BLAS_TRANS_OR_CONJ
 #undef  BLAS_CHAR
@@ -661,5 +761,103 @@
 
 #endif /* SINGLE PRECISION */
 
+#ifdef HALF_PRECISION
+/* stub: half-precision uses single-precision arithmetic; only naming differs */
+#define HALF_PRECISION_COMPLEX
+#define  PRECISION half
+#define  PRECISION_STR 'half'
+#define  PRECISION_SUFFIX "_half"
+#define  ELPA_IMPL_SUFFIX hc
+#define COMPLEX_DATATYPE CK4
+#define BLAS_CHAR C
+#define BLAS_CHAR_AND_SY_OR_HE CHE
+#define PRECISION_CHAR 'C'
+#define REAL_DATATYPE RK4
+#define C_REAL_DATATYPE c_float
+
+#define C_GEMM cgemm_
+#define C_LACPY clacpy_
+#define C_PLACPY pclacpy_
+#define C_PTRAN pctranc_
+
+#define  PRECISION_TRTRI CTRTRI
+#define  PRECISION_POTRF CPOTRF
+#define  PRECISION_TRSM CTRSM
+#define  PRECISION_GEMV CGEMV
+#define  PRECISION_GERC CGERC
+#define  PRECISION_TRMV CTRMV
+#define  PRECISION_GEMM CGEMM
+#define  PRECISION_TRMM CTRMM
+#define  PRECISION_HERK CHERK
+#define  PRECISION_SYRK CSYRK
+#define  PRECISION_SYMV CSYMV
+#define  PRECISION_SYMM CSYMM
+#define  PRECISION_HEMV CHEMV
+#define  PRECISION_HER2 CHER2
+#define  PRECISION_SYR2 CSYR2
+#define  PRECISION_SYR2K CSYR2K
+#define  PRECISION_GEQRF CGEQRF
+#define  PRECISION_STEDC CSTEDC
+#define  PRECISION_STEQR CSTEQR
+#define  PRECISION_LAMRG CLAMRG
+#define  PRECISION_LAMCH CLAMCH
+#define  PRECISION_LAPY2 CLAPY2
+#define  PRECISION_LAED4 CLAED4
+#define  PRECISION_LAED5 CLAED5
+#define  PRECISION_DOTC CDOTC
+#define  PRECISION_LASET CLASET
+#define  PRECISION_SCAL CSCAL
+#define  PRECISION_COPY CCOPY
+#define  PRECISION_AXPY CAXPY
+#define  PRECISION_GER CGER
+#define  gpublas_PRECISION_GEMM gpublas_CGEMM
+#define  gpublas_PRECISION_TRMM gpublas_CTRMM
+#define  gpublas_PRECISION_SYRK_HERK gpublas_CHERK
+#define  gpublas_PRECISION_GEMV gpublas_CGEMV
+#define  gpublas_PRECISION_SYMV gpublas_CSYMV
+#define  gpublas_PRECISION_TRMV gpublas_CTRMV
+#define  gpublas_PRECISION_COPY gpublas_CCOPY
+#define  gpublas_PRECISION_TRSM gpublas_CTRSM
+#define  gpublas_PRECISION_DOT  gpublas_CDOT
+#define  gpublas_PRECISION_SCAL gpublas_CSCAL
+#define  gpusolver_PRECISION_TRTRI gpusolver_CTRTRI
+#define  gpusolver_PRECISION_POTRF gpusolver_CPOTRF
+#define  cublas_PRECISION_GEMM cublas_CGEMM
+#define  cublas_PRECISION_TRMM cublas_CTRMM
+#define  cublas_PRECISION_GEMV cublas_CGEMV
+#define  cublas_PRECISION_SYMV cublas_CSYMV
+#define  cublas_PRECISION_COPY cublas_CCOPY
+#define  gpu_copy_PRECISION_a_tmp1 gpu_copy_float_complex_a_tmp1
+#define  gpu_copy_PRECISION_tmp1_tmp2 gpu_copy_float_complex_tmp1_tmp2
+#define  gpu_copy_PRECISION_a_tmat2 gpu_copy_float_complex_a_tmat2
+#define  gpu_copy_PRECISION_tmp2_tmat2 gpu_copy_float_complex_tmp2_tmat2
+#define  gpu_copy_PRECISION_a_tmat1 gpu_copy_float_complex_a_tmat1
+#define  gpu_copy_PRECISION_a_tmatc gpu_copy_float_complex_a_tmatc
+#define  mkl_offload_PRECISION_GEMM mkl_offload_CGEMM
+#define  mkl_offload_PRECISION_GEMV mkl_offload_CGEMV
+#define  mkl_offload_PRECISION_TRMM mkl_offload_CTRMM
+#define  scal_PRECISION_GEMM PCGEMM
+#define  scal_PRECISION_DOTC PCDOTC
+#define  scal_PRECISION_LASET PCLASET
+#define  scal_PRECISION_GEMR2D PCGEMR2D
+#define  MPI_COMPLEX_PRECISION MPI_COMPLEX
+#define  MPI_MATH_DATATYPE_PRECISION MPI_COMPLEX
+#define  MPI_MATH_DATATYPE_PRECISION_C MPI_COMPLEX
+#define  MPI_MATH_DATATYPE_PRECISION_EXPL MPI_COMPLEX8
+#define  MPI_COMPLEX_EXPLICIT_PRECISION MPI_COMPLEX8
+#define  MPI_REAL_PRECISION MPI_REAL4
+#define  KIND_PRECISION rk4
+#define  PRECISION_CMPLX CMPLX
+#define  PRECISION_IMAG AIMAG
+#define  PRECISION_REAL REAL
+#define  C_DATATYPE_KIND c_float
+
+#define ELPA_PRECISION_SSMV elpa_cssmv
+#define ELPA_PRECISION_SSR2 elpa_cssr2
+
+#define GPU_SCALE_QMAT_PRECISION gpu_scale_qmat_float_complex
+#define GPU_COPY_REAL_PART_TO_Q_PRECISION gpu_copy_real_part_to_q_float_complex
+
+#endif /* HALF_PRECISION */
 
 #endif /* COMPLEXCASE */

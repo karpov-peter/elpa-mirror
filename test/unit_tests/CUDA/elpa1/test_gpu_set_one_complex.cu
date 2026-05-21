@@ -51,6 +51,9 @@
 #include <cuComplex.h>
 #include <algorithm>
 #include <type_traits>
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/GPU/common_device_functions.h"
 #include "../../../../src/GPU/gpu_to_cuda_and_hip_interface.h"
@@ -96,19 +99,48 @@ static int run_test(const char *type_name, double expected_re, double expected_i
   return passed ? 0 : 1;
 }
 
+#ifdef WANT_HALF_PRECISION_COMPLEX
+static int run_test_half2(void)
+{
+  __half2 *dev_ptr = nullptr;
+  __half2  host_val;
+  cudaStream_t stream;
+
+  CUDA_CHECK(cudaMalloc((void **)&dev_ptr, sizeof(__half2)));
+  CUDA_CHECK(cudaMemset(dev_ptr, 0, sizeof(__half2)));
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
+  gpu_set_one_complex<__half2>(dev_ptr, stream);
+
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  CUDA_CHECK(cudaMemcpy(&host_val, dev_ptr, sizeof(__half2), cudaMemcpyDeviceToHost));
+
+  CUDA_CHECK(cudaStreamDestroy(stream));
+  CUDA_CHECK(cudaFree(dev_ptr));
+
+  float re = __half2float(host_val.x);
+  float im = __half2float(host_val.y);
+  int passed = (re == 1.0f) && (im == 0.0f);
+
+  printf("  gpu_set_one_complex<__half2>: got (%.1f, %.1f)  expected (1.0, 0.0)  [%s]\n",
+         re, im, passed ? "PASS" : "FAIL");
+  return passed ? 0 : 1;
+}
+#endif /* WANT_HALF_PRECISION_COMPLEX */
+
 int main(void)
 {
   int failures = 0;
 
+  printf("=== Unit tests for gpu_set_one_complex kernel (CUDA) ===\n\n");
   printf("Testing gpu_set_one_complex:\n");
   failures += run_test<cuDoubleComplex>("cuDoubleComplex", 1.0, 0.0);
   failures += run_test<cuFloatComplex> ("cuFloatComplex",  1.0, 0.0);
+#ifdef WANT_HALF_PRECISION_COMPLEX
+  failures += run_test_half2();
+#endif
 
-  if (failures == 0)
-    printf("All tests passed.\n");
-  else
-    printf("%d test(s) FAILED.\n", failures);
-
+  printf("\n=== Summary: %d failure(s) ===\n", failures);
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

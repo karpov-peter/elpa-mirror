@@ -50,6 +50,9 @@
 #include <cuComplex.h>
 #include <algorithm>
 #include <type_traits>
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/GPU/common_device_functions.h"
 #include "../../../../src/GPU/gpu_to_cuda_and_hip_interface.h"
@@ -75,6 +78,11 @@ static int g_failures = 0;
 
 static bool neq (double a, double b, double tol=1e-10) { return fabs (a-b) < tol; }
 static bool neqf(float  a, float  b, float  tol=1e-5f) { return fabsf(a-b) < tol; }
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+static bool half_neq(__half a, float ref, float tol=0.02f) {
+    return fabsf(__half2float(a) - ref) < tol * (fabsf(ref) + 1.0f);
+}
+#endif
 
 template <typename T>
 static T dev_read(T *d) {
@@ -759,6 +767,133 @@ static void test_transpose_reduceadd_vectors_copy_block()
   }
 }
 
+#ifdef WANT_HALF_PRECISION_REAL
+// ============================================================
+// gpu_hh_transform<__half>
+// Same cases as the double/float template, but using __float2half for
+// initialization and __half2float for comparison.
+// ============================================================
+static void test_hh_transform_half()
+{
+  printf("\ngpu_hh_transform<__half>:\n");
+
+  __half *alpha, *xnorm, *xf, *tau;
+  CUDA_CHECK(cudaMalloc(&alpha, sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&xnorm, sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&xf,    sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&tau,   sizeof(__half)));
+
+  auto up = [](void *d, float v) {
+    __half h = __float2half(v);
+    CUDA_CHECK(cudaMemcpy(d, &h, sizeof(__half), cudaMemcpyHostToDevice));
+  };
+
+  // --- Case A: xnorm_sq=0, alpha=4 (positive) -> tau=0 ---
+  {
+    up(alpha, 4.0f); up(xnorm, 0.0f);
+    gpu_hh_transform<__half>(alpha, xnorm, xf, tau, 0, (gpuStream_t)0);
+    CUDA_CHECK(cudaDeviceSynchronize());
+    __half h_tau, h_xf, h_alpha_out;
+    CUDA_CHECK(cudaMemcpy(&h_tau,       tau,   sizeof(__half), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&h_xf,        xf,    sizeof(__half), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&h_alpha_out, alpha, sizeof(__half), cudaMemcpyDeviceToHost));
+    REPORT("__half Case A (xnorm=0,alpha>0): tau=0",
+           half_neq(h_tau, 0.0f) && half_neq(h_xf, 0.0f) && half_neq(h_alpha_out, 4.0f));
+  }
+
+  // --- Case B: xnorm_sq=0, alpha=-4 (negative) -> tau=2, alpha=4 ---
+  {
+    up(alpha, -4.0f); up(xnorm, 0.0f);
+    gpu_hh_transform<__half>(alpha, xnorm, xf, tau, 0, (gpuStream_t)0);
+    CUDA_CHECK(cudaDeviceSynchronize());
+    __half h_tau, h_xf, h_alpha_out;
+    CUDA_CHECK(cudaMemcpy(&h_tau,       tau,   sizeof(__half), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&h_xf,        xf,    sizeof(__half), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&h_alpha_out, alpha, sizeof(__half), cudaMemcpyDeviceToHost));
+    REPORT("__half Case B (xnorm=0,alpha<0): tau=2,alpha=4",
+           half_neq(h_tau, 2.0f) && half_neq(h_xf, 0.0f) && half_neq(h_alpha_out, 4.0f));
+  }
+
+  // --- Case C: alpha=3, xnorm_sq=16 -> alpha_out=5, tau=0.4, xf=-0.5 ---
+  {
+    up(alpha, 3.0f); up(xnorm, 16.0f);
+    gpu_hh_transform<__half>(alpha, xnorm, xf, tau, 0, (gpuStream_t)0);
+    CUDA_CHECK(cudaDeviceSynchronize());
+    __half h_tau, h_xf, h_alpha_out;
+    CUDA_CHECK(cudaMemcpy(&h_tau,       tau,   sizeof(__half), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&h_xf,        xf,    sizeof(__half), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&h_alpha_out, alpha, sizeof(__half), cudaMemcpyDeviceToHost));
+    REPORT("__half Case C: alpha_out=5.0", half_neq(h_alpha_out, 5.0f));
+    REPORT("__half Case C: tau_out=0.4",   half_neq(h_tau,       0.4f));
+    REPORT("__half Case C: xf_out=-0.5",   half_neq(h_xf,       -0.5f));
+  }
+
+  CUDA_CHECK(cudaFree(alpha)); CUDA_CHECK(cudaFree(xnorm));
+  CUDA_CHECK(cudaFree(xf));    CUDA_CHECK(cudaFree(tau));
+}
+
+// ============================================================
+// gpu_dot_product<__half>: x=[1,2,3], y=[4,5,6], result=32
+// ============================================================
+static void test_dot_product_half()
+{
+  printf("\ngpu_dot_product<__half>:\n");
+  int SM = 1;
+
+  __half hx[3] = {__float2half(1.0f), __float2half(2.0f), __float2half(3.0f)};
+  __half hy[3] = {__float2half(4.0f), __float2half(5.0f), __float2half(6.0f)};
+  __half zero  = __float2half(0.0f);
+
+  __half *dx, *dy, *dr;
+  CUDA_CHECK(cudaMalloc(&dx, 3*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dy, 3*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&dr, sizeof(__half)));
+  CUDA_CHECK(cudaMemcpy(dx, hx, 3*sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(dy, hy, 3*sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(dr, &zero, sizeof(__half), cudaMemcpyHostToDevice));
+
+  gpu_dot_product<__half>(3, dx, 1, dy, 1, dr, 0, SM, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  __half h_result;
+  CUDA_CHECK(cudaMemcpy(&h_result, dr, sizeof(__half), cudaMemcpyDeviceToHost));
+  REPORT("__half: dot([1,2,3],[4,5,6])==32", half_neq(h_result, 32.0f));
+
+  CUDA_CHECK(cudaFree(dx)); CUDA_CHECK(cudaFree(dy)); CUDA_CHECK(cudaFree(dr));
+}
+
+// ============================================================
+// gpu_dot_product_and_assign<__half>: v=[1,2,3,4]
+// isOurProcessRow=1 -> aux[0]=14, aux[1]=4
+// ============================================================
+static void test_dot_product_and_assign_half()
+{
+  printf("\ngpu_dot_product_and_assign<__half>:\n");
+  int SM = 1;
+
+  __half hv[4] = {__float2half(1.0f), __float2half(2.0f),
+                  __float2half(3.0f), __float2half(4.0f)};
+  __half zero  = __float2half(0.0f);
+
+  __half *dv, *aux;
+  CUDA_CHECK(cudaMalloc(&dv,  4*sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(&aux, 2*sizeof(__half)));
+  CUDA_CHECK(cudaMemcpy(dv, hv, 4*sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(aux,   &zero, sizeof(__half), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(aux+1, &zero, sizeof(__half), cudaMemcpyHostToDevice));
+
+  gpu_dot_product_and_assign<__half>(dv, 4, 1, aux, 0, SM, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  __half ha[2];
+  CUDA_CHECK(cudaMemcpy(ha, aux, 2*sizeof(__half), cudaMemcpyDeviceToHost));
+  REPORT("__half dot_product_and_assign: aux[0]==14 (dot first 3)", half_neq(ha[0], 14.0f));
+  REPORT("__half dot_product_and_assign: aux[1]==4  (last element)", half_neq(ha[1],  4.0f));
+
+  CUDA_CHECK(cudaFree(dv)); CUDA_CHECK(cudaFree(aux));
+}
+#endif /* WANT_HALF_PRECISION_REAL */
+
 // ============================================================
 int main(void)
 {
@@ -773,6 +908,12 @@ int main(void)
   test_store_u_v_in_uv_vu();
   test_update_matrix_element_add();
   test_transpose_reduceadd_vectors_copy_block();
+
+#ifdef WANT_HALF_PRECISION_REAL
+  test_hh_transform_half();
+  test_dot_product_half();
+  test_dot_product_and_assign_half();
+#endif /* WANT_HALF_PRECISION_REAL */
 
   printf("\n=== Summary: %d failure(s) ===\n", g_failures);
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

@@ -51,6 +51,9 @@
 #include <cuda_runtime.h>
 #include <cuComplex.h>
 #include <type_traits>
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/cholesky/GPU/CUDA/elpa_cholesky_cuda.cu"
 
@@ -77,6 +80,13 @@ static T make_val(int i)
         return (T)i;
 }
 
+#ifdef WANT_HALF_PRECISION_REAL
+template <> __half make_val<__half>(int i) { return __float2half((float)i); }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> __half2 make_val<__half2>(int i) { return make_half2(__float2half((float)i), __float2half((float)(i * 2))); }
+#endif
+
 template <typename T>
 static T zero_val()
 {
@@ -84,6 +94,13 @@ static T zero_val()
     else if constexpr (std::is_same_v<T, cuFloatComplex>) return make_cuFloatComplex(0.0f, 0.0f);
     else return (T)0;
 }
+
+#ifdef WANT_HALF_PRECISION_REAL
+template <> __half zero_val<__half>() { return __float2half(0.0f); }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> __half2 zero_val<__half2>() { return make_half2(__float2half(0.0f), __float2half(0.0f)); }
+#endif
 
 template <typename T>
 static T conj_val(T v)
@@ -96,6 +113,13 @@ static T conj_val(T v)
         return v;
 }
 
+#ifdef WANT_HALF_PRECISION_REAL
+template <> __half conj_val<__half>(__half v) { return v; }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> __half2 conj_val<__half2>(__half2 v) { return make_half2(v.x, __hneg(v.y)); }
+#endif
+
 template <typename T>
 static bool vals_equal(T a, T b)
 {
@@ -105,6 +129,18 @@ static bool vals_equal(T a, T b)
         return a == b;
 }
 
+#ifdef WANT_HALF_PRECISION_REAL
+template <> bool vals_equal<__half>(__half a, __half b) {
+    return fabsf(__half2float(a) - __half2float(b)) < 0.02f * (fabsf(__half2float(b)) + 1.0f);
+}
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> bool vals_equal<__half2>(__half2 a, __half2 b) {
+    return fabsf(__half2float(a.x) - __half2float(b.x)) < 0.02f * (fabsf(__half2float(b.x)) + 1.0f) &&
+           fabsf(__half2float(a.y) - __half2float(b.y)) < 0.02f * (fabsf(__half2float(b.y)) + 1.0f);
+}
+#endif
+
 // ---- per-type char tag for cuda_set_a_lower_to_zero_FromC ----
 
 template <typename T> static char type_char();
@@ -112,6 +148,12 @@ template <> char type_char<double>()          { return 'D'; }
 template <> char type_char<float>()           { return 'S'; }
 template <> char type_char<cuDoubleComplex>() { return 'Z'; }
 template <> char type_char<cuFloatComplex>()  { return 'C'; }
+#ifdef WANT_HALF_PRECISION_REAL
+template <> char type_char<__half>()  { return 'H'; }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> char type_char<__half2>() { return 'G'; }
+#endif
 
 // ---- dispatcher overloads for cuda_copy_a_tmatc ----
 
@@ -134,6 +176,20 @@ static void call_copy_a_tmatc(cuFloatComplex *a, cuFloatComplex *tmatc,
                                int *nblk, int *mRows, int *lcols, int *lcolx, int *lrow1,
                                cudaStream_t s)
 { cuda_copy_float_complex_a_tmatc_FromC(a, tmatc, nblk, mRows, lcols, lcolx, lrow1, s); }
+
+#ifdef WANT_HALF_PRECISION_REAL
+static void call_copy_a_tmatc(__half *a, __half *tmatc,
+                               int *nblk, int *mRows, int *lcols, int *lcolx, int *lrow1,
+                               cudaStream_t s)
+{ cuda_copy_half_a_tmatc_FromC(a, tmatc, nblk, mRows, lcols, lcolx, lrow1, s); }
+#endif
+
+#ifdef WANT_HALF_PRECISION_COMPLEX
+static void call_copy_a_tmatc(__half2 *a, __half2 *tmatc,
+                               int *nblk, int *mRows, int *lcols, int *lcolx, int *lrow1,
+                               cudaStream_t s)
+{ cuda_copy_half_complex_a_tmatc_FromC(a, tmatc, nblk, mRows, lcols, lcolx, lrow1, s); }
+#endif
 
 // ============================================================
 // Test: cuda_check_device_info_kernel
@@ -298,6 +354,7 @@ int main(void)
 {
     int failures = 0;
 
+    printf("=== Unit tests for elpa_cholesky_cuda.cu kernels ===\n\n");
     printf("Testing cuda_check_device_info_kernel:\n");
     failures += run_check_device_info_test();
 
@@ -316,11 +373,21 @@ int main(void)
     failures += run_set_a_lower_to_zero_test<cuDoubleComplex>("cuDoubleComplex");
     failures += run_set_a_lower_to_zero_test<cuFloatComplex> ("cuFloatComplex");
 
-    if (failures == 0)
-        printf("\nAll tests passed.\n");
-    else
-        printf("\n%d test(s) FAILED.\n", failures);
+#ifdef WANT_HALF_PRECISION_REAL
+    printf("\nTesting cuda_copy_a_tmatc_kernel (__half):\n");
+    failures += run_copy_a_tmatc_test<__half>("__half");
+    printf("\nTesting cuda_set_a_lower_to_zero_kernel (__half):\n");
+    failures += run_set_a_lower_to_zero_test<__half>("__half");
+#endif
 
+#ifdef WANT_HALF_PRECISION_COMPLEX
+    printf("\nTesting cuda_copy_a_tmatc_kernel (__half2):\n");
+    failures += run_copy_a_tmatc_test<__half2>("__half2");
+    printf("\nTesting cuda_set_a_lower_to_zero_kernel (__half2):\n");
+    failures += run_set_a_lower_to_zero_test<__half2>("__half2");
+#endif
+
+    printf("\n=== Summary: %d failure(s) ===\n", failures);
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

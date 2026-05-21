@@ -49,6 +49,9 @@
 #include <cuda_runtime.h>
 #include <cuComplex.h>
 #include <type_traits>
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/elpa1/GPU/CUDA/trans_ev_cuda.cu"
 
@@ -77,6 +80,10 @@ static T make_cx(double re, double im)
 {
     if constexpr (std::is_same_v<T, cuDoubleComplex>)
         return make_cuDoubleComplex(re, im);
+#ifdef WANT_HALF_PRECISION_COMPLEX
+    else if constexpr (std::is_same_v<T, __half2>)
+        return make_half2(__float2half((float)re), __float2half((float)im));
+#endif
     else
         return make_cuFloatComplex((float)re, (float)im);
 }
@@ -86,6 +93,14 @@ static bool cx_eq(T a, double re, double im)
 {
     if constexpr (std::is_same_v<T, cuDoubleComplex>)
         return a.x == re && a.y == im;
+#ifdef WANT_HALF_PRECISION_COMPLEX
+    else if constexpr (std::is_same_v<T, __half2>) {
+        float ax = __half2float(a.x), ay = __half2float(a.y);
+        float bx = (float)re,          by = (float)im;
+        return fabsf(ax - bx) < 0.02f * (fabsf(bx) + 1.0f) &&
+               fabsf(ay - by) < 0.02f * (fabsf(by) + 1.0f);
+    }
+#endif
     else
         return a.x == (float)re && a.y == (float)im;
 }
@@ -122,6 +137,16 @@ void call_scale_qmat<cuFloatComplex>(int ldq, int l_cols,
                                         (float _Complex *)q_dev,
                                         (float _Complex *)tau_dev, s);
 }
+
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <>
+void call_scale_qmat<__half2>(int ldq, int l_cols,
+                              __half2 *q_dev, __half2 *tau_dev,
+                              cudaStream_t s)
+{
+    cuda_scale_qmat_half_complex_FromC(ldq, l_cols, q_dev, tau_dev, s);
+}
+#endif
 
 // ============================================================
 // Test: cuda_scale_qmat_{double,float}_complex_kernel
@@ -193,6 +218,11 @@ int main(void)
 
     printf("\ncuda_scale_qmat_float_complex_kernel:\n");
     run_scale_qmat_test<cuFloatComplex>("cuFloatComplex");
+
+#ifdef WANT_HALF_PRECISION_COMPLEX
+    printf("\ncuda_scale_qmat_half_complex_kernel:\n");
+    run_scale_qmat_test<__half2>("__half2");
+#endif
 
     printf("\n=== Summary: %d failure(s) ===\n", g_failures);
     return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

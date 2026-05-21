@@ -63,7 +63,7 @@ ncols     : N_R (==n+b-1)
 // back to the scalar dot-product loop via if constexpr.
 
 template <typename T, int bM, int bN, int block_y, int block_z>
-__device__ void compute_hh_trafo_gpu_new_body(T * __restrict__ q, const T * __restrict__ hh, const T * __restrict__ hh_tau, const int nev, const int nb, const int ldq, const int ncols)
+__global__ void compute_hh_trafo_gpu_new(T * __restrict__ q, const T * __restrict__ hh, const T * __restrict__ hh_tau, const int nev, const int nb, const int ldq, const int ncols)
 {
   constexpr int bK = bM;
 
@@ -168,12 +168,6 @@ __device__ void compute_hh_trafo_gpu_new_body(T * __restrict__ q, const T * __re
   }
 }
 
-template <typename T, int bM, int bN, int block_y, int block_z>
-__global__ void compute_hh_trafo_gpu_new(T * __restrict__ q, const T * __restrict__ hh, const T * __restrict__ hh_tau, const int nev, const int nb, const int ldq, const int ncols)
-{
-  compute_hh_trafo_gpu_new_body<T, bM, bN, block_y, block_z>(q, hh, hh_tau, nev, nb, ldq, ncols);
-}
-
 void set_max_shared_bytes(const void *func)
 {
   // Set such that this kernel can use the maximum shared memory available.
@@ -250,6 +244,13 @@ extern "C" {
       }
   }
 
+  // Bugfix: the previous implementation cast the float pointers to double* and
+  // forwarded them to launch_compute_hh_trafo_c_cuda_sm80_kernel_real_double.
+  // When compiled with USE_MMA the DMMA inner-product path read 8-byte double
+  // words from 4-byte float memory, producing wrong results and potential OOB
+  // accesses.  The template is now instantiated with F=float so the kernel uses
+  // the scalar dot-product fallback (the if constexpr branch for double is not
+  // taken), which is both correct and avoids DMMA entirely for single precision.
   void launch_compute_hh_trafo_c_cuda_sm80_kernel_real_single(float *q, const float *hh, const float *hh_tau, const int nev, const int nb, const int ldq, const int ncols, cudaStream_t my_stream) {
 
       switch (nb) {

@@ -58,6 +58,10 @@
 #include <stdint.h>
 #include "config-f90.h"
 
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
+
 #define errormessage(x, ...) do { fprintf(stderr, "%s:%d " x, __FILE__, __LINE__, __VA_ARGS__ ); } while (0)
 
 // Maps a CUDA complex type to its real component scalar type.
@@ -71,7 +75,7 @@ template <> struct cuda_real_type<cuFloatComplex>  { using type = float;  };
 // T deduced from q; the real-type of q_real is derived via cuda_real_type<T>.
 
 template <typename T>
-__device__ void cuda_copy_real_part_to_q_complex_kernel_body(
+__global__ void cuda_copy_real_part_to_q_complex_kernel(
     T *q, const typename cuda_real_type<T>::type *q_real,
     const int matrixRows, const int l_rows, const int l_cols_nev)
 {
@@ -84,12 +88,22 @@ __device__ void cuda_copy_real_part_to_q_complex_kernel_body(
     }
 }
 
-__global__ void cuda_copy_real_part_to_q_double_complex_kernel(cuDoubleComplex *q, const double *q_real, const int matrixRows, const int l_rows, const int l_cols_nev) {
-    cuda_copy_real_part_to_q_complex_kernel_body(q, q_real, matrixRows, l_rows, l_cols_nev);
-}
-
-__global__ void cuda_copy_real_part_to_q_float_complex_kernel(cuFloatComplex *q, const float *q_real, const int matrixRows, const int l_rows, const int l_cols_nev) {
-    cuda_copy_real_part_to_q_complex_kernel_body(q, q_real, matrixRows, l_rows, l_cols_nev);
+template <typename T>
+void cuda_copy_real_part_to_q_complex(
+    T *q_dev, const typename cuda_real_type<T>::type *q_real_dev,
+    int matrixRows, int l_rows, int l_cols_nev, cudaStream_t my_stream)
+{
+    dim3 threadsPerBlock(32, 32);
+    dim3 blocks((l_rows + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                (l_cols_nev + threadsPerBlock.y - 1) / threadsPerBlock.y);
+#ifdef WITH_GPU_STREAMS
+    cuda_copy_real_part_to_q_complex_kernel<T><<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, q_real_dev, matrixRows, l_rows, l_cols_nev);
+#else
+    cuda_copy_real_part_to_q_complex_kernel<T><<<blocks, threadsPerBlock>>>(q_dev, q_real_dev, matrixRows, l_rows, l_cols_nev);
+#endif
+    cudaError_t cuerr = cudaGetLastError();
+    if (cuerr != cudaSuccess)
+        printf("Error in cuda_copy_real_part_to_q_complex_kernel: %s\n", cudaGetErrorString(cuerr));
 }
 
 extern "C" void cuda_copy_real_part_to_q_double_complex_FromC(double _Complex *q_dev, double *q_real_dev, int *matrixRows_in, int *l_rows_in, int *l_cols_nev_in, cudaStream_t  my_stream){
@@ -98,20 +112,7 @@ extern "C" void cuda_copy_real_part_to_q_double_complex_FromC(double _Complex *q
   int matrixRows = *matrixRows_in;
 
   cuDoubleComplex* q_casted = (cuDoubleComplex*) q_dev;
-
-  dim3 threadsPerBlock(32, 32);
-  dim3 blocks((l_rows + threadsPerBlock.x - 1) / threadsPerBlock.x, (l_cols_nev + threadsPerBlock.y - 1) / threadsPerBlock.y);
-
-#ifdef WITH_GPU_STREAMS
-  cuda_copy_real_part_to_q_double_complex_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_casted, q_real_dev, matrixRows, l_rows, l_cols_nev);
-#else
-  cuda_copy_real_part_to_q_double_complex_kernel<<<blocks, threadsPerBlock>>>(q_casted, q_real_dev, matrixRows, l_rows, l_cols_nev);
-#endif
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_copy_real_part_to_q_double_complex_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_copy_real_part_to_q_complex<cuDoubleComplex>(q_casted, q_real_dev, matrixRows, l_rows, l_cols_nev, my_stream);
 }
 
 extern "C" void cuda_copy_real_part_to_q_float_complex_FromC(float _Complex *q_dev, float *q_real_dev, int *matrixRows_in, int *l_rows_in, int *l_cols_nev_in, cudaStream_t  my_stream){
@@ -120,20 +121,7 @@ extern "C" void cuda_copy_real_part_to_q_float_complex_FromC(float _Complex *q_d
   int matrixRows = *matrixRows_in;
 
   cuFloatComplex* q_casted = (cuFloatComplex*) q_dev;
-
-  dim3 threadsPerBlock(32, 32);
-  dim3 blocks((l_rows + threadsPerBlock.x - 1) / threadsPerBlock.x, (l_cols_nev + threadsPerBlock.y - 1) / threadsPerBlock.y);
-
-#ifdef WITH_GPU_STREAMS
-  cuda_copy_real_part_to_q_float_complex_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_casted, q_real_dev, matrixRows, l_rows, l_cols_nev);
-#else
-  cuda_copy_real_part_to_q_float_complex_kernel<<<blocks, threadsPerBlock>>>(q_casted, q_real_dev, matrixRows, l_rows, l_cols_nev);
-#endif
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_copy_real_part_to_q_float_complex_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_copy_real_part_to_q_complex<cuFloatComplex>(q_casted, q_real_dev, matrixRows, l_rows, l_cols_nev, my_stream);
 }
 
 //________________________________________________________________
@@ -141,61 +129,49 @@ extern "C" void cuda_copy_real_part_to_q_float_complex_FromC(float _Complex *q_d
 // Zeros the upper half of q: q[row + matrixRows*(col + matrixCols)] = 0.
 
 template <typename T>
-__device__ void cuda_zero_skewsymmetric_q_kernel_body(T *q, const int matrixRows, const int matrixCols)
+__global__ void cuda_zero_skewsymmetric_q_kernel(T *q, const int matrixRows, const int matrixCols)
 {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     int col = blockIdx.y * blockDim.y + threadIdx.y;
     if (row < matrixRows && col < matrixCols) {
         int index = row + matrixRows * (col + matrixCols);
+#if defined(WANT_HALF_PRECISION_REAL)
+        if constexpr (std::is_same_v<T, __half>) q[index] = __float2half(0.0f);
+        else
+#endif
         q[index] = (T)0;
     }
 }
 
-__global__ void cuda_zero_skewsymmetric_q_double_kernel(double *q, const int matrixRows, const int matrixCols) {
-    cuda_zero_skewsymmetric_q_kernel_body(q, matrixRows, matrixCols);
-}
-
-__global__ void cuda_zero_skewsymmetric_q_float_kernel(float *q, const int matrixRows, const int matrixCols) {
-    cuda_zero_skewsymmetric_q_kernel_body(q, matrixRows, matrixCols);
+template <typename T>
+void cuda_zero_skewsymmetric_q(T *q_dev, int matrixRows, int matrixCols, cudaStream_t my_stream)
+{
+    dim3 threadsPerBlock(32, 32);
+    dim3 blocks((matrixRows + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                (matrixCols + threadsPerBlock.y - 1) / threadsPerBlock.y);
+#ifdef WITH_GPU_STREAMS
+    cuda_zero_skewsymmetric_q_kernel<T><<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, matrixRows, matrixCols);
+#else
+    cuda_zero_skewsymmetric_q_kernel<T><<<blocks, threadsPerBlock>>>(q_dev, matrixRows, matrixCols);
+#endif
+    cudaError_t cuerr = cudaGetLastError();
+    if (cuerr != cudaSuccess)
+        printf("Error in cuda_zero_skewsymmetric_q_kernel: %s\n", cudaGetErrorString(cuerr));
 }
 
 extern "C" void cuda_zero_skewsymmetric_q_double_FromC(double *q_dev, int *matrixRows_in, int *matrixCols_in, cudaStream_t  my_stream){
-  int matrixCols = *matrixCols_in;
-  int matrixRows = *matrixRows_in;
-
-  dim3 threadsPerBlock(32, 32);
-  dim3 blocks((matrixRows + threadsPerBlock.x - 1) / threadsPerBlock.x, (matrixCols + threadsPerBlock.y - 1) / threadsPerBlock.y);
-
-#ifdef WITH_GPU_STREAMS
-  cuda_zero_skewsymmetric_q_double_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, matrixRows, matrixCols);
-#else
-  cuda_zero_skewsymmetric_q_double_kernel<<<blocks, threadsPerBlock>>>(q_dev, matrixRows, matrixCols);
-#endif
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_zero_skewsymmetric_q_double_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_zero_skewsymmetric_q<double>(q_dev, *matrixRows_in, *matrixCols_in, my_stream);
 }
 
 extern "C" void cuda_zero_skewsymmetric_q_float_FromC(float *q_dev, int *matrixRows_in, int *matrixCols_in, cudaStream_t  my_stream){
-  int matrixCols = *matrixCols_in;
-  int matrixRows = *matrixRows_in;
-
-  dim3 threadsPerBlock(32, 32);
-  dim3 blocks((matrixRows + threadsPerBlock.x - 1) / threadsPerBlock.x, (matrixCols + threadsPerBlock.y - 1) / threadsPerBlock.y);
-
-#ifdef WITH_GPU_STREAMS
-  cuda_zero_skewsymmetric_q_float_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, matrixRows, matrixCols);
-#else
-  cuda_zero_skewsymmetric_q_float_kernel<<<blocks, threadsPerBlock>>>(q_dev, matrixRows, matrixCols);
-#endif
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_zero_skewsymmetric_q_float_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_zero_skewsymmetric_q<float>(q_dev, *matrixRows_in, *matrixCols_in, my_stream);
 }
+
+#ifdef WANT_HALF_PRECISION_REAL
+extern "C" void cuda_zero_skewsymmetric_q_half_FromC(__half *q_dev, int *matrixRows_in, int *matrixCols_in, cudaStream_t my_stream){
+  cuda_zero_skewsymmetric_q<__half>(q_dev, *matrixRows_in, *matrixCols_in, my_stream);
+}
+#endif
 
 //________________________________________________________________
 // cuda_copy_skewsymmetric_second_half_q  (minus / plus variants)
@@ -204,171 +180,132 @@ extern "C" void cuda_zero_skewsymmetric_q_float_FromC(float *q_dev, int *matrixR
 //   _plus:  q[index] =  q[indexLow];  q[indexLow] = 0
 
 template <typename T>
-__device__ void cuda_copy_skewsymmetric_second_half_q_minus_kernel_body(T *q, const int i, const int matrixRows, const int matrixCols)
+__global__ void cuda_copy_skewsymmetric_second_half_q_minus_kernel(T *q, const int i, const int matrixRows, const int matrixCols)
 {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     if (col >= matrixCols && col < 2 * matrixCols) {
         int    index = (i-1) + matrixRows * col;
         int indexLow = (i-1) + matrixRows * (col - matrixCols);
-        q[index]    = -q[indexLow];
-        q[indexLow] = (T)0;
+#if defined(WANT_HALF_PRECISION_REAL)
+        if constexpr (std::is_same_v<T, __half>) {
+            q[index]    = __hneg(q[indexLow]);
+            q[indexLow] = __float2half(0.0f);
+        } else
+#endif
+        {
+            q[index]    = -q[indexLow];
+            q[indexLow] = (T)0;
+        }
     }
 }
 
 template <typename T>
-__device__ void cuda_copy_skewsymmetric_second_half_q_plus_kernel_body(T *q, const int i, const int matrixRows, const int matrixCols)
+__global__ void cuda_copy_skewsymmetric_second_half_q_plus_kernel(T *q, const int i, const int matrixRows, const int matrixCols)
 {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     if (col >= matrixCols && col < 2 * matrixCols) {
         int    index = (i-1) + matrixRows * col;
         int indexLow = (i-1) + matrixRows * (col - matrixCols);
         q[index]    = q[indexLow];
+#if defined(WANT_HALF_PRECISION_REAL)
+        if constexpr (std::is_same_v<T, __half>) q[indexLow] = __float2half(0.0f);
+        else
+#endif
         q[indexLow] = (T)0;
     }
 }
 
-__global__ void cuda_copy_skewsymmetric_second_half_q_double_minus_kernel(double *q, const int i, const int matrixRows, const int matrixCols) {
-    cuda_copy_skewsymmetric_second_half_q_minus_kernel_body(q, i, matrixRows, matrixCols);
-}
+template <typename T>
+void cuda_copy_skewsymmetric_second_half_q(T *q_dev, int i, int matrixRows, int matrixCols, int negative_or_positive, cudaStream_t my_stream)
+{
+    dim3 threadsPerBlock(1024);
+    dim3 blocks((2*matrixCols + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
-__global__ void cuda_copy_skewsymmetric_second_half_q_double_plus_kernel(double *q, const int i, const int matrixRows, const int matrixCols) {
-    cuda_copy_skewsymmetric_second_half_q_plus_kernel_body(q, i, matrixRows, matrixCols);
-}
-
-__global__ void cuda_copy_skewsymmetric_second_half_q_float_minus_kernel(float *q, const int i, const int matrixRows, const int matrixCols) {
-    cuda_copy_skewsymmetric_second_half_q_minus_kernel_body(q, i, matrixRows, matrixCols);
-}
-
-__global__ void cuda_copy_skewsymmetric_second_half_q_float_plus_kernel(float *q, const int i, const int matrixRows, const int matrixCols) {
-    cuda_copy_skewsymmetric_second_half_q_plus_kernel_body(q, i, matrixRows, matrixCols);
+    if (negative_or_positive == 1) {
+#ifdef WITH_GPU_STREAMS
+        cuda_copy_skewsymmetric_second_half_q_plus_kernel<T><<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, i, matrixRows, matrixCols);
+#else
+        cuda_copy_skewsymmetric_second_half_q_plus_kernel<T><<<blocks, threadsPerBlock>>>(q_dev, i, matrixRows, matrixCols);
+#endif
+    } else {
+#ifdef WITH_GPU_STREAMS
+        cuda_copy_skewsymmetric_second_half_q_minus_kernel<T><<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, i, matrixRows, matrixCols);
+#else
+        cuda_copy_skewsymmetric_second_half_q_minus_kernel<T><<<blocks, threadsPerBlock>>>(q_dev, i, matrixRows, matrixCols);
+#endif
+    }
+    cudaError_t cuerr = cudaGetLastError();
+    if (cuerr != cudaSuccess)
+        printf("Error in cuda_copy_skewsymmetric_second_half_q_plus/minus_kernel: %s\n", cudaGetErrorString(cuerr));
 }
 
 extern "C" void cuda_copy_skewsymmetric_second_half_q_double_FromC(double *q_dev, int *i_in, int *matrixRows_in, int *matrixCols_in, int *negative_or_positive_in, cudaStream_t  my_stream){
-  int matrixCols = *matrixCols_in;
-  int matrixRows = *matrixRows_in;
-  int negative_or_positive = *negative_or_positive_in;
-  int i = *i_in;
-
-  dim3 threadsPerBlock(1024);
-  dim3 blocks((2*matrixCols + threadsPerBlock.x - 1) / threadsPerBlock.x);
-
-  if (negative_or_positive == 1) {
-#ifdef WITH_GPU_STREAMS
-    cuda_copy_skewsymmetric_second_half_q_double_plus_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, i, matrixRows, matrixCols);
-#else
-    cuda_copy_skewsymmetric_second_half_q_double_plus_kernel<<<blocks, threadsPerBlock>>>(q_dev, i, matrixRows, matrixCols);
-#endif
-  } else {
-#ifdef WITH_GPU_STREAMS
-    cuda_copy_skewsymmetric_second_half_q_double_minus_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, i, matrixRows, matrixCols);
-#else
-    cuda_copy_skewsymmetric_second_half_q_double_minus_kernel<<<blocks, threadsPerBlock>>>(q_dev, i, matrixRows, matrixCols);
-#endif
-  }
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_copy_skewsymmetric_second_half_q_double_plus/minus_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_copy_skewsymmetric_second_half_q<double>(q_dev, *i_in, *matrixRows_in, *matrixCols_in, *negative_or_positive_in, my_stream);
 }
 
 extern "C" void cuda_copy_skewsymmetric_second_half_q_float_FromC(float *q_dev, int *i_in, int *matrixRows_in, int *matrixCols_in, int *negative_or_positive_in, cudaStream_t  my_stream){
-  int matrixCols = *matrixCols_in;
-  int matrixRows = *matrixRows_in;
-  int negative_or_positive = *negative_or_positive_in;
-  int i = *i_in;
-
-  dim3 threadsPerBlock(1024);
-  dim3 blocks((2*matrixCols + threadsPerBlock.x - 1) / threadsPerBlock.x);
-
-  if (negative_or_positive == 1) {
-#ifdef WITH_GPU_STREAMS
-    cuda_copy_skewsymmetric_second_half_q_float_plus_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, i, matrixRows, matrixCols);
-#else
-    cuda_copy_skewsymmetric_second_half_q_float_plus_kernel<<<blocks, threadsPerBlock>>>(q_dev, i, matrixRows, matrixCols);
-#endif
-  } else {
-#ifdef WITH_GPU_STREAMS
-    cuda_copy_skewsymmetric_second_half_q_float_minus_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, i, matrixRows, matrixCols);
-#else
-    cuda_copy_skewsymmetric_second_half_q_float_minus_kernel<<<blocks, threadsPerBlock>>>(q_dev, i, matrixRows, matrixCols);
-#endif
-  }
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_copy_skewsymmetric_second_half_q_float_plus/minus_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_copy_skewsymmetric_second_half_q<float>(q_dev, *i_in, *matrixRows_in, *matrixCols_in, *negative_or_positive_in, my_stream);
 }
+
+#ifdef WANT_HALF_PRECISION_REAL
+extern "C" void cuda_copy_skewsymmetric_second_half_q_half_FromC(__half *q_dev, int *i_in, int *matrixRows_in, int *matrixCols_in, int *negative_or_positive_in, cudaStream_t my_stream){
+  cuda_copy_skewsymmetric_second_half_q<__half>(q_dev, *i_in, *matrixRows_in, *matrixCols_in, *negative_or_positive_in, my_stream);
+}
+#endif
 
 //________________________________________________________________
 // cuda_copy_skewsymmetric_first_half_q  (minus only)
 // Negates row i of the first half: q[index] = -q[index]
 
 template <typename T>
-__device__ void cuda_copy_skewsymmetric_first_half_q_minus_kernel_body(T *q, const int i, const int matrixRows, const int matrixCols)
+__global__ void cuda_copy_skewsymmetric_first_half_q_minus_kernel(T *q, const int i, const int matrixRows, const int matrixCols)
 {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     if (col < matrixCols) {
         int index = (i-1) + matrixRows * col;
+#if defined(WANT_HALF_PRECISION_REAL)
+        if constexpr (std::is_same_v<T, __half>) q[index] = __hneg(q[index]);
+        else
+#endif
         q[index] = -q[index];
     }
 }
 
-__global__ void cuda_copy_skewsymmetric_first_half_q_double_minus_kernel(double *q, const int i, const int matrixRows, const int matrixCols) {
-    cuda_copy_skewsymmetric_first_half_q_minus_kernel_body(q, i, matrixRows, matrixCols);
-}
-
-__global__ void cuda_copy_skewsymmetric_first_half_q_float_minus_kernel(float *q, const int i, const int matrixRows, const int matrixCols) {
-    cuda_copy_skewsymmetric_first_half_q_minus_kernel_body(q, i, matrixRows, matrixCols);
+template <typename T>
+void cuda_copy_skewsymmetric_first_half_q(T *q_dev, int i, int matrixRows, int matrixCols, cudaStream_t my_stream)
+{
+    dim3 threadsPerBlock(1024);
+    dim3 blocks((matrixCols + threadsPerBlock.x - 1) / threadsPerBlock.x);
+#ifdef WITH_GPU_STREAMS
+    cuda_copy_skewsymmetric_first_half_q_minus_kernel<T><<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, i, matrixRows, matrixCols);
+#else
+    cuda_copy_skewsymmetric_first_half_q_minus_kernel<T><<<blocks, threadsPerBlock>>>(q_dev, i, matrixRows, matrixCols);
+#endif
+    cudaError_t cuerr = cudaGetLastError();
+    if (cuerr != cudaSuccess)
+        printf("Error in cuda_copy_skewsymmetric_first_half_q_minus_kernel: %s\n", cudaGetErrorString(cuerr));
 }
 
 extern "C" void cuda_copy_skewsymmetric_first_half_q_double_FromC(double *q_dev, int *i_in, int *matrixRows_in, int *matrixCols_in, int *negative_or_positive_in, cudaStream_t  my_stream){
-  int matrixRows = *matrixRows_in;
-  int matrixCols = *matrixCols_in;
-  int i = *i_in;
-
-  dim3 threadsPerBlock(1024);
-  dim3 blocks((matrixCols + threadsPerBlock.x - 1) / threadsPerBlock.x);
-
-#ifdef WITH_GPU_STREAMS
-    cuda_copy_skewsymmetric_first_half_q_double_minus_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, i, matrixRows, matrixCols);
-#else
-    cuda_copy_skewsymmetric_first_half_q_double_minus_kernel<<<blocks, threadsPerBlock>>>(q_dev, i, matrixRows, matrixCols);
-#endif
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_copy_skewsymmetric_first_half_q_double_plus/minus_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_copy_skewsymmetric_first_half_q<double>(q_dev, *i_in, *matrixRows_in, *matrixCols_in, my_stream);
 }
 
 extern "C" void cuda_copy_skewsymmetric_first_half_q_float_FromC(float *q_dev, int *i_in, int *matrixRows_in, int *matrixCols_in, int *negative_or_positive_in, cudaStream_t  my_stream){
-  int matrixRows = *matrixRows_in;
-  int matrixCols = *matrixCols_in;
-  int i = *i_in;
-
-  dim3 threadsPerBlock(1024);
-  dim3 blocks((matrixCols + threadsPerBlock.x - 1) / threadsPerBlock.x);
-
-#ifdef WITH_GPU_STREAMS
-    cuda_copy_skewsymmetric_first_half_q_float_minus_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, i, matrixRows, matrixCols);
-#else
-    cuda_copy_skewsymmetric_first_half_q_float_minus_kernel<<<blocks, threadsPerBlock>>>(q_dev, i, matrixRows, matrixCols);
-#endif
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_copy_skewsymmetric_first_half_q_float_plus/minus_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_copy_skewsymmetric_first_half_q<float>(q_dev, *i_in, *matrixRows_in, *matrixCols_in, my_stream);
 }
+
+#ifdef WANT_HALF_PRECISION_REAL
+extern "C" void cuda_copy_skewsymmetric_first_half_q_half_FromC(__half *q_dev, int *i_in, int *matrixRows_in, int *matrixCols_in, int *negative_or_positive_in, cudaStream_t my_stream){
+  cuda_copy_skewsymmetric_first_half_q<__half>(q_dev, *i_in, *matrixRows_in, *matrixCols_in, my_stream);
+}
+#endif
 
 //________________________________________________________________
 // cuda_get_skewsymmetric_second_half_q
 // q_2[row + matrixRows*col] = q[row + matrixRows*(col + matrixCols)]
 
 template <typename T>
-__device__ void cuda_get_skewsymmetric_second_half_q_kernel_body(T *q, T *q_2, const int matrixRows, const int matrixCols)
+__global__ void cuda_get_skewsymmetric_second_half_q_kernel(T *q, T *q_2, const int matrixRows, const int matrixCols)
 {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     int col = blockIdx.y * blockDim.y + threadIdx.y;
@@ -379,58 +316,42 @@ __device__ void cuda_get_skewsymmetric_second_half_q_kernel_body(T *q, T *q_2, c
     }
 }
 
-__global__ void cuda_get_skewsymmetric_second_half_q_double_kernel(double *q, double *q_2, const int matrixRows, const int matrixCols) {
-    cuda_get_skewsymmetric_second_half_q_kernel_body(q, q_2, matrixRows, matrixCols);
-}
-
-__global__ void cuda_get_skewsymmetric_second_half_q_float_kernel(float *q, float *q_2, const int matrixRows, const int matrixCols) {
-    cuda_get_skewsymmetric_second_half_q_kernel_body(q, q_2, matrixRows, matrixCols);
+template <typename T>
+void cuda_get_skewsymmetric_second_half_q(T *q_dev, T *q_2_dev, int matrixRows, int matrixCols, cudaStream_t my_stream)
+{
+    dim3 threadsPerBlock(32, 32);
+    dim3 blocks((matrixRows + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                (matrixCols + threadsPerBlock.y - 1) / threadsPerBlock.y);
+#ifdef WITH_GPU_STREAMS
+    cuda_get_skewsymmetric_second_half_q_kernel<T><<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, q_2_dev, matrixRows, matrixCols);
+#else
+    cuda_get_skewsymmetric_second_half_q_kernel<T><<<blocks, threadsPerBlock>>>(q_dev, q_2_dev, matrixRows, matrixCols);
+#endif
+    cudaError_t cuerr = cudaGetLastError();
+    if (cuerr != cudaSuccess)
+        printf("Error in cuda_get_skewsymmetric_second_half_q_kernel: %s\n", cudaGetErrorString(cuerr));
 }
 
 extern "C" void cuda_get_skewsymmetric_second_half_q_double_FromC(double *q_dev, double *q_2_dev, int *matrixRows_in, int *matrixCols_in, cudaStream_t  my_stream){
-  int matrixRows = *matrixRows_in;
-  int matrixCols = *matrixCols_in;
-
-  dim3 threadsPerBlock(32,32);
-  dim3 blocks( (matrixRows + threadsPerBlock.x - 1) / threadsPerBlock.x, (matrixCols + threadsPerBlock.y - 1) / threadsPerBlock.y);
-
-#ifdef WITH_GPU_STREAMS
-    cuda_get_skewsymmetric_second_half_q_double_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, q_2_dev, matrixRows, matrixCols);
-#else
-    cuda_get_skewsymmetric_second_half_q_double_kernel<<<blocks, threadsPerBlock>>>(q_dev, q_2_dev, matrixRows, matrixCols);
-#endif
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_get_skewsymmetric_second_half_q_double_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_get_skewsymmetric_second_half_q<double>(q_dev, q_2_dev, *matrixRows_in, *matrixCols_in, my_stream);
 }
 
 extern "C" void cuda_get_skewsymmetric_second_half_q_float_FromC(float *q_dev, float *q_2_dev, int *matrixRows_in, int *matrixCols_in, cudaStream_t  my_stream){
-  int matrixRows = *matrixRows_in;
-  int matrixCols = *matrixCols_in;
-
-  dim3 threadsPerBlock(32,32);
-  dim3 blocks( (matrixRows + threadsPerBlock.x - 1) / threadsPerBlock.x, (matrixCols + threadsPerBlock.y - 1) / threadsPerBlock.y);
-
-#ifdef WITH_GPU_STREAMS
-    cuda_get_skewsymmetric_second_half_q_float_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, q_2_dev, matrixRows, matrixCols);
-#else
-    cuda_get_skewsymmetric_second_half_q_float_kernel<<<blocks, threadsPerBlock>>>(q_dev, q_2_dev, matrixRows, matrixCols);
-#endif
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_get_skewsymmetric_second_half_q_float_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_get_skewsymmetric_second_half_q<float>(q_dev, q_2_dev, *matrixRows_in, *matrixCols_in, my_stream);
 }
+
+#ifdef WANT_HALF_PRECISION_REAL
+extern "C" void cuda_get_skewsymmetric_second_half_q_half_FromC(__half *q_dev, __half *q_2_dev, int *matrixRows_in, int *matrixCols_in, cudaStream_t my_stream){
+  cuda_get_skewsymmetric_second_half_q<__half>(q_dev, q_2_dev, *matrixRows_in, *matrixCols_in, my_stream);
+}
+#endif
 
 //________________________________________________________________
 // cuda_put_skewsymmetric_second_half_q
 // q[row + matrixRows*(col + matrixCols)] = q_2[row + matrixRows*col]
 
 template <typename T>
-__device__ void cuda_put_skewsymmetric_second_half_q_kernel_body(T *q, T *q_2, const int matrixRows, const int matrixCols)
+__global__ void cuda_put_skewsymmetric_second_half_q_kernel(T *q, T *q_2, const int matrixRows, const int matrixCols)
 {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     int col = blockIdx.y * blockDim.y + threadIdx.y;
@@ -441,48 +362,32 @@ __device__ void cuda_put_skewsymmetric_second_half_q_kernel_body(T *q, T *q_2, c
     }
 }
 
-__global__ void cuda_put_skewsymmetric_second_half_q_double_kernel(double *q, double *q_2, const int matrixRows, const int matrixCols) {
-    cuda_put_skewsymmetric_second_half_q_kernel_body(q, q_2, matrixRows, matrixCols);
-}
-
-__global__ void cuda_put_skewsymmetric_second_half_q_float_kernel(float *q, float *q_2, const int matrixRows, const int matrixCols) {
-    cuda_put_skewsymmetric_second_half_q_kernel_body(q, q_2, matrixRows, matrixCols);
+template <typename T>
+void cuda_put_skewsymmetric_second_half_q(T *q_dev, T *q_2_dev, int matrixRows, int matrixCols, cudaStream_t my_stream)
+{
+    dim3 threadsPerBlock(32, 32);
+    dim3 blocks((matrixRows + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                (matrixCols + threadsPerBlock.y - 1) / threadsPerBlock.y);
+#ifdef WITH_GPU_STREAMS
+    cuda_put_skewsymmetric_second_half_q_kernel<T><<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, q_2_dev, matrixRows, matrixCols);
+#else
+    cuda_put_skewsymmetric_second_half_q_kernel<T><<<blocks, threadsPerBlock>>>(q_dev, q_2_dev, matrixRows, matrixCols);
+#endif
+    cudaError_t cuerr = cudaGetLastError();
+    if (cuerr != cudaSuccess)
+        printf("Error in cuda_put_skewsymmetric_second_half_q_kernel: %s\n", cudaGetErrorString(cuerr));
 }
 
 extern "C" void cuda_put_skewsymmetric_second_half_q_double_FromC(double *q_dev, double *q2_dev, int *matrixRows_in, int *matrixCols_in, cudaStream_t  my_stream){
-  int matrixRows = *matrixRows_in;
-  int matrixCols = *matrixCols_in;
-
-  dim3 threadsPerBlock(32,32);
-  dim3 blocks( (matrixRows + threadsPerBlock.x - 1) / threadsPerBlock.x, (matrixCols + threadsPerBlock.y - 1) / threadsPerBlock.y);
-
-#ifdef WITH_GPU_STREAMS
-    cuda_put_skewsymmetric_second_half_q_double_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, q2_dev, matrixRows, matrixCols);
-#else
-    cuda_put_skewsymmetric_second_half_q_double_kernel<<<blocks, threadsPerBlock>>>(q_dev, q2_dev, matrixRows, matrixCols);
-#endif
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_put_skewsymmetric_second_half_q_double_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_put_skewsymmetric_second_half_q<double>(q_dev, q2_dev, *matrixRows_in, *matrixCols_in, my_stream);
 }
 
 extern "C" void cuda_put_skewsymmetric_second_half_q_float_FromC(float *q_dev, float *q2_dev, int *matrixRows_in, int *matrixCols_in, cudaStream_t  my_stream){
-  int matrixRows = *matrixRows_in;
-  int matrixCols = *matrixCols_in;
-
-  dim3 threadsPerBlock(32,32);
-  dim3 blocks( (matrixRows + threadsPerBlock.x - 1) / threadsPerBlock.x, (matrixCols + threadsPerBlock.y - 1) / threadsPerBlock.y);
-
-#ifdef WITH_GPU_STREAMS
-    cuda_put_skewsymmetric_second_half_q_float_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, q2_dev, matrixRows, matrixCols);
-#else
-    cuda_put_skewsymmetric_second_half_q_float_kernel<<<blocks, threadsPerBlock>>>(q_dev, q2_dev, matrixRows, matrixCols);
-#endif
-
-  cudaError_t cuerr = cudaGetLastError();
-  if (cuerr != cudaSuccess){
-    printf("Error in executing cuda_put_skewsymmetric_second_half_q_float_kernel: %s\n",cudaGetErrorString(cuerr));
-  }
+  cuda_put_skewsymmetric_second_half_q<float>(q_dev, q2_dev, *matrixRows_in, *matrixCols_in, my_stream);
 }
+
+#ifdef WANT_HALF_PRECISION_REAL
+extern "C" void cuda_put_skewsymmetric_second_half_q_half_FromC(__half *q_dev, __half *q2_dev, int *matrixRows_in, int *matrixCols_in, cudaStream_t my_stream){
+  cuda_put_skewsymmetric_second_half_q<__half>(q_dev, q2_dev, *matrixRows_in, *matrixCols_in, my_stream);
+}
+#endif

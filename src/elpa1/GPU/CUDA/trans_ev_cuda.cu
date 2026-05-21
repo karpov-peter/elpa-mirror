@@ -59,6 +59,10 @@
 #include <type_traits>
 #include "config-f90.h"
 
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
+
 #define errormessage(x, ...) do { fprintf(stderr, "%s:%d " x, __FILE__, __LINE__, __VA_ARGS__ ); } while (0)
 
 //________________________________________________________________
@@ -67,7 +71,7 @@
 // Complex arithmetic: q[index] = q[index] * (c_one - tau[1])
 
 template <typename T>
-__device__ void cuda_scale_qmat_complex_kernel_body(T *q, T *tau, const int ldq, const int l_cols)
+__global__ void cuda_scale_qmat_complex_kernel(T *q, T *tau, const int ldq, const int l_cols)
 {
     int col   = blockIdx.x * blockDim.x + threadIdx.x;
     int index = ldq * col;  // (1-1) + ldq*col
@@ -83,14 +87,6 @@ __device__ void cuda_scale_qmat_complex_kernel_body(T *q, T *tau, const int ldq,
     }
 }
 
-__global__ void cuda_scale_qmat_double_complex_kernel(cuDoubleComplex *q, cuDoubleComplex *tau, const int ldq, const int l_cols) {
-    cuda_scale_qmat_complex_kernel_body(q, tau, ldq, l_cols);
-}
-
-__global__ void cuda_scale_qmat_float_complex_kernel(cuFloatComplex *q, cuFloatComplex *tau, const int ldq, const int l_cols) {
-    cuda_scale_qmat_complex_kernel_body(q, tau, ldq, l_cols);
-}
-
 extern "C" void cuda_scale_qmat_double_complex_FromC(int ldq, int l_cols, double _Complex *q_dev, double _Complex *tau_dev, cudaStream_t  my_stream){
 
   cuDoubleComplex* q_casted   = (cuDoubleComplex*) q_dev;
@@ -100,9 +96,9 @@ extern "C" void cuda_scale_qmat_double_complex_FromC(int ldq, int l_cols, double
   dim3 blocks((l_cols + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
 #ifdef WITH_GPU_STREAMS
-  cuda_scale_qmat_double_complex_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_casted, tau_casted, ldq, l_cols);
+  cuda_scale_qmat_complex_kernel<cuDoubleComplex><<<blocks, threadsPerBlock, 0, my_stream>>>(q_casted, tau_casted, ldq, l_cols);
 #else
-  cuda_scale_qmat_double_complex_kernel<<<blocks, threadsPerBlock>>>(q_casted, tau_casted, ldq, l_cols);
+  cuda_scale_qmat_complex_kernel<cuDoubleComplex><<<blocks, threadsPerBlock>>>(q_casted, tau_casted, ldq, l_cols);
 #endif
   cudaError_t cuerr = cudaGetLastError();
   if (cuerr != cudaSuccess){
@@ -118,9 +114,9 @@ extern "C" void cuda_scale_qmat_float_complex_FromC(int ldq, int l_cols, float _
   dim3 blocks((l_cols + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
 #ifdef WITH_GPU_STREAMS
-  cuda_scale_qmat_float_complex_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_casted, tau_casted, ldq, l_cols);
+  cuda_scale_qmat_complex_kernel<cuFloatComplex><<<blocks, threadsPerBlock, 0, my_stream>>>(q_casted, tau_casted, ldq, l_cols);
 #else
-  cuda_scale_qmat_float_complex_kernel<<<blocks, threadsPerBlock>>>(q_casted, tau_casted, ldq, l_cols);
+  cuda_scale_qmat_complex_kernel<cuFloatComplex><<<blocks, threadsPerBlock>>>(q_casted, tau_casted, ldq, l_cols);
 #endif
   cudaError_t gpuerr = cudaGetLastError();
   if (gpuerr != cudaSuccess){
@@ -130,8 +126,42 @@ extern "C" void cuda_scale_qmat_float_complex_FromC(int ldq, int l_cols, float _
 
 //_________________________________________________________________________________________________
 
-
 #include "../../../GPU/common_device_functions.h"
 #include "../../../GPU/gpu_to_cuda_and_hip_interface.h"
+
+#ifdef WANT_HALF_PRECISION_COMPLEX
+
+// cuda_scale_qmat for __half2
+// q[index] = q[index] * (1 - tau[1])
+// Using elpaDevice* helper functions from common_device_functions.h
+
+__global__ void cuda_scale_qmat_half_complex_kernel(__half2 *q, __half2 *tau, const int ldq, const int l_cols)
+{
+    int col   = blockIdx.x * blockDim.x + threadIdx.x;
+    int index = ldq * col;
+
+    if (col < l_cols) {
+        __half2 c_one = elpaDeviceNumberFromRealImag<__half2>(1.0f, 0.0f);
+        __half2 factor = elpaDeviceSubtract(c_one, tau[1]);
+        q[index] = elpaDeviceMultiply(q[index], factor);
+    }
+}
+
+extern "C" void cuda_scale_qmat_half_complex_FromC(int ldq, int l_cols, __half2 *q_dev, __half2 *tau_dev, cudaStream_t my_stream){
+  dim3 threadsPerBlock(1024);
+  dim3 blocks((l_cols + threadsPerBlock.x - 1) / threadsPerBlock.x);
+
+#ifdef WITH_GPU_STREAMS
+  cuda_scale_qmat_half_complex_kernel<<<blocks, threadsPerBlock, 0, my_stream>>>(q_dev, tau_dev, ldq, l_cols);
+#else
+  cuda_scale_qmat_half_complex_kernel<<<blocks, threadsPerBlock>>>(q_dev, tau_dev, ldq, l_cols);
+#endif
+  cudaError_t cuerr = cudaGetLastError();
+  if (cuerr != cudaSuccess){
+    printf("Error in executing cuda_scale_qmat_half_complex_kernel: %s\n",cudaGetErrorString(cuerr));
+  }
+}
+
+#endif /* WANT_HALF_PRECISION_COMPLEX */
 
 #include "../trans_ev_gpu.h"

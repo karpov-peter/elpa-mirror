@@ -164,6 +164,9 @@ extern "C" void CONCATENATE(ELPA_GPU,  _construct_full_from_tridi_matrix_FromC)(
                                                               int nlen, int ldq, int debug, gpuStream_t my_stream) {
   if      (dataType=='D') gpu_construct_full_from_tridi_matrix<double>((double *) q_dev, (double *) d_dev, (double *) e_dev, nlen, ldq, debug, my_stream);
   else if (dataType=='S') gpu_construct_full_from_tridi_matrix<float> ((float  *) q_dev, (float  *) d_dev, (float  *) e_dev, nlen, ldq, debug, my_stream);
+#ifdef WANT_HALF_PRECISION_REAL
+  else if (dataType=='H') gpu_construct_full_from_tridi_matrix<half_real>((half_real *) q_dev, (half_real *) d_dev, (half_real *) e_dev, nlen, ldq, debug, my_stream);
+#endif
   else {
     printf("Error in elpa_construct_full_from_tridi_matrix: Unsupported data type\n");
   }

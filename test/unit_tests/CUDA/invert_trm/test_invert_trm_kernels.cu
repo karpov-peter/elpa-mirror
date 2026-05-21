@@ -59,6 +59,9 @@
 #include <cuda_runtime.h>
 #include <cuComplex.h>
 #include <type_traits>
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/invert_trm/GPU/CUDA/elpa_invert_trm_cuda.cu"
 
@@ -87,6 +90,12 @@ template <> double          make_val<double>(int n)          { return (double)n;
 template <> float           make_val<float>(int n)           { return (float)n; }
 template <> cuDoubleComplex make_val<cuDoubleComplex>(int n)  { return make_cuDoubleComplex((double)n, (double)(n + 100)); }
 template <> cuFloatComplex  make_val<cuFloatComplex>(int n)   { return make_cuFloatComplex((float)n, (float)(n + 100)); }
+#ifdef WANT_HALF_PRECISION_REAL
+template <> __half          make_val<__half>(int n)           { return __float2half((float)n); }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> __half2         make_val<__half2>(int n)          { return make_half2(__float2half((float)n), __float2half((float)(n + 100))); }
+#endif
 
 template <typename T>
 static bool vals_eq(T a, T b)
@@ -97,6 +106,18 @@ static bool vals_eq(T a, T b)
         return a == b;
 }
 
+#ifdef WANT_HALF_PRECISION_REAL
+template <> bool vals_eq<__half>(__half a, __half b) {
+    return fabsf(__half2float(a) - __half2float(b)) < 0.02f * (fabsf(__half2float(b)) + 1.0f);
+}
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> bool vals_eq<__half2>(__half2 a, __half2 b) {
+    return fabsf(__half2float(a.x) - __half2float(b.x)) < 0.02f * (fabsf(__half2float(b.x)) + 1.0f) &&
+           fabsf(__half2float(a.y) - __half2float(b.y)) < 0.02f * (fabsf(__half2float(b.y)) + 1.0f);
+}
+#endif
+
 template <typename T>
 static bool is_zero(T v)
 {
@@ -105,6 +126,13 @@ static bool is_zero(T v)
     else
         return v == (T)0;
 }
+
+#ifdef WANT_HALF_PRECISION_REAL
+template <> bool is_zero<__half>(__half v) { return fabsf(__half2float(v)) < 0.02f; }
+#endif
+#ifdef WANT_HALF_PRECISION_COMPLEX
+template <> bool is_zero<__half2>(__half2 v) { return fabsf(__half2float(v.x)) < 0.02f && fabsf(__half2float(v.y)) < 0.02f; }
+#endif
 
 // ---- dispatchers: cuda_copy_a_tmat2 ----
 
@@ -195,6 +223,50 @@ static void call_copy_a_tmp1(cuDoubleComplex *a, cuDoubleComplex *tmp1,
 static void call_copy_a_tmp1(cuFloatComplex *a, cuFloatComplex *tmp1,
     int *l_row1, int *l_col1, int *mR, int *nb, cudaStream_t s)
 { cuda_copy_float_complex_a_tmp1_FromC((float _Complex *)a, (float _Complex *)tmp1, l_row1, l_col1, mR, nb, s); }
+
+#ifdef WANT_HALF_PRECISION_REAL
+static void call_copy_a_tmat2(__half *a, __half *tmat2,
+    int *nblk, int *mR, int *lc, int *lcx, int *lr1, int *nb, cudaStream_t s)
+{ cuda_copy_half_a_tmat2_FromC(a, tmat2, nblk, mR, lc, lcx, lr1, nb, s); }
+
+static void call_copy_tmp2_tmat2(__half *tmp2, __half *tmat2,
+    int *nblk, int *l_col1, int *nb, cudaStream_t s)
+{ cuda_copy_half_tmp2_tmat2_FromC(tmp2, tmat2, nblk, l_col1, nb, s); }
+
+static void call_copy_a_tmat1(__half *a, __half *tmat1,
+    int *l_rows, int *mR, int *nb, int *l_row1, int *l_col1, cudaStream_t s)
+{ cuda_copy_half_a_tmat1_FromC(a, tmat1, l_rows, mR, nb, l_row1, l_col1, s); }
+
+static void call_copy_tmp1_tmp2(__half *tmp1, __half *tmp2,
+    int *nblk, int *nb, cudaStream_t s)
+{ cuda_copy_half_tmp1_tmp2_FromC(tmp1, tmp2, nblk, nb, s); }
+
+static void call_copy_a_tmp1(__half *a, __half *tmp1,
+    int *l_row1, int *l_col1, int *mR, int *nb, cudaStream_t s)
+{ cuda_copy_half_a_tmp1_FromC(a, tmp1, l_row1, l_col1, mR, nb, s); }
+#endif
+
+#ifdef WANT_HALF_PRECISION_COMPLEX
+static void call_copy_a_tmat2(__half2 *a, __half2 *tmat2,
+    int *nblk, int *mR, int *lc, int *lcx, int *lr1, int *nb, cudaStream_t s)
+{ cuda_copy_half_complex_a_tmat2_FromC(a, tmat2, nblk, mR, lc, lcx, lr1, nb, s); }
+
+static void call_copy_tmp2_tmat2(__half2 *tmp2, __half2 *tmat2,
+    int *nblk, int *l_col1, int *nb, cudaStream_t s)
+{ cuda_copy_half_complex_tmp2_tmat2_FromC(tmp2, tmat2, nblk, l_col1, nb, s); }
+
+static void call_copy_a_tmat1(__half2 *a, __half2 *tmat1,
+    int *l_rows, int *mR, int *nb, int *l_row1, int *l_col1, cudaStream_t s)
+{ cuda_copy_half_complex_a_tmat1_FromC(a, tmat1, l_rows, mR, nb, l_row1, l_col1, s); }
+
+static void call_copy_tmp1_tmp2(__half2 *tmp1, __half2 *tmp2,
+    int *nblk, int *nb, cudaStream_t s)
+{ cuda_copy_half_complex_tmp1_tmp2_FromC(tmp1, tmp2, nblk, nb, s); }
+
+static void call_copy_a_tmp1(__half2 *a, __half2 *tmp1,
+    int *l_row1, int *l_col1, int *mR, int *nb, cudaStream_t s)
+{ cuda_copy_half_complex_a_tmp1_FromC(a, tmp1, l_row1, l_col1, mR, nb, s); }
+#endif
 
 // ============================================================
 // Test: cuda_copy_a_tmat2
@@ -591,6 +663,34 @@ int main(void)
     run_copy_a_tmp1_test<float>           ("float");
     run_copy_a_tmp1_test<cuDoubleComplex> ("cuDoubleComplex");
     run_copy_a_tmp1_test<cuFloatComplex>  ("cuFloatComplex");
+
+#ifdef WANT_HALF_PRECISION_REAL
+    printf("\n--- __half variants ---\n");
+    printf("cuda_copy_a_tmat2:\n");
+    run_copy_a_tmat2_test<__half>("__half");
+    printf("\ncuda_copy_tmp2_tmat2:\n");
+    run_copy_tmp2_tmat2_test<__half>("__half");
+    printf("\ncuda_copy_a_tmat1:\n");
+    run_copy_a_tmat1_test<__half>("__half");
+    printf("\ncuda_copy_tmp1_tmp2:\n");
+    run_copy_tmp1_tmp2_test<__half>("__half");
+    printf("\ncuda_copy_a_tmp1:\n");
+    run_copy_a_tmp1_test<__half>("__half");
+#endif
+
+#ifdef WANT_HALF_PRECISION_COMPLEX
+    printf("\n--- __half2 variants ---\n");
+    printf("cuda_copy_a_tmat2:\n");
+    run_copy_a_tmat2_test<__half2>("__half2");
+    printf("\ncuda_copy_tmp2_tmat2:\n");
+    run_copy_tmp2_tmat2_test<__half2>("__half2");
+    printf("\ncuda_copy_a_tmat1:\n");
+    run_copy_a_tmat1_test<__half2>("__half2");
+    printf("\ncuda_copy_tmp1_tmp2:\n");
+    run_copy_tmp1_tmp2_test<__half2>("__half2");
+    printf("\ncuda_copy_a_tmp1:\n");
+    run_copy_a_tmp1_test<__half2>("__half2");
+#endif
 
     printf("\n=== Summary: %d failure(s) ===\n", g_failures);
     return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

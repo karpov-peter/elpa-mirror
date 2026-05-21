@@ -73,6 +73,9 @@
 #include <cstring>
 #include <cuda_runtime.h>
 #include <cuComplex.h>
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/GPU/common_device_functions.h"
 #include "../../../../src/GPU/gpu_to_cuda_and_hip_interface.h"
@@ -624,6 +627,53 @@ static void test_noff_partial_blocks()
 }
 
 // ============================================================
+#ifdef WANT_HALF_PRECISION_REAL
+// ============================================================
+// Test: gpu_distribute_global_column<__half> — basic copy
+//
+// Same parameters as test_basic_copy but with __half values.
+// Values 11..44 are exactly representable in __half (integers <= 2048).
+// Comparison uses __half2float() since host code has no __half→double cast.
+// ============================================================
+static void test_half()
+{
+  printf("\ngpu_distribute_global_column<__half> — basic copy:\n");
+
+  const int G1=4, G2=4, LDQ=4, MC=4, NLEN=4, NBLK=4;
+  const int noff_in=0, noff=0, my_prow=0, np_rows=1;
+
+  __half hg[G1*G2], hl_ref[LDQ*MC], hl[LDQ*MC];
+  for (int k=0; k<LDQ*MC; k++) { hl_ref[k] = __float2half(0.0f); hl[k] = __float2half(0.0f); }
+  for (int c=0; c<G2; c++)
+    for (int r=0; r<G1; r++)
+      hg[r + G1*c] = __float2half((float)((c+1)*10 + (r+1)));
+
+  cpu_distribute_ref<__half>(hg, hl_ref, G1, G2, LDQ, MC,
+                             noff_in, noff, NLEN, my_prow, np_rows, NBLK);
+
+  __half *dg  = dev_alloc_upload(hg,    G1*G2);
+  __half *dlc = dev_alloc_zero<__half>(LDQ*MC);
+
+  gpu_distribute_global_column<__half>(dg, dlc, G1, G2, LDQ, MC,
+                                       noff_in, noff, NLEN, my_prow, np_rows, NBLK,
+                                       0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  dev_read_n(hl, dlc, LDQ*MC);
+
+  int ndiffs = 0;
+  for (int k=0; k<LDQ*MC; k++)
+    if (__half2float(hl[k]) != __half2float(hl_ref[k])) ndiffs++;
+
+  REPORT("__half: 0 diffs vs CPU reference",    ndiffs == 0);
+  REPORT("__half: l_col[0,0]=11.0f (half)",     __half2float(hl[0+LDQ*0]) == 11.0f);
+  REPORT("__half: l_col[3,3]=44.0f (half)",     __half2float(hl[3+LDQ*3]) == 44.0f);
+
+  CUDA_CHECK(cudaFree(dg));
+  CUDA_CHECK(cudaFree(dlc));
+}
+#endif /* WANT_HALF_PRECISION_REAL */
+
+// ============================================================
 int main(void)
 {
   printf("=== Unit tests for gpu_distribute_global_column.h (CUDA) ===\n");
@@ -637,6 +687,10 @@ int main(void)
   test_float();
   test_gcol_column_wrap();
   test_noff_partial_blocks();
+
+#ifdef WANT_HALF_PRECISION_REAL
+  test_half();
+#endif /* WANT_HALF_PRECISION_REAL */
 
   printf("\n=== Summary: %d failure(s) ===\n", g_failures);
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

@@ -83,8 +83,10 @@
   integer(kind=c_intptr_t), parameter :: size_of_int    = 4
   integer(kind=c_intptr_t), parameter :: size_of_double_real    = 8_rk8
   integer(kind=c_intptr_t), parameter :: size_of_single_real    = 4_rk4
+  integer(kind=c_intptr_t), parameter :: size_of_half_real      = 4_rk4
   integer(kind=c_intptr_t), parameter :: size_of_double_complex = 16_ck8
   integer(kind=c_intptr_t), parameter :: size_of_single_complex = 8_ck4
+  integer(kind=c_intptr_t), parameter :: size_of_half_complex   = 8_ck4
 
   interface gpu_memcpy
     module procedure gpu_memcpy_intptr

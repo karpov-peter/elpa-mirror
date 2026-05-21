@@ -68,6 +68,9 @@
 #include <cstring>
 #include <cuda_runtime.h>
 #include <cuComplex.h>
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/GPU/common_device_functions.h"
 #include "../../../../src/GPU/gpu_to_cuda_and_hip_interface.h"
@@ -866,6 +869,128 @@ static void test_copy_aux_bc_aux_mat_float()
 }
 
 // ============================================================
+// Half-precision tests
+// ============================================================
+
+#ifdef WANT_HALF_PRECISION_REAL
+
+static bool heq(__half a, __half b, float tol = 0.02f) {
+    float fa = __half2float(a), fb = __half2float(b);
+    return fabsf(fa - fb) < tol * (fabsf(fb) + 1.0f);
+}
+
+// Count differences in a __half array
+static int count_diffs_h(const __half *a, const __half *b, int n) {
+    int cnt = 0;
+    for (int i = 0; i < n; i++)
+        if (!heq(a[i], b[i])) cnt++;
+    return cnt;
+}
+
+static void test_copy_tmp2_c_half()
+{
+  printf("\ngpu_copy_tmp2_c<__half> — basic copy:\n");
+
+  const int NSTOR=3, LCS=1, LCE=3, LDC=3, LDCCOLS=3, NR_DONE=0;
+  const int NCOLS = LCE - LCS + 1;
+
+  __half htmp2[NSTOR * NCOLS], hc_ref[LDC * LDCCOLS], hc[LDC * LDCCOLS];
+  for (int k = 0; k < LDC * LDCCOLS; k++) hc_ref[k] = hc[k] = __float2half(0.0f);
+  for (int j = 0; j < NCOLS; j++)
+    for (int i = 0; i < NSTOR; i++)
+      htmp2[i + NSTOR * j] = __float2half((float)((j + 1) * 10 + (i + 1)));
+
+  cpu_copy_tmp2_c_ref<__half>(htmp2, hc_ref, NR_DONE, NSTOR, LCS, LCE, LDC, LDCCOLS);
+
+  __half *dtmp2 = dev_alloc_upload(htmp2, NSTOR * NCOLS);
+  __half *dc    = dev_alloc_zero<__half>(LDC * LDCCOLS);
+
+  gpu_copy_tmp2_c<__half>(dtmp2, dc, NR_DONE, NSTOR, LCS, LCE, LDC, LDCCOLS, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  dev_read_n(hc, dc, LDC * LDCCOLS);
+
+  REPORT("copy_tmp2_c_half: 0 diffs vs CPU reference", count_diffs_h(hc, hc_ref, LDC * LDCCOLS) == 0);
+  REPORT("copy_tmp2_c_half: c[0,0]=11", heq(hc[0 + LDC * 0], __float2half(11.0f)));
+  REPORT("copy_tmp2_c_half: c[2,2]=33", heq(hc[2 + LDC * 2], __float2half(33.0f)));
+
+  CUDA_CHECK(cudaFree(dtmp2));
+  CUDA_CHECK(cudaFree(dc));
+}
+
+static void test_copy_a_aux_bc_half()
+{
+  printf("\ngpu_copy_a_aux_bc_loop<__half> — basic:\n");
+
+  const int LDA=4, NBLK=4, N_SIZE=1;
+  const int noff=0;
+  const int AUX_BC_SIZE = 4;
+
+  __half ha[LDA * 4], haux_bc_ref[AUX_BC_SIZE], haux_bc[AUX_BC_SIZE];
+  for (int k = 0; k < AUX_BC_SIZE; k++) haux_bc_ref[k] = haux_bc[k] = __float2half(0.0f);
+  for (int c = 0; c < 4; c++)
+    for (int r = 0; r < LDA; r++)
+      ha[r + LDA * c] = __float2half((float)((c + 1) * 10 + (r + 1)));
+
+  int hlrs[N_SIZE] = {1}, hlre[N_SIZE] = {4}, hn_aux_bc[N_SIZE] = {0};
+
+  cpu_copy_a_aux_bc_ref<__half>(ha, haux_bc_ref, hlrs, hlre, hn_aux_bc, noff, NBLK, LDA, N_SIZE);
+
+  __half *da   = dev_alloc_upload(ha, LDA * 4);
+  __half *dabc = dev_alloc_zero<__half>(AUX_BC_SIZE);
+  int *dlrs    = dev_alloc_upload(hlrs,  N_SIZE);
+  int *dlre    = dev_alloc_upload(hlre,  N_SIZE);
+  int *dnabc   = dev_alloc_upload(hn_aux_bc, N_SIZE);
+
+  gpu_copy_a_aux_bc_loop<__half>(da, dabc, dlrs, dlre, dnabc, noff, NBLK, LDA, N_SIZE, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  dev_read_n(haux_bc, dabc, AUX_BC_SIZE);
+
+  REPORT("a_aux_bc_half: 0 diffs vs CPU reference", count_diffs_h(haux_bc, haux_bc_ref, AUX_BC_SIZE) == 0);
+  REPORT("a_aux_bc_half: aux_bc[0]=11", heq(haux_bc[0], __float2half(11.0f)));
+  REPORT("a_aux_bc_half: aux_bc[3]=14", heq(haux_bc[3], __float2half(14.0f)));
+
+  CUDA_CHECK(cudaFree(da)); CUDA_CHECK(cudaFree(dabc));
+  CUDA_CHECK(cudaFree(dlrs)); CUDA_CHECK(cudaFree(dlre)); CUDA_CHECK(cudaFree(dnabc));
+}
+
+static void test_copy_aux_bc_aux_mat_half()
+{
+  printf("\ngpu_copy_aux_bc_aux_mat_loop<__half> — basic:\n");
+
+  const int L_ROWS=4, N_SIZE=1, NCOLS_AUX=2;
+  const int nstor0=1;
+  const int AUX_BC_SIZE = 4;
+
+  __half haux_bc[AUX_BC_SIZE], haux_mat_ref[L_ROWS * NCOLS_AUX], haux_mat[L_ROWS * NCOLS_AUX];
+  for (int k = 0; k < L_ROWS * NCOLS_AUX; k++) haux_mat_ref[k] = haux_mat[k] = __float2half(0.0f);
+  for (int i = 0; i < AUX_BC_SIZE; i++) haux_bc[i] = __float2half((float)(i + 1));
+
+  int hlrs[N_SIZE] = {1}, hlre[N_SIZE] = {4}, hn_aux_bc[N_SIZE] = {0};
+
+  cpu_copy_aux_bc_aux_mat_ref<__half>(haux_bc, haux_mat_ref, hlrs, hlre, hn_aux_bc, nstor0, L_ROWS, N_SIZE);
+
+  __half *dabc  = dev_alloc_upload(haux_bc,  AUX_BC_SIZE);
+  __half *damat = dev_alloc_zero<__half>(L_ROWS * NCOLS_AUX);
+  int *dlrs     = dev_alloc_upload(hlrs,  N_SIZE);
+  int *dlre     = dev_alloc_upload(hlre,  N_SIZE);
+  int *dnabc    = dev_alloc_upload(hn_aux_bc, N_SIZE);
+
+  gpu_copy_aux_bc_aux_mat_loop<__half>(dabc, damat, dlrs, dlre, dnabc, nstor0, L_ROWS, N_SIZE, 0, (gpuStream_t)0);
+  CUDA_CHECK(cudaDeviceSynchronize());
+  dev_read_n(haux_mat, damat, L_ROWS * NCOLS_AUX);
+
+  REPORT("aux_bc_aux_mat_half: 0 diffs vs CPU reference", count_diffs_h(haux_mat, haux_mat_ref, L_ROWS * NCOLS_AUX) == 0);
+  REPORT("aux_bc_aux_mat_half: aux_mat[0,0]=1", heq(haux_mat[0 + L_ROWS * 0], __float2half(1.0f)));
+  REPORT("aux_bc_aux_mat_half: aux_mat[3,0]=4", heq(haux_mat[3 + L_ROWS * 0], __float2half(4.0f)));
+  REPORT("aux_bc_aux_mat_half: aux_mat[0,1]=0", heq(haux_mat[0 + L_ROWS * 1], __float2half(0.0f)));
+
+  CUDA_CHECK(cudaFree(dabc)); CUDA_CHECK(cudaFree(damat));
+  CUDA_CHECK(cudaFree(dlrs)); CUDA_CHECK(cudaFree(dlre)); CUDA_CHECK(cudaFree(dnabc));
+}
+
+#endif /* WANT_HALF_PRECISION_REAL */
+
+// ============================================================
 int main(void)
 {
   printf("=== Unit tests for elpa_hermitian_multiply_gpu.h (CUDA) ===\n");
@@ -890,6 +1015,15 @@ int main(void)
   test_copy_aux_bc_aux_mat_nstor_offset();
   test_copy_aux_bc_aux_mat_empty();
   test_copy_aux_bc_aux_mat_float();
+
+#ifdef WANT_HALF_PRECISION_REAL
+  printf("\n--- gpu_copy_tmp2_c<__half> ---\n");
+  test_copy_tmp2_c_half();
+  printf("\n--- gpu_copy_a_aux_bc_loop<__half> ---\n");
+  test_copy_a_aux_bc_half();
+  printf("\n--- gpu_copy_aux_bc_aux_mat_loop<__half> ---\n");
+  test_copy_aux_bc_aux_mat_half();
+#endif /* WANT_HALF_PRECISION_REAL */
 
   printf("\n=== Summary: %d failure(s) ===\n", g_failures);
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

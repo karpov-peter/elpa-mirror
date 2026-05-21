@@ -53,6 +53,9 @@
 #include <cuda_runtime.h>
 #include <cuComplex.h>
 #include <type_traits>
+#if defined(WANT_HALF_PRECISION_REAL) || defined(WANT_HALF_PRECISION_COMPLEX)
+#include <cuda_fp16.h>
+#endif
 
 #include "../../../../src/elpa1/GPU/CUDA/elpa1_cuda.cu"
 
@@ -74,6 +77,11 @@ static void call_zero_skewsymmetric_q(double *q, int *mR, int *mC, cudaStream_t 
 static void call_zero_skewsymmetric_q(float *q, int *mR, int *mC, cudaStream_t s)
 { cuda_zero_skewsymmetric_q_float_FromC(q, mR, mC, s); }
 
+#ifdef WANT_HALF_PRECISION_REAL
+static void call_zero_skewsymmetric_q(__half *q, int *mR, int *mC, cudaStream_t s)
+{ cuda_zero_skewsymmetric_q_half_FromC(q, mR, mC, s); }
+#endif
+
 // ---- dispatcher overloads for cuda_copy_skewsymmetric_second_half_q ----
 
 static void call_copy_second_half_q(double *q, int *i, int *mR, int *mC, int *sign, cudaStream_t s)
@@ -81,6 +89,11 @@ static void call_copy_second_half_q(double *q, int *i, int *mR, int *mC, int *si
 
 static void call_copy_second_half_q(float *q, int *i, int *mR, int *mC, int *sign, cudaStream_t s)
 { cuda_copy_skewsymmetric_second_half_q_float_FromC(q, i, mR, mC, sign, s); }
+
+#ifdef WANT_HALF_PRECISION_REAL
+static void call_copy_second_half_q(__half *q, int *i, int *mR, int *mC, int *sign, cudaStream_t s)
+{ cuda_copy_skewsymmetric_second_half_q_half_FromC(q, i, mR, mC, sign, s); }
+#endif
 
 // ---- dispatcher overloads for cuda_copy_skewsymmetric_first_half_q ----
 
@@ -90,6 +103,11 @@ static void call_copy_first_half_q(double *q, int *i, int *mR, int *mC, int *sig
 static void call_copy_first_half_q(float *q, int *i, int *mR, int *mC, int *sign, cudaStream_t s)
 { cuda_copy_skewsymmetric_first_half_q_float_FromC(q, i, mR, mC, sign, s); }
 
+#ifdef WANT_HALF_PRECISION_REAL
+static void call_copy_first_half_q(__half *q, int *i, int *mR, int *mC, int *sign, cudaStream_t s)
+{ cuda_copy_skewsymmetric_first_half_q_half_FromC(q, i, mR, mC, sign, s); }
+#endif
+
 // ---- dispatcher overloads for cuda_get_skewsymmetric_second_half_q ----
 
 static void call_get_second_half_q(double *q, double *q2, int *mR, int *mC, cudaStream_t s)
@@ -98,6 +116,11 @@ static void call_get_second_half_q(double *q, double *q2, int *mR, int *mC, cuda
 static void call_get_second_half_q(float *q, float *q2, int *mR, int *mC, cudaStream_t s)
 { cuda_get_skewsymmetric_second_half_q_float_FromC(q, q2, mR, mC, s); }
 
+#ifdef WANT_HALF_PRECISION_REAL
+static void call_get_second_half_q(__half *q, __half *q2, int *mR, int *mC, cudaStream_t s)
+{ cuda_get_skewsymmetric_second_half_q_half_FromC(q, q2, mR, mC, s); }
+#endif
+
 // ---- dispatcher overloads for cuda_put_skewsymmetric_second_half_q ----
 
 static void call_put_second_half_q(double *q, double *q2, int *mR, int *mC, cudaStream_t s)
@@ -105,6 +128,11 @@ static void call_put_second_half_q(double *q, double *q2, int *mR, int *mC, cuda
 
 static void call_put_second_half_q(float *q, float *q2, int *mR, int *mC, cudaStream_t s)
 { cuda_put_skewsymmetric_second_half_q_float_FromC(q, q2, mR, mC, s); }
+
+#ifdef WANT_HALF_PRECISION_REAL
+static void call_put_second_half_q(__half *q, __half *q2, int *mR, int *mC, cudaStream_t s)
+{ cuda_put_skewsymmetric_second_half_q_half_FromC(q, q2, mR, mC, s); }
+#endif
 
 // ============================================================
 // Test: cuda_copy_real_part_to_q_*_complex_kernel
@@ -426,6 +454,7 @@ int main(void)
 {
     int failures = 0;
 
+    printf("=== Unit tests for elpa1_cuda.cu kernels ===\n\n");
     printf("Testing cuda_copy_real_part_to_q_complex_kernel:\n");
     failures += run_copy_real_part_to_q_test<cuDoubleComplex>("cuDoubleComplex");
     failures += run_copy_real_part_to_q_test<cuFloatComplex> ("cuFloatComplex");
@@ -450,11 +479,24 @@ int main(void)
     failures += run_put_second_half_q_test<double>("double");
     failures += run_put_second_half_q_test<float> ("float");
 
-    if (failures == 0)
-        printf("\nAll tests passed.\n");
-    else
-        printf("\n%d test(s) FAILED.\n", failures);
+#ifdef WANT_HALF_PRECISION_REAL
+    printf("\nTesting cuda_zero_skewsymmetric_q_kernel <__half>:\n");
+    failures += run_zero_skewsymmetric_q_test<__half>("__half");
 
+    printf("\nTesting cuda_copy_skewsymmetric_second_half_q_kernel <__half>:\n");
+    failures += run_copy_second_half_q_test<__half>("__half");
+
+    printf("\nTesting cuda_copy_skewsymmetric_first_half_q_kernel <__half>:\n");
+    failures += run_copy_first_half_q_test<__half>("__half");
+
+    printf("\nTesting cuda_get_skewsymmetric_second_half_q_kernel <__half>:\n");
+    failures += run_get_second_half_q_test<__half>("__half");
+
+    printf("\nTesting cuda_put_skewsymmetric_second_half_q_kernel <__half>:\n");
+    failures += run_put_second_half_q_test<__half>("__half");
+#endif /* WANT_HALF_PRECISION_REAL */
+
+    printf("\n=== Summary: %d failure(s) ===\n", failures);
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 

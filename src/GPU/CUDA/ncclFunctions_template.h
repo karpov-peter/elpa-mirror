@@ -228,6 +228,11 @@ extern "C" {
     return val;
   }
 
+  int ncclDataTypeNcclFloat16FromC(void) {
+    int val = ncclFloat16;
+    return val;
+  }
+
   int ncclAllReduceFromC(const void *sendbuff, void *recvbuff, size_t count, ncclDataType_t ncclDatatype, ncclRedOp_t ncclOp, ncclComm_t ncclComm, cudaStream_t cudaStream) {
     ncclResult_t ncclError;
 

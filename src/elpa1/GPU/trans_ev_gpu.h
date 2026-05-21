@@ -118,6 +118,12 @@ extern "C" void CONCATENATE(ELPA_GPU,  _copy_hvb_a_FromC) (char dataType, intptr
   else if (dataType=='S') gpu_copy_hvb_a<float> ((float  *) hvb_dev, (float  *) a_dev, ld_hvb, lda, my_prow, np_rows, my_pcol, np_cols, nblk, ics, ice, SM_count, debug, my_stream);
   else if (dataType=='Z') gpu_copy_hvb_a<gpuDoubleComplex>((gpuDoubleComplex *) hvb_dev, (gpuDoubleComplex *) a_dev, ld_hvb, lda, my_prow, np_rows, my_pcol, np_cols, nblk, ics, ice, SM_count, debug, my_stream);
   else if (dataType=='C') gpu_copy_hvb_a<gpuFloatComplex> ((gpuFloatComplex  *) hvb_dev, (gpuFloatComplex  *) a_dev, ld_hvb, lda, my_prow, np_rows, my_pcol, np_cols, nblk, ics, ice, SM_count, debug, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_copy_hvb_a<__half>((__half *) hvb_dev, (__half *) a_dev, ld_hvb, lda, my_prow, np_rows, my_pcol, np_cols, nblk, ics, ice, SM_count, debug, my_stream);
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+  else if (dataType=='G') gpu_copy_hvb_a<__half2>((__half2 *) hvb_dev, (__half2 *) a_dev, ld_hvb, lda, my_prow, np_rows, my_pcol, np_cols, nblk, ics, ice, SM_count, debug, my_stream);
+#endif
 }
 
 //_________________________________________________________________________________________________
@@ -194,6 +200,12 @@ extern "C" void CONCATENATE(ELPA_GPU,  _copy_hvm_hvb_FromC) (char dataType, intp
   else if (dataType=='S') gpu_copy_hvm_hvb<float> ((float  *) hvm_dev, (float  *) hvb_dev, (float  *) tau_dev, ld_hvm, ld_hvb, my_prow, np_rows, nstor, nblk, ics, ice, SM_count, debug, my_stream);
   else if (dataType=='Z') gpu_copy_hvm_hvb<gpuDoubleComplex>((gpuDoubleComplex *) hvm_dev, (gpuDoubleComplex *) hvb_dev, (gpuDoubleComplex *) tau_dev, ld_hvm, ld_hvb, my_prow, np_rows, nstor, nblk, ics, ice, SM_count, debug, my_stream);
   else if (dataType=='C') gpu_copy_hvm_hvb<gpuFloatComplex> ((gpuFloatComplex  *) hvm_dev, (gpuFloatComplex  *) hvb_dev, (gpuFloatComplex  *) tau_dev, ld_hvm, ld_hvb, my_prow, np_rows, nstor, nblk, ics, ice, SM_count, debug, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_copy_hvm_hvb<__half>((__half *) hvm_dev, (__half *) hvb_dev, (__half *) tau_dev, ld_hvm, ld_hvb, my_prow, np_rows, nstor, nblk, ics, ice, SM_count, debug, my_stream);
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+  else if (dataType=='G') gpu_copy_hvm_hvb<__half2>((__half2 *) hvm_dev, (__half2 *) hvb_dev, (__half2 *) tau_dev, ld_hvm, ld_hvb, my_prow, np_rows, nstor, nblk, ics, ice, SM_count, debug, my_stream);
+#endif
 }
 
 //_________________________________________________________________________________________________
@@ -241,4 +253,10 @@ extern "C" void CONCATENATE(ELPA_GPU,  _set_tmat_diag_from_tau_FromC) (char data
   else if (dataType=='S') gpu_set_tmat_diag_from_tau<float> ((float  *) tmat_dev, (float  *) tau_dev, max_stored_rows, nstor, tau_offset, SM_count, debug, my_stream);
   else if (dataType=='Z') gpu_set_tmat_diag_from_tau<gpuDoubleComplex>((gpuDoubleComplex *) tmat_dev, (gpuDoubleComplex *) tau_dev, max_stored_rows, nstor, tau_offset, SM_count, debug, my_stream);
   else if (dataType=='C') gpu_set_tmat_diag_from_tau<gpuFloatComplex> ((gpuFloatComplex  *) tmat_dev, (gpuFloatComplex  *) tau_dev, max_stored_rows, nstor, tau_offset, SM_count, debug, my_stream);
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_REAL)
+  else if (dataType=='H') gpu_set_tmat_diag_from_tau<__half>((__half *) tmat_dev, (__half *) tau_dev, max_stored_rows, nstor, tau_offset, SM_count, debug, my_stream);
+#endif
+#if defined(WITH_NVIDIA_GPU_VERSION) && defined(WANT_HALF_PRECISION_COMPLEX)
+  else if (dataType=='G') gpu_set_tmat_diag_from_tau<__half2>((__half2 *) tmat_dev, (__half2 *) tau_dev, max_stored_rows, nstor, tau_offset, SM_count, debug, my_stream);
+#endif
 }

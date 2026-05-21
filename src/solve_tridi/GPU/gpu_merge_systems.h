@@ -728,10 +728,13 @@ void gpu_copy_qtmp1_to_qtmp1_tmp (T *qtmp1_dev, T* qtmp1_tmp_dev, const int gemm
     }
 }
 
-extern "C" void CONCATENATE(ELPA_GPU,  _copy_qtmp1_to_qtmp1_tmp_FromC) (char dataType, intptr_t qtmp1_dev, intptr_t qtmp1_tmp_dev, 
+extern "C" void CONCATENATE(ELPA_GPU,  _copy_qtmp1_to_qtmp1_tmp_FromC) (char dataType, intptr_t qtmp1_dev, intptr_t qtmp1_tmp_dev,
                                                                         int gemm_dim_k, int gemm_dim_l, int debug, gpuStream_t my_stream) {
   if      (dataType=='D') gpu_copy_qtmp1_to_qtmp1_tmp<double>((double *) qtmp1_dev, (double *) qtmp1_tmp_dev, gemm_dim_k, gemm_dim_l, debug, my_stream);
   else if (dataType=='S') gpu_copy_qtmp1_to_qtmp1_tmp<float> ((float  *) qtmp1_dev, (float  *) qtmp1_tmp_dev, gemm_dim_k, gemm_dim_l, debug, my_stream);
+#ifdef WANT_HALF_PRECISION_REAL
+  else if (dataType=='H') gpu_copy_qtmp1_to_qtmp1_tmp<half_real>((half_real *) qtmp1_dev, (half_real *) qtmp1_tmp_dev, gemm_dim_k, gemm_dim_l, debug, my_stream);
+#endif
   else {
     printf("Error in gpu_copy_qtmp1_to_qtmp1_tmp: Unsupported data type\n");
   }
@@ -772,6 +775,9 @@ void gpu_fill_array (T *array_dev, T* value_dev, int n, int SM_count, int debug,
 extern "C" void CONCATENATE(ELPA_GPU,  _fill_array_FromC) (char dataType, intptr_t array_dev, intptr_t value_dev, int n, int SM_count, int debug, gpuStream_t my_stream){
   if      (dataType=='D') gpu_fill_array<double>((double *) array_dev, (double *) value_dev, n, SM_count, debug, my_stream);
   else if (dataType=='S') gpu_fill_array<float> ((float  *) array_dev, (float  *) value_dev, n, SM_count, debug, my_stream);
+#ifdef WANT_HALF_PRECISION_REAL
+  else if (dataType=='H') gpu_fill_array<half_real>((half_real *) array_dev, (half_real *) value_dev, n, SM_count, debug, my_stream);
+#endif
   else {
     printf("Error in gpu_fill_array: Unsupported data type\n");
   }
