@@ -941,11 +941,13 @@ TESTS += unit_test_pack_unpack_kernels
 unit_test_pack_unpack_kernels_SOURCES = test/unit_tests/CUDA/GPU/test_pack_unpack_kernels.cu
 unit_test_pack_unpack_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
 
+if WANT_HALF_PRECISION_REAL
 noinst_PROGRAMS += unit_test_precision_helpers_kernels
 unit_test_programs += unit_test_precision_helpers_kernels
 TESTS += unit_test_precision_helpers_kernels
 unit_test_precision_helpers_kernels_SOURCES = test/unit_tests/CUDA/GPU/test_precision_helpers_kernels.cu
 unit_test_precision_helpers_kernels_LINK = $(NVCC) $(NVCCFLAGS) $(NCCL_LDFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
+endif
 
 noinst_PROGRAMS += unit_test_trans_ev_kernels
 unit_test_programs += unit_test_trans_ev_kernels
