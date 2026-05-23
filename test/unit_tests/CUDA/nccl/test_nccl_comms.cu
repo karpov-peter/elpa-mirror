@@ -46,7 +46,7 @@
 #include <string.h>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
-#include <nccl.h>
+#include "nccl.h"
 
 #define CUDA_CHECK(call)                                                        \
   do {                                                                          \
