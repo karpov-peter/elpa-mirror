@@ -3529,6 +3529,7 @@ if test x"$use_nvidia_nccl" = x"yes"; then
 
   AC_LANG_PUSH([C])
   CXXFLAGS="$CXXFLAGS -I$CUDA_INSTALL_PATH/include -I$NCCL_INSTALL_PATH/include"
+  NCCL_CPPFLAGS="-I$NCCL_INSTALL_PATH/include"
   NCCL_LDFLAGS="-L$NCCL_INSTALL_PATH/lib"
   LDFLAGS="$LDFLAGS $NCCL_LDFLAGS"
   dnl check whether we find nccl
@@ -3543,6 +3544,7 @@ if test x"$use_nvidia_nccl" = x"yes"; then
   fi
 
 fi
+AC_SUBST([NCCL_CPPFLAGS])
 AC_SUBST([NCCL_LDFLAGS])
 AM_CONDITIONAL([WITH_NVIDIA_NCCL],[test x"$use_nvidia_nccl" = x"yes"])
 

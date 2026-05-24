@@ -1031,7 +1031,7 @@ unit_test_nccl_programs += unit_test_nccl_comms
 unit_test_nccl_comms_SOURCES = test/unit_tests/CUDA/nccl/test_nccl_comms.cu
 unit_test_nccl_comms_LINK = $(NVCC) -ccbin $(CXX) $(NVCCFLAGS) $(NCCL_LDFLAGS) -lnccl -I$(top_builddir)/ -I$(top_srcdir)/ -o $@
 test/unit_tests/CUDA/nccl/test_nccl_comms.o: $(top_srcdir)/test/unit_tests/CUDA/nccl/test_nccl_comms.cu
-	NVCC="$(NVCC)" $(top_srcdir)/nvcc_wrap $(NVCCFLAGS) -ccbin $(CXX) -I$(top_builddir)/ -I$(top_srcdir)/ -c $< -o $@
+	NVCC="$(NVCC)" $(top_srcdir)/nvcc_wrap $(NVCCFLAGS) -ccbin $(CXX) $(NCCL_CPPFLAGS) -I$(top_builddir)/ -I$(top_srcdir)/ -c $< -o $@
 check_SCRIPTS += unit_test_nccl_comms_default.sh
 unit_test_nccl_scripts += unit_test_nccl_comms_default.sh
 endif
