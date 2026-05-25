@@ -75,11 +75,12 @@ static const int N = 4;
 // Allreduce (sum) of N doubles.
 // Each rank contributes 1.0; expected result is 2.0 on both ranks.
 // -----------------------------------------------------------------------
-static int test_allreduce_double(ncclComm_t comm, cudaStream_t stream, int rank)
+static int test_allreduce_double(ncclComm_t comm, cudaStream_t stream, int rank, int size)
 {
   double *d_send, *d_recv;
   double  h_send[N], h_recv[N];
   for (int i = 0; i < N; i++) h_send[i] = 1.0;
+  double expected = (double)size;
 
   CUDA_CHECK(cudaMalloc(&d_send, N * sizeof(double)));
   CUDA_CHECK(cudaMalloc(&d_recv, N * sizeof(double)));
@@ -93,21 +94,22 @@ static int test_allreduce_double(ncclComm_t comm, cudaStream_t stream, int rank)
   CUDA_CHECK(cudaFree(d_recv));
 
   int ok = 1;
-  for (int i = 0; i < N; i++) ok &= (h_recv[i] == 2.0);
+  for (int i = 0; i < N; i++) ok &= (h_recv[i] == expected);
   if (rank == 0)
-    printf("  AllReduce double      (N=%d, sum): got %.1f  expected 2.0  [%s]\n",
-           N, h_recv[0], ok ? "PASS" : "FAIL");
+    printf("  AllReduce double      (N=%d, sum): got %.1f  expected %.1f  [%s]\n",
+           N, h_recv[0], expected, ok ? "PASS" : "FAIL");
   return ok ? 0 : 1;
 }
 
 // -----------------------------------------------------------------------
 // Allreduce (sum) of N floats.
 // -----------------------------------------------------------------------
-static int test_allreduce_float(ncclComm_t comm, cudaStream_t stream, int rank)
+static int test_allreduce_float(ncclComm_t comm, cudaStream_t stream, int rank, int size)
 {
   float *d_send, *d_recv;
   float  h_send[N], h_recv[N];
   for (int i = 0; i < N; i++) h_send[i] = 1.0f;
+  float expected = (float)size;
 
   CUDA_CHECK(cudaMalloc(&d_send, N * sizeof(float)));
   CUDA_CHECK(cudaMalloc(&d_recv, N * sizeof(float)));
@@ -121,21 +123,22 @@ static int test_allreduce_float(ncclComm_t comm, cudaStream_t stream, int rank)
   CUDA_CHECK(cudaFree(d_recv));
 
   int ok = 1;
-  for (int i = 0; i < N; i++) ok &= (h_recv[i] == 2.0f);
+  for (int i = 0; i < N; i++) ok &= (h_recv[i] == expected);
   if (rank == 0)
-    printf("  AllReduce float       (N=%d, sum): got %.1f  expected 2.0  [%s]\n",
-           N, (double)h_recv[0], ok ? "PASS" : "FAIL");
+    printf("  AllReduce float       (N=%d, sum): got %.1f  expected %.1f  [%s]\n",
+           N, (double)h_recv[0], (double)expected, ok ? "PASS" : "FAIL");
   return ok ? 0 : 1;
 }
 
 // -----------------------------------------------------------------------
 // Allreduce (sum) of N half-precision reals.
 // -----------------------------------------------------------------------
-static int test_allreduce_half(ncclComm_t comm, cudaStream_t stream, int rank)
+static int test_allreduce_half(ncclComm_t comm, cudaStream_t stream, int rank, int size)
 {
   __half *d_send, *d_recv;
   __half  h_send[N], h_recv[N];
   for (int i = 0; i < N; i++) h_send[i] = __float2half(1.0f);
+  float expected = (float)size;
 
   CUDA_CHECK(cudaMalloc(&d_send, N * sizeof(__half)));
   CUDA_CHECK(cudaMalloc(&d_recv, N * sizeof(__half)));
@@ -149,22 +152,24 @@ static int test_allreduce_half(ncclComm_t comm, cudaStream_t stream, int rank)
   CUDA_CHECK(cudaFree(d_recv));
 
   int ok = 1;
-  for (int i = 0; i < N; i++) ok &= (__half2float(h_recv[i]) == 2.0f);
+  for (int i = 0; i < N; i++) ok &= (__half2float(h_recv[i]) == expected);
   if (rank == 0)
-    printf("  AllReduce half        (N=%d, sum): got %.1f  expected 2.0  [%s]\n",
-           N, (double)__half2float(h_recv[0]), ok ? "PASS" : "FAIL");
+    printf("  AllReduce half        (N=%d, sum): got %.1f  expected %.1f  [%s]\n",
+           N, (double)__half2float(h_recv[0]), (double)expected, ok ? "PASS" : "FAIL");
   return ok ? 0 : 1;
 }
 
 // -----------------------------------------------------------------------
 // Allreduce (sum) of N double-complex numbers, sent as 2*N ncclDouble.
-// Each element: real=1.0, imag=0.5 -> expected real=2.0, imag=1.0.
+// Each element: real=1.0, imag=0.5 -> expected real=size*1.0, imag=size*0.5.
 // -----------------------------------------------------------------------
-static int test_allreduce_double_complex(ncclComm_t comm, cudaStream_t stream, int rank)
+static int test_allreduce_double_complex(ncclComm_t comm, cudaStream_t stream, int rank, int size)
 {
   double *d_send, *d_recv;
   double  h_send[2 * N], h_recv[2 * N];
   for (int i = 0; i < N; i++) { h_send[2*i] = 1.0; h_send[2*i+1] = 0.5; }
+  double exp_re = (double)size * 1.0;
+  double exp_im = (double)size * 0.5;
 
   CUDA_CHECK(cudaMalloc(&d_send, 2 * N * sizeof(double)));
   CUDA_CHECK(cudaMalloc(&d_recv, 2 * N * sizeof(double)));
@@ -178,22 +183,24 @@ static int test_allreduce_double_complex(ncclComm_t comm, cudaStream_t stream, i
   CUDA_CHECK(cudaFree(d_recv));
 
   int ok = 1;
-  for (int i = 0; i < N; i++) ok &= (h_recv[2*i] == 2.0) && (h_recv[2*i+1] == 1.0);
+  for (int i = 0; i < N; i++) ok &= (h_recv[2*i] == exp_re) && (h_recv[2*i+1] == exp_im);
   if (rank == 0)
-    printf("  AllReduce dbl-complex (N=%d, sum): got (%.1f,%.1f)  expected (2.0,1.0)  [%s]\n",
-           N, h_recv[0], h_recv[1], ok ? "PASS" : "FAIL");
+    printf("  AllReduce dbl-complex (N=%d, sum): got (%.1f,%.1f)  expected (%.1f,%.1f)  [%s]\n",
+           N, h_recv[0], h_recv[1], exp_re, exp_im, ok ? "PASS" : "FAIL");
   return ok ? 0 : 1;
 }
 
 // -----------------------------------------------------------------------
 // Allreduce (sum) of N float-complex numbers, sent as 2*N ncclFloat.
-// Each element: real=1.0, imag=0.5 -> expected real=2.0, imag=1.0.
+// Each element: real=1.0, imag=0.5 -> expected real=size*1.0, imag=size*0.5.
 // -----------------------------------------------------------------------
-static int test_allreduce_float_complex(ncclComm_t comm, cudaStream_t stream, int rank)
+static int test_allreduce_float_complex(ncclComm_t comm, cudaStream_t stream, int rank, int size)
 {
   float *d_send, *d_recv;
   float  h_send[2 * N], h_recv[2 * N];
   for (int i = 0; i < N; i++) { h_send[2*i] = 1.0f; h_send[2*i+1] = 0.5f; }
+  float exp_re = (float)size * 1.0f;
+  float exp_im = (float)size * 0.5f;
 
   CUDA_CHECK(cudaMalloc(&d_send, 2 * N * sizeof(float)));
   CUDA_CHECK(cudaMalloc(&d_recv, 2 * N * sizeof(float)));
@@ -207,18 +214,18 @@ static int test_allreduce_float_complex(ncclComm_t comm, cudaStream_t stream, in
   CUDA_CHECK(cudaFree(d_recv));
 
   int ok = 1;
-  for (int i = 0; i < N; i++) ok &= (h_recv[2*i] == 2.0f) && (h_recv[2*i+1] == 1.0f);
+  for (int i = 0; i < N; i++) ok &= (h_recv[2*i] == exp_re) && (h_recv[2*i+1] == exp_im);
   if (rank == 0)
-    printf("  AllReduce flt-complex (N=%d, sum): got (%.1f,%.1f)  expected (2.0,1.0)  [%s]\n",
-           N, (double)h_recv[0], (double)h_recv[1], ok ? "PASS" : "FAIL");
+    printf("  AllReduce flt-complex (N=%d, sum): got (%.1f,%.1f)  expected (%.1f,%.1f)  [%s]\n",
+           N, (double)h_recv[0], (double)h_recv[1], (double)exp_re, (double)exp_im, ok ? "PASS" : "FAIL");
   return ok ? 0 : 1;
 }
 
 // -----------------------------------------------------------------------
 // Allreduce (sum) of N half-complex numbers, sent as 2*N ncclFloat16.
-// Each element: real=1.0, imag=0.5 -> expected real=2.0, imag=1.0.
+// Each element: real=1.0, imag=0.5 -> expected real=size*1.0, imag=size*0.5.
 // -----------------------------------------------------------------------
-static int test_allreduce_half_complex(ncclComm_t comm, cudaStream_t stream, int rank)
+static int test_allreduce_half_complex(ncclComm_t comm, cudaStream_t stream, int rank, int size)
 {
   __half *d_send, *d_recv;
   __half  h_send[2 * N], h_recv[2 * N];
@@ -226,6 +233,8 @@ static int test_allreduce_half_complex(ncclComm_t comm, cudaStream_t stream, int
     h_send[2*i]   = __float2half(1.0f);
     h_send[2*i+1] = __float2half(0.5f);
   }
+  float exp_re = (float)size * 1.0f;
+  float exp_im = (float)size * 0.5f;
 
   CUDA_CHECK(cudaMalloc(&d_send, 2 * N * sizeof(__half)));
   CUDA_CHECK(cudaMalloc(&d_recv, 2 * N * sizeof(__half)));
@@ -240,11 +249,11 @@ static int test_allreduce_half_complex(ncclComm_t comm, cudaStream_t stream, int
 
   int ok = 1;
   for (int i = 0; i < N; i++)
-    ok &= (__half2float(h_recv[2*i]) == 2.0f) && (__half2float(h_recv[2*i+1]) == 1.0f);
+    ok &= (__half2float(h_recv[2*i]) == exp_re) && (__half2float(h_recv[2*i+1]) == exp_im);
   if (rank == 0)
-    printf("  AllReduce hlf-complex (N=%d, sum): got (%.1f,%.1f)  expected (2.0,1.0)  [%s]\n",
+    printf("  AllReduce hlf-complex (N=%d, sum): got (%.1f,%.1f)  expected (%.1f,%.1f)  [%s]\n",
            N, (double)__half2float(h_recv[0]), (double)__half2float(h_recv[1]),
-           ok ? "PASS" : "FAIL");
+           (double)exp_re, (double)exp_im, ok ? "PASS" : "FAIL");
   return ok ? 0 : 1;
 }
 
@@ -428,12 +437,6 @@ int main(int argc, char **argv)
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-  if (size != 2) {
-    if (rank == 0)
-      fprintf(stderr, "Error: this test must be run with exactly 2 MPI tasks (got %d)\n", size);
-    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-  }
-
   int gpu_count = 0;
   CUDA_CHECK(cudaGetDeviceCount(&gpu_count));
   if (gpu_count == 0) {
@@ -462,16 +465,16 @@ int main(int argc, char **argv)
   int failures = 0;
 
   if (rank == 0) {
-    printf("=== Unit tests for NCCL Allreduce and Bcast (2 MPI tasks) ===\n\n");
+    printf("=== Unit tests for NCCL Allreduce and Bcast (%d MPI tasks) ===\n\n", size);
     printf("Testing ncclAllReduce (sum):\n");
   }
 
-  failures += test_allreduce_double       (comm, stream, rank);
-  failures += test_allreduce_float        (comm, stream, rank);
-  failures += test_allreduce_half         (comm, stream, rank);
-  failures += test_allreduce_double_complex(comm, stream, rank);
-  failures += test_allreduce_float_complex (comm, stream, rank);
-  failures += test_allreduce_half_complex  (comm, stream, rank);
+  failures += test_allreduce_double       (comm, stream, rank, size);
+  failures += test_allreduce_float        (comm, stream, rank, size);
+  failures += test_allreduce_half         (comm, stream, rank, size);
+  failures += test_allreduce_double_complex(comm, stream, rank, size);
+  failures += test_allreduce_float_complex (comm, stream, rank, size);
+  failures += test_allreduce_half_complex  (comm, stream, rank, size);
 
   if (rank == 0) printf("\nTesting ncclBroadcast (root=0):\n");
 
