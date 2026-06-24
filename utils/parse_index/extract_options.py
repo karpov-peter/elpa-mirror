@@ -40,6 +40,14 @@
 #    any derivatives of ELPA under the same license that we chose for
 #    the original distribution, the GNU Lesser General Public License.
 
+"""Extracting the ELPA API options from elpa_index.c
+
+Running this script shows a list of the user-facing API options which can be 
+set or queried after instantiating an ELPA object. Those options along with 
+the description of each option are extracted from the elpa_index.c file.
+This script should be run from within the directory where it exists, i.e. 
+utils/parse_index
+"""
 
 import re
 
@@ -47,11 +55,7 @@ import re
 pattern = re.compile(r'\s*.+ENTRY\((".+"),\s*(".+")')
 pattern_comment = re.compile(r'(.*)(?=//).+ENTRY\((".+"),\s*(".+")')
 
-header_length = 80
-max_line_len  = 70
-
-print(header_length *'-')
-opt_count = 0
+options = {}
 
 with open('../../src/elpa_index.c', 'r') as source:
     content = source.readlines()
@@ -59,17 +63,28 @@ with open('../../src/elpa_index.c', 'r') as source:
         comments = pattern_comment.finditer(line)
         if any(comments) is False:   # this line is not out-commented           
             matches = pattern.finditer(line)
-            for match in matches:
-                opt_count += 1
-                print(f'===> Option {opt_count}: ', match.group(1))
-                desc = match.group(2).strip('"')
-                if len(desc) > max_line_len:
-                    desc_1 = desc[:max_line_len]
-                    desc_2 = desc[max_line_len:]
-                    print('\t', desc_1)
-                    print('\t', desc_2, '\n')
-                else:
-                    print('\t', desc, '\n')
+            for match in matches:                                
+                desc = match.group(2).strip('"')                
+                options[match.group(1)] = desc
 
-                print(header_length *'-')
+                
+# Print out the results
+header_length = 80
+max_line_len  = 70
 
+print(header_length *'-')
+
+opt_count = 0
+for opt, desc in options.items():
+    opt_count += 1
+    print(f'==> Option {opt_count}: ', opt)
+    
+    if len(desc) > max_line_len:
+        desc_1 = desc[:max_line_len]
+        desc_2 = desc[max_line_len:]
+        print('\t', desc_1)
+        print('\t', desc_2, '\n')
+    else:
+        print('\t', desc, '\n')
+    
+    print(header_length *'-')
