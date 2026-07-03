@@ -126,6 +126,23 @@ subroutine solve_tridi_cpu_&
       integer(kind=c_intptr_t)                   :: limits_dev
       logical                                    :: successGPU
 
+      block
+        integer(kind=MPI_KIND) :: dbg_myid, dbg_mpierr
+        integer(kind=ik)       :: dbg_i
+
+        call mpi_comm_rank(int(mpi_comm_all,kind=MPI_KIND), dbg_myid, dbg_mpierr)
+
+        if (dbg_myid == 0) then
+          open(12345, file="tridiag_de.txt", status="replace", action="write")
+
+          do dbg_i = 1, na
+            write(12345,'(i8,2x,es26.17,2x,es26.17)') dbg_i, d(dbg_i), e(dbg_i)
+          enddo
+
+          close(12345)
+        endif
+      end block
+
       debug = 0
       if (wantDebug) debug = 1
 
